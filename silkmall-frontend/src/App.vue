@@ -1,5 +1,31 @@
 <script setup lang="ts">
-import { RouterLink, RouterView } from 'vue-router'
+import { computed } from 'vue'
+import { RouterLink, RouterView, useRouter } from 'vue-router'
+import { useAuth } from './composables/useAuth'
+
+const router = useRouter()
+const { user, isAuthenticated, logout } = useAuth()
+
+const roleLabels: Record<string, string> = {
+  consumer: '消费者',
+  supplier: '供应商',
+  admin: '管理员',
+}
+
+const userRoleLabel = computed(() => {
+  const role = user.value?.role
+  if (!role) {
+    return '访客'
+  }
+
+  const normalizedRole = String(role).toLowerCase()
+  return roleLabels[normalizedRole] ?? role
+})
+
+const handleLogout = () => {
+  logout()
+  router.replace({ name: 'login' })
+}
 </script>
 
 <template>
@@ -13,11 +39,19 @@ import { RouterLink, RouterView } from 'vue-router'
         </div>
       </RouterLink>
 
-      <nav class="primary-nav" aria-label="主导航">
+      <nav v-if="isAuthenticated" class="primary-nav" aria-label="主导航">
         <RouterLink to="/" active-class="is-active" class="nav-link">产品中心</RouterLink>
         <RouterLink to="/orders" active-class="is-active" class="nav-link">订单中心</RouterLink>
         <RouterLink to="/about" active-class="is-active" class="nav-link">关于项目</RouterLink>
       </nav>
+
+      <div v-if="isAuthenticated" class="user-meta" aria-live="polite">
+        <div class="user-info">
+          <span class="user-role" aria-label="当前角色">{{ userRoleLabel }}</span>
+          <span class="user-name" aria-label="当前用户">{{ user?.username }}</span>
+        </div>
+        <button type="button" class="logout-button" @click="handleLogout">退出登录</button>
+      </div>
     </header>
 
     <main class="app-main">
@@ -117,6 +151,56 @@ import { RouterLink, RouterView } from 'vue-router'
   transform: translateY(0);
 }
 
+.user-meta {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.4rem 0.75rem;
+  border-radius: 0.75rem;
+  background: rgba(242, 142, 28, 0.08);
+}
+
+.user-info {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.2;
+}
+
+.user-role {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #f28e1c;
+}
+
+.user-name {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: #1c1c1e;
+}
+
+.logout-button {
+  appearance: none;
+  border: none;
+  background: linear-gradient(135deg, #f28e1c, #f5c342);
+  color: #fff;
+  padding: 0.5rem 0.9rem;
+  border-radius: 999px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: 0 10px 20px rgba(242, 142, 28, 0.25);
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.logout-button:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 12px 24px rgba(242, 142, 28, 0.28);
+}
+
+.logout-button:active {
+  transform: translateY(0);
+}
+
 .app-main {
   flex: 1;
   padding-bottom: 3rem;
@@ -134,6 +218,7 @@ import { RouterLink, RouterView } from 'vue-router'
   .app-header {
     flex-direction: column;
     align-items: flex-start;
+    gap: 1rem;
   }
 
   .primary-nav {
@@ -145,19 +230,27 @@ import { RouterLink, RouterView } from 'vue-router'
     flex: 1;
     text-align: center;
   }
+
+  .user-meta {
+    width: 100%;
+    justify-content: space-between;
+  }
 }
 
 @media (prefers-color-scheme: dark) {
   .brand-subtitle,
   .nav-link,
-  .app-footer {
+  .app-footer,
+  .user-name {
     color: rgba(255, 255, 255, 0.7);
   }
 
-  .nav-link:hover,
-  .nav-link.is-active {
-    color: #ffffff;
+  .user-meta {
     background: rgba(242, 177, 66, 0.15);
+  }
+
+  .logout-button {
+    box-shadow: 0 10px 20px rgba(242, 177, 66, 0.25);
   }
 
   .app-footer {
