@@ -1,12 +1,14 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import ProductCard from '@/components/ProductCard.vue'
+import PurchaseDialog from '@/components/PurchaseDialog.vue'
 import api from '@/services/api'
 import type {
   CategoryOption,
   PageResponse,
   ProductOverview,
   ProductSummary,
+  PurchaseOrderResult,
   SupplierOption,
 } from '@/types'
 
@@ -37,6 +39,9 @@ const filters = reactive({
 
 const sortSelection = ref('createdAt:DESC')
 const pageSize = ref(12)
+const purchaseTarget = ref<ProductSummary | null>(null)
+const purchaseSuccessMessage = ref<string | null>(null)
+const purchaseMessageTimer = ref<number | null>(null)
 
 const statusOptions = [
   { label: '全部状态', value: 'all' },
@@ -205,10 +210,40 @@ function resetFilters() {
   fetchProducts(true)
 }
 
+function openPurchaseDialog(product: ProductSummary) {
+  purchaseTarget.value = product
+}
+
+function closePurchaseDialog() {
+  purchaseTarget.value = null
+}
+
+function handlePurchaseSuccess(order: PurchaseOrderResult) {
+  const orderNo = order.orderNo ? `（订单号：${order.orderNo}）` : ''
+  purchaseSuccessMessage.value = `下单成功！${orderNo}`.trim()
+
+  if (purchaseMessageTimer.value) {
+    clearTimeout(purchaseMessageTimer.value)
+  }
+
+  purchaseMessageTimer.value = window.setTimeout(() => {
+    purchaseSuccessMessage.value = null
+    purchaseMessageTimer.value = null
+  }, 6000)
+
+  fetchProducts()
+}
+
 onMounted(async () => {
   pagination.size = pageSize.value
   await Promise.all([fetchOverview(), fetchCategories(), fetchSuppliers()])
   await fetchProducts()
+})
+
+onBeforeUnmount(() => {
+  if (purchaseMessageTimer.value) {
+    clearTimeout(purchaseMessageTimer.value)
+  }
 })
 </script>
 
@@ -321,12 +356,16 @@ onMounted(async () => {
         <p>共 {{ pagination.totalElements }} 件商品</p>
       </header>
 
+      <transition name="fade">
+        <p v-if="purchaseSuccessMessage" class="notice">{{ purchaseSuccessMessage }}</p>
+      </transition>
+
       <p v-if="error" class="error-message">{{ error }}</p>
       <div v-if="loading" class="loading">正在加载商品数据...</div>
       <div v-else-if="emptyState" class="empty">暂无符合条件的商品，尝试调整筛选条件。</div>
 
       <div v-if="!loading && !emptyState" class="grid">
-        <ProductCard v-for="item in products" :key="item.id" :product="item" />
+        <ProductCard v-for="item in products" :key="item.id" :product="item" @purchase="openPurchaseDialog" />
       </div>
 
       <div v-if="pagination.totalPages > 1" class="pagination" role="navigation" aria-label="分页导航">
@@ -335,6 +374,12 @@ onMounted(async () => {
         <button type="button" :disabled="!canNext" @click="changePage(pagination.page + 1)">下一页</button>
       </div>
     </section>
+    <PurchaseDialog
+      :open="!!purchaseTarget"
+      :product="purchaseTarget"
+      @close="closePurchaseDialog"
+      @success="handlePurchaseSuccess"
+    />
   </section>
 </template>
 
@@ -565,6 +610,15 @@ onMounted(async () => {
   color: rgba(0, 0, 0, 0.55);
 }
 
+.notice {
+  margin: 0;
+  padding: 0.85rem 1.15rem;
+  border-radius: 0.95rem;
+  background: rgba(34, 197, 94, 0.12);
+  color: #166534;
+  font-weight: 600;
+}
+
 .loading,
 .empty,
 .error-message {
@@ -612,6 +666,17 @@ onMounted(async () => {
 
 .pagination button:not(:disabled):hover {
   transform: translateY(-2px);
+}
+
+.fade-enter-active,
+.fade-leave-active {
+  transition: opacity 0.25s ease, transform 0.25s ease;
+}
+
+.fade-enter-from,
+.fade-leave-to {
+  opacity: 0;
+  transform: translateY(-8px);
 }
 
 @media (max-width: 768px) {

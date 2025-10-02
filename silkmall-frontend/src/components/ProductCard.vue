@@ -4,6 +4,10 @@ import type { ProductSummary } from '@/types'
 
 const props = defineProps<{ product: ProductSummary }>()
 
+const emit = defineEmits<{
+  (e: 'purchase', product: ProductSummary): void
+}>()
+
 const statusLabel = computed(() => {
   const labelMap: Record<string, string> = {
     ON_SALE: '上架中',
@@ -60,6 +64,16 @@ const formattedPrice = computed(() =>
         <span>供应商：{{ product.supplierName }}</span>
         <span v-if="product.supplierLevel">等级：{{ product.supplierLevel }}</span>
       </footer>
+      <div class="actions">
+        <button
+          type="button"
+          class="buy"
+          :disabled="product.status !== 'ON_SALE' || product.stock <= 0"
+          @click="emit('purchase', product)"
+        >
+          {{ product.status === 'ON_SALE' && product.stock > 0 ? '立即购买' : '暂不可购' }}
+        </button>
+      </div>
     </div>
   </article>
 </template>
@@ -188,6 +202,37 @@ const formattedPrice = computed(() =>
   gap: 0.75rem;
   font-size: 0.8rem;
   color: rgba(17, 24, 39, 0.65);
+}
+
+.actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.actions .buy {
+  border: none;
+  border-radius: 999px;
+  padding: 0.55rem 1.35rem;
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+  background: linear-gradient(135deg, rgba(242, 177, 66, 0.85), rgba(111, 169, 173, 0.85));
+  color: #fff;
+  box-shadow: 0 16px 36px rgba(242, 177, 66, 0.22);
+  transition: transform 0.2s ease, box-shadow 0.2s ease, opacity 0.2s ease;
+}
+
+.actions .buy:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 22px 44px rgba(242, 177, 66, 0.3);
+}
+
+.actions .buy:disabled {
+  cursor: not-allowed;
+  background: rgba(15, 23, 42, 0.1);
+  color: rgba(15, 23, 42, 0.45);
+  box-shadow: none;
+  transform: none;
 }
 
 @media (max-width: 768px) {

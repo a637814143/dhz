@@ -13,6 +13,37 @@ export interface ProductSummary {
   supplierLevel?: string | null
 }
 
+export interface PurchaseOrderItemPayload {
+  product: {
+    id: number
+  }
+  quantity: number
+}
+
+export interface PurchaseOrderPayload {
+  consumer: {
+    id: number
+  }
+  recipientName: string
+  recipientPhone: string
+  shippingAddress: string
+  paymentMethod?: string | null
+  remark?: string | null
+  orderItems: PurchaseOrderItemPayload[]
+}
+
+export interface PurchaseOrderResult {
+  id: number
+  orderNo: string
+  status: string
+  totalAmount: number
+  totalQuantity: number
+  paymentMethod?: string | null
+  shippingAddress?: string | null
+  recipientName?: string | null
+  recipientPhone?: string | null
+}
+
 export interface ProductOverview {
   totalProducts: number
   onSaleProducts: number
