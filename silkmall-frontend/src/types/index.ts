@@ -40,3 +40,60 @@ export interface SupplierOption {
   companyName: string
   supplierLevel?: string | null
 }
+
+export interface OrderItemDetail {
+  id: number
+  quantity: number
+  unitPrice: number
+  totalPrice: number
+  createdAt: string
+  product: {
+    id: number
+    name: string
+    mainImage?: string | null
+  }
+}
+
+export interface OrderDetail {
+  id: number
+  orderNo: string
+  totalAmount: number
+  totalQuantity: number
+  status: string
+  shippingAddress?: string | null
+  recipientName?: string | null
+  recipientPhone?: string | null
+  orderTime: string
+  paymentTime?: string | null
+  shippingTime?: string | null
+  deliveryTime?: string | null
+  orderItems: OrderItemDetail[]
+}
+
+export interface ProductReview {
+  id: number
+  orderId: number
+  orderItemId: number
+  productId: number
+  productName: string
+  consumerId: number
+  consumerName: string
+  rating: number
+  comment?: string | null
+  createdAt: string
+}
+
+export interface ReturnRequest {
+  id: number
+  orderId: number
+  orderItemId: number
+  productId: number
+  productName: string
+  consumerId: number
+  consumerName: string
+  status: string
+  reason?: string | null
+  resolution?: string | null
+  requestedAt: string
+  processedAt?: string | null
+}

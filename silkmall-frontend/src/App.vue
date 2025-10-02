@@ -15,6 +15,7 @@ import { RouterLink, RouterView } from 'vue-router'
 
       <nav class="primary-nav" aria-label="主导航">
         <RouterLink to="/" active-class="is-active" class="nav-link">产品中心</RouterLink>
+        <RouterLink to="/orders" active-class="is-active" class="nav-link">订单中心</RouterLink>
         <RouterLink to="/about" active-class="is-active" class="nav-link">关于项目</RouterLink>
       </nav>
     </header>
