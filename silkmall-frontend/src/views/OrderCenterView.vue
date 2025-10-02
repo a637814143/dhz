@@ -57,6 +57,37 @@ const pendingReturnMap = computed(() => {
   return map
 })
 
+const returnStatusSummary = computed(() => {
+  const summary = {
+    total: returnRequests.value.length,
+    pending: 0,
+    approved: 0,
+    rejected: 0,
+    completed: 0,
+  }
+
+  returnRequests.value.forEach((request) => {
+    switch (request.status) {
+      case 'PENDING':
+        summary.pending += 1
+        break
+      case 'APPROVED':
+        summary.approved += 1
+        break
+      case 'REJECTED':
+        summary.rejected += 1
+        break
+      case 'COMPLETED':
+        summary.completed += 1
+        break
+      default:
+        break
+    }
+  })
+
+  return summary
+})
+
 const currencyFormatter = new Intl.NumberFormat('zh-CN', {
   style: 'currency',
   currency: 'CNY',
@@ -244,6 +275,43 @@ const hasOrder = computed(() => !!orderDetail.value)
     </transition>
 
     <section v-if="hasOrder" class="order-detail">
+      <section class="return-service" aria-label="退货服务概览">
+        <div class="return-service__header">
+          <h2>退货服务</h2>
+          <p class="muted">
+            支持对已购买商品发起退货申请并跟踪处理进度，如有疑问请及时联系客服。
+          </p>
+        </div>
+        <ul class="return-stats">
+          <li>
+            <strong>{{ returnStatusSummary.total }}</strong>
+            <span>已提交申请</span>
+          </li>
+          <li>
+            <strong>{{ returnStatusSummary.pending }}</strong>
+            <span>待审核</span>
+          </li>
+          <li>
+            <strong>{{ returnStatusSummary.approved }}</strong>
+            <span>已通过</span>
+          </li>
+          <li>
+            <strong>{{ returnStatusSummary.rejected }}</strong>
+            <span>已驳回</span>
+          </li>
+          <li>
+            <strong>{{ returnStatusSummary.completed }}</strong>
+            <span>已完成</span>
+          </li>
+        </ul>
+        <p v-if="!returnStatusSummary.total" class="muted">
+          当前暂无退货记录，可在下方订单商品中选择需要退货的商品并填写原因。
+        </p>
+        <p v-else class="muted">
+          点击订单商品中的“申请退货”即可新增申请，系统会自动更新上方统计。
+        </p>
+      </section>
+
       <div class="order-meta">
         <div>
           <h2>订单编号：{{ orderDetail!.orderNo }}</h2>
@@ -388,6 +456,7 @@ const hasOrder = computed(() => !!orderDetail.value)
           <li v-for="request in returnRequests" :key="request.id">
             <strong>{{ request.productName }}</strong>
             <span class="muted">状态：{{ request.status }}</span>
+            <span v-if="request.reason" class="muted">申请原因：{{ request.reason }}</span>
             <span class="muted">申请时间：{{ formatDateTime(request.requestedAt) }}</span>
             <span v-if="request.resolution" class="muted">处理结果：{{ request.resolution }}</span>
           </li>
@@ -481,6 +550,43 @@ const hasOrder = computed(() => !!orderDetail.value)
   background: #fff;
   border: 1px solid rgba(0, 0, 0, 0.08);
   box-shadow: 0 20px 40px rgba(0, 0, 0, 0.05);
+}
+
+.return-service {
+  display: grid;
+  gap: 1rem;
+  padding: 1.25rem;
+  border-radius: 1.25rem;
+  background: rgba(242, 142, 28, 0.06);
+  border: 1px solid rgba(242, 142, 28, 0.18);
+}
+
+.return-service__header h2 {
+  margin: 0 0 0.25rem;
+}
+
+.return-stats {
+  list-style: none;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 0.75rem;
+  padding: 0;
+  margin: 0;
+}
+
+.return-stats li {
+  display: grid;
+  gap: 0.25rem;
+  padding: 0.75rem;
+  border-radius: 0.85rem;
+  background: #fff;
+  box-shadow: inset 0 0 0 1px rgba(242, 142, 28, 0.18);
+  text-align: center;
+}
+
+.return-stats strong {
+  font-size: 1.35rem;
+  color: #7a3b0c;
 }
 
 .order-meta {
@@ -658,11 +764,15 @@ const hasOrder = computed(() => !!orderDetail.value)
   opacity: 0;
 }
 
-@media (max-width: 768px) {
-  .order-meta {
-    flex-direction: column;
-    align-items: flex-start;
-  }
+  @media (max-width: 768px) {
+    .return-stats {
+      grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    }
+
+    .order-meta {
+      flex-direction: column;
+      align-items: flex-start;
+    }
 
   .order-status {
     text-align: left;
