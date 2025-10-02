@@ -8,8 +8,14 @@ public class LoginDTO {
     
     @NotBlank(message = "密码不能为空")
     private String password;
-    
+
     private String rememberMe;
+
+    @NotBlank(message = "验证码ID不能为空")
+    private String challengeId;
+
+    @NotBlank(message = "验证码不能为空")
+    private String verificationCode;
     
     public String getUsername() {
         return username;
@@ -33,5 +39,21 @@ public class LoginDTO {
     
     public void setRememberMe(String rememberMe) {
         this.rememberMe = rememberMe;
+    }
+
+    public String getChallengeId() {
+        return challengeId;
+    }
+
+    public void setChallengeId(String challengeId) {
+        this.challengeId = challengeId;
+    }
+
+    public String getVerificationCode() {
+        return verificationCode;
+    }
+
+    public void setVerificationCode(String verificationCode) {
+        this.verificationCode = verificationCode;
     }
 }

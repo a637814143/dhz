@@ -23,6 +23,7 @@ public class RegisterDTO {
     @NotBlank(message = "手机号不能为空")
     private String phone;
     
+    @NotBlank(message = "用户类型不能为空")
     private String userType; // CONSUMER, SUPPLIER, ADMIN
     
     public String getUsername() {

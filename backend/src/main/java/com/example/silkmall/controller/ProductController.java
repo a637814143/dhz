@@ -3,6 +3,7 @@ package com.example.silkmall.controller;
 import com.example.silkmall.dto.ProductOverviewDTO;
 import com.example.silkmall.dto.ProductSummaryDTO;
 import com.example.silkmall.entity.Product;
+import com.example.silkmall.security.CustomUserDetails;
 import com.example.silkmall.service.ProductService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
@@ -10,7 +11,11 @@ import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
 import java.math.BigDecimal;
@@ -39,18 +44,41 @@ public class ProductController extends BaseController {
     }
     
     @PostMapping
-    public ResponseEntity<Product> createProduct(@RequestBody Product product) {
+    @PreAuthorize("hasRole('ADMIN') or hasRole('SUPPLIER')")
+    public ResponseEntity<?> createProduct(@RequestBody Product product,
+                                           @AuthenticationPrincipal CustomUserDetails currentUser) {
+        if (!canManageProduct(currentUser, product)) {
+            return redirectForUser(currentUser);
+        }
         return created(productService.save(product));
     }
-    
+
     @PutMapping("/{id}")
-    public ResponseEntity<Product> updateProduct(@PathVariable Long id, @RequestBody Product product) {
+    @PreAuthorize("hasRole('ADMIN') or hasRole('SUPPLIER')")
+    public ResponseEntity<?> updateProduct(@PathVariable Long id, @RequestBody Product product,
+                                           @AuthenticationPrincipal CustomUserDetails currentUser) {
+        Optional<Product> existing = productService.findById(id);
+        if (existing.isEmpty()) {
+            return notFound("产品不存在");
+        }
+        if (!canManageProduct(currentUser, existing.get())) {
+            return redirectForUser(currentUser);
+        }
         product.setId(id);
         return success(productService.save(product));
     }
-    
+
     @DeleteMapping("/{id}")
-    public ResponseEntity<Void> deleteProduct(@PathVariable Long id) {
+    @PreAuthorize("hasRole('ADMIN') or hasRole('SUPPLIER')")
+    public ResponseEntity<?> deleteProduct(@PathVariable Long id,
+                                           @AuthenticationPrincipal CustomUserDetails currentUser) {
+        Optional<Product> existing = productService.findById(id);
+        if (existing.isEmpty()) {
+            return notFound("产品不存在");
+        }
+        if (!canManageProduct(currentUser, existing.get())) {
+            return redirectForUser(currentUser);
+        }
         productService.deleteById(id);
         return success();
     }
@@ -117,19 +145,46 @@ public class ProductController extends BaseController {
     }
 
     @PutMapping("/{id}/stock")
-    public ResponseEntity<Void> updateStock(@PathVariable Long id, @RequestParam Integer stock) {
+    @PreAuthorize("hasRole('ADMIN') or hasRole('SUPPLIER')")
+    public ResponseEntity<?> updateStock(@PathVariable Long id, @RequestParam Integer stock,
+                                         @AuthenticationPrincipal CustomUserDetails currentUser) {
+        Optional<Product> existing = productService.findById(id);
+        if (existing.isEmpty()) {
+            return notFound("产品不存在");
+        }
+        if (!canManageProduct(currentUser, existing.get())) {
+            return redirectForUser(currentUser);
+        }
         productService.updateStock(id, stock);
         return success();
     }
-    
+
     @PutMapping("/{id}/on-sale")
-    public ResponseEntity<Void> putProductOnSale(@PathVariable Long id) {
+    @PreAuthorize("hasRole('ADMIN') or hasRole('SUPPLIER')")
+    public ResponseEntity<?> putProductOnSale(@PathVariable Long id,
+                                              @AuthenticationPrincipal CustomUserDetails currentUser) {
+        Optional<Product> existing = productService.findById(id);
+        if (existing.isEmpty()) {
+            return notFound("产品不存在");
+        }
+        if (!canManageProduct(currentUser, existing.get())) {
+            return redirectForUser(currentUser);
+        }
         productService.putProductOnSale(id);
         return success();
     }
-    
+
     @PutMapping("/{id}/off-sale")
-    public ResponseEntity<Void> takeProductOffSale(@PathVariable Long id) {
+    @PreAuthorize("hasRole('ADMIN') or hasRole('SUPPLIER')")
+    public ResponseEntity<?> takeProductOffSale(@PathVariable Long id,
+                                                @AuthenticationPrincipal CustomUserDetails currentUser) {
+        Optional<Product> existing = productService.findById(id);
+        if (existing.isEmpty()) {
+            return notFound("产品不存在");
+        }
+        if (!canManageProduct(currentUser, existing.get())) {
+            return redirectForUser(currentUser);
+        }
         productService.takeProductOffSale(id);
         return success();
     }
@@ -158,5 +213,36 @@ public class ProductController extends BaseController {
             dto.setSupplierLevel(product.getSupplier().getSupplierLevel());
         }
         return dto;
+    }
+
+    private boolean canManageProduct(CustomUserDetails user, Product product) {
+        if (user == null) {
+            return false;
+        }
+        if ("admin".equalsIgnoreCase(user.getUserType())) {
+            return true;
+        }
+        if (!"supplier".equalsIgnoreCase(user.getUserType())) {
+            return false;
+        }
+        if (product == null || product.getSupplier() == null || product.getSupplier().getId() == null) {
+            return false;
+        }
+        return product.getSupplier().getId().equals(user.getId());
+    }
+
+    private ResponseEntity<?> redirectForUser(CustomUserDetails currentUser) {
+        String target = "/login";
+        if (currentUser != null) {
+            switch (currentUser.getUserType().toLowerCase()) {
+                case "admin" -> target = "/admin/overview";
+                case "supplier" -> target = "/supplier/workbench";
+                case "consumer" -> target = "/consumer/dashboard";
+                default -> target = "/login";
+            }
+        }
+        HttpHeaders headers = new HttpHeaders();
+        headers.set(HttpHeaders.LOCATION, target);
+        return new ResponseEntity<>(headers, HttpStatus.FOUND);
     }
 }

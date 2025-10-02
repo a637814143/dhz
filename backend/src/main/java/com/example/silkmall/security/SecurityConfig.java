@@ -14,7 +14,7 @@ import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
-import static org.springframework.security.config.Customizer.withDefaults;
+import org.springframework.security.config.Customizer;
 
 @Configuration
 @EnableMethodSecurity(prePostEnabled = true)
@@ -52,7 +52,7 @@ public class SecurityConfig {
     @Bean
     public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
         http
-            .cors(AbstractHttpConfigurer::disable)
+            .cors(Customizer.withDefaults())
             .csrf(AbstractHttpConfigurer::disable)
             .exceptionHandling(exception -> exception.authenticationEntryPoint(unauthorizedHandler))
             .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
@@ -60,6 +60,7 @@ public class SecurityConfig {
                 .requestMatchers("/api/auth/**").permitAll()
                 .requestMatchers("/api/products/**").permitAll()
                 .requestMatchers("/api/categories/**").permitAll()
+                .requestMatchers("/api/content/**").permitAll()
                 .requestMatchers("/api/users/register").permitAll()
                 .requestMatchers("/swagger-ui/**", "/v3/api-docs/**").permitAll()
                 .anyRequest().authenticated()

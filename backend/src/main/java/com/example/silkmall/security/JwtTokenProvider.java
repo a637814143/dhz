@@ -21,6 +21,10 @@ public class JwtTokenProvider {
     
     @Value("${app.jwtExpirationInMs}")
     private int jwtExpirationInMs;
+
+    public long getJwtExpirationInSeconds() {
+        return jwtExpirationInMs / 1000L;
+    }
     
     public String generateToken(Authentication authentication) {
         CustomUserDetails userDetails = (CustomUserDetails) authentication.getPrincipal();

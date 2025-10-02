@@ -5,6 +5,7 @@ import com.example.silkmall.entity.Consumer;
 import com.example.silkmall.service.ConsumerService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 import java.util.Optional;
 
@@ -19,6 +20,7 @@ public class ConsumerController extends BaseController {
     }
     
     @GetMapping("/{id}")
+    @PreAuthorize("hasRole('ADMIN') or (hasRole('CONSUMER') and #id == principal.id)")
     public ResponseEntity<?> getConsumerById(@PathVariable Long id) {
         Optional<Consumer> consumer = consumerService.findById(id);
         if (consumer.isPresent()) {
@@ -29,6 +31,7 @@ public class ConsumerController extends BaseController {
     }
     
     @PutMapping("/{id}")
+    @PreAuthorize("hasRole('ADMIN') or (hasRole('CONSUMER') and #id == principal.id)")
     public ResponseEntity<?> updateConsumer(@PathVariable Long id, @RequestBody ConsumerDTO consumerDTO) {
         // 检查消费者是否存在
         Consumer existingConsumer = consumerService.findById(id)
@@ -52,6 +55,7 @@ public class ConsumerController extends BaseController {
     }
     
     @DeleteMapping("/{id}")
+    @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<Void> deleteConsumer(@PathVariable Long id) {
         consumerService.deleteById(id);
         return success();
@@ -63,12 +67,14 @@ public class ConsumerController extends BaseController {
     }
     
     @PutMapping("/{id}/points")
+    @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<Void> updatePoints(@PathVariable Long id, @RequestParam Integer points) {
         consumerService.updatePoints(id, points);
         return success();
     }
     
     @PostMapping("/{id}/upgrade")
+    @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<Void> upgradeMembershipLevel(@PathVariable Long id) {
         consumerService.upgradeMembershipLevel(id);
         return success();

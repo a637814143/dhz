@@ -1,13 +1,18 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
+import { RouterLink } from 'vue-router'
 import ProductCard from '@/components/ProductCard.vue'
 import PurchaseDialog from '@/components/PurchaseDialog.vue'
 import api from '@/services/api'
 import type {
+  Announcement,
+  Banner,
   CategoryOption,
+  HomepageContent,
   PageResponse,
   ProductOverview,
   ProductSummary,
+  Promotion,
   PurchaseOrderResult,
   SupplierOption,
 } from '@/types'
@@ -16,6 +21,7 @@ const products = ref<ProductSummary[]>([])
 const overview = ref<ProductOverview | null>(null)
 const categories = ref<CategoryOption[]>([])
 const suppliers = ref<SupplierOption[]>([])
+const homeContent = ref<HomepageContent | null>(null)
 const loading = ref(false)
 const error = ref<string | null>(null)
 
@@ -62,6 +68,13 @@ const pageSizeOptions = [12, 24, 48]
 const emptyState = computed(() => !loading.value && products.value.length === 0)
 const canPrev = computed(() => pagination.page > 0)
 const canNext = computed(() => pagination.page + 1 < pagination.totalPages)
+
+const primaryBanner = computed<Banner | null>(() => homeContent.value?.banners?.[0] ?? null)
+const secondaryBanners = computed<Banner[]>(() => homeContent.value?.banners?.slice(1) ?? [])
+const promotionList = computed<Promotion[]>(() => homeContent.value?.promotions ?? [])
+const hotSales = computed<ProductSummary[]>(() => homeContent.value?.hotSales ?? [])
+const announcementHighlights = computed<Announcement[]>(() => homeContent.value?.announcements ?? [])
+const primaryBannerImage = computed(() => primaryBanner.value?.imageUrl ?? '/images/banners/default.png')
 
 function normaliseAmount(value: string) {
   if (!value.trim()) return null
@@ -131,6 +144,15 @@ async function fetchSuppliers() {
     suppliers.value = data
   } catch (err) {
     console.warn('无法加载供应商信息', err)
+  }
+}
+
+async function fetchHomepageContent() {
+  try {
+    const { data } = await api.get<HomepageContent>('/content/home')
+    homeContent.value = data
+  } catch (err) {
+    console.warn('无法加载首页运营内容', err)
   }
 }
 
@@ -236,7 +258,7 @@ function handlePurchaseSuccess(order: PurchaseOrderResult) {
 
 onMounted(async () => {
   pagination.size = pageSize.value
-  await Promise.all([fetchOverview(), fetchCategories(), fetchSuppliers()])
+  await Promise.all([fetchOverview(), fetchCategories(), fetchSuppliers(), fetchHomepageContent()])
   await fetchProducts()
 })
 
@@ -249,19 +271,28 @@ onBeforeUnmount(() => {
 
 <template>
   <section class="home-view">
-    <section class="hero">
+    <section class="hero" :style="{ '--hero-image': `url(${primaryBannerImage})` }">
       <div class="hero-text">
-        <p class="tag">SilkMall · 蚕桑数智化</p>
-        <h1>用数据驱动蚕制品销售，打造全渠道智慧商城</h1>
+        <p class="tag">{{ primaryBanner ? '焦点推荐' : 'SilkMall · 蚕桑数智化' }}</p>
+        <h1>{{ primaryBanner?.headline ?? '用数据驱动蚕制品销售，打造全渠道智慧商城' }}</h1>
         <p>
-          集产品管理、供应商协同与销售洞察于一体，帮助蚕桑企业实时掌握库存、销量与渠道动态，实现丝绸好物的高效上架与精准营销。
+          {{ primaryBanner?.subHeadline ?? '集产品管理、供应商协同与销售洞察于一体，帮助蚕桑企业实时掌握库存、销量与渠道动态，实现丝绸好物的高效上架与精准营销。' }}
         </p>
+        <div v-if="primaryBanner" class="hero-actions">
+          <RouterLink :to="primaryBanner.targetUrl" class="cta-button">{{ primaryBanner.ctaText }}</RouterLink>
+        </div>
       </div>
-      <div class="hero-illustration" aria-hidden="true">
-        <div class="bubble bubble-lg"></div>
-        <div class="bubble bubble-md"></div>
-        <div class="bubble bubble-sm"></div>
-      </div>
+      <div class="hero-illustration" aria-hidden="true"></div>
+    </section>
+
+    <section v-if="secondaryBanners.length" class="secondary-banners">
+      <article v-for="banner in secondaryBanners" :key="banner.headline" class="mini-banner">
+        <div>
+          <h3>{{ banner.headline }}</h3>
+          <p>{{ banner.subHeadline }}</p>
+        </div>
+        <RouterLink :to="banner.targetUrl">{{ banner.ctaText }}</RouterLink>
+      </article>
     </section>
 
     <section class="overview" v-if="overview">
@@ -284,6 +315,35 @@ onBeforeUnmount(() => {
         <span class="label">库存总量</span>
         <strong>{{ overview.totalStock }}</strong>
         <small>仓储可用库存（件）</small>
+      </div>
+    </section>
+
+    <section v-if="promotionList.length" class="promotion-strip" aria-label="优惠活动">
+      <article v-for="promo in promotionList" :key="promo.productId" class="promotion-card">
+        <div>
+          <h3>{{ promo.title }}</h3>
+          <p>{{ promo.description }}</p>
+        </div>
+        <span class="discount">{{ Math.round(promo.discountRate * 100) }}% OFF</span>
+      </article>
+    </section>
+
+    <section v-if="hotSales.length" class="hot-zone" aria-label="热销排行">
+      <header>
+        <h2>热销排行</h2>
+        <p>实时洞察市场热度，快速响应补货与营销策略。</p>
+      </header>
+      <div class="hot-grid">
+        <article v-for="product in hotSales" :key="product.id" class="hot-card">
+          <div>
+            <h3>{{ product.name }}</h3>
+            <p>{{ product.description ?? '丝滑亲肤，好评如潮。' }}</p>
+          </div>
+          <footer>
+            <span class="price">¥{{ product.price }}</span>
+            <RouterLink :to="`/product/${product.id}`">查看详情</RouterLink>
+          </footer>
+        </article>
       </div>
     </section>
 
@@ -374,6 +434,22 @@ onBeforeUnmount(() => {
         <button type="button" :disabled="!canNext" @click="changePage(pagination.page + 1)">下一页</button>
       </div>
     </section>
+
+    <section v-if="announcementHighlights.length" class="announcement-board" aria-label="平台公告">
+      <header>
+        <h2>公告与资讯</h2>
+        <p>关注平台运营动态、优惠政策与使用帮助。</p>
+      </header>
+      <ul>
+        <li v-for="item in announcementHighlights" :key="item.id">
+          <div>
+            <strong>{{ item.title }}</strong>
+            <p>{{ item.content }}</p>
+          </div>
+          <span class="category">{{ item.category }}</span>
+        </li>
+      </ul>
+    </section>
     <PurchaseDialog
       :open="!!purchaseTarget"
       :product="purchaseTarget"
@@ -396,15 +472,26 @@ onBeforeUnmount(() => {
   gap: 2.5rem;
   padding: 2.5rem;
   border-radius: 2rem;
-  background: linear-gradient(135deg, rgba(242, 177, 66, 0.28), rgba(111, 169, 173, 0.35));
+  background: linear-gradient(120deg, rgba(255, 255, 255, 0.85), rgba(242, 177, 66, 0.25)),
+    var(--hero-image) center/cover;
   position: relative;
   overflow: hidden;
+}
+
+.hero::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(circle at top right, rgba(255, 255, 255, 0.55), transparent 60%);
+  pointer-events: none;
 }
 
 .hero-text {
   display: flex;
   flex-direction: column;
   gap: 1.25rem;
+  position: relative;
+  z-index: 1;
 }
 
 .hero-text h1 {
@@ -418,8 +505,10 @@ onBeforeUnmount(() => {
   color: rgba(0, 0, 0, 0.7);
 }
 
-.tag {
-  display: inline-block;
+.hero-text .tag {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   padding: 0.4rem 0.75rem;
   border-radius: 999px;
   background: rgba(92, 44, 12, 0.12);
@@ -429,40 +518,67 @@ onBeforeUnmount(() => {
   letter-spacing: 0.1em;
 }
 
+.hero-actions {
+  display: flex;
+  gap: 1rem;
+}
+
+.cta-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.75rem 1.5rem;
+  border-radius: 999px;
+  background: linear-gradient(135deg, #f28e1c, #f5c342);
+  color: #2d1b05;
+  font-weight: 700;
+  text-decoration: none;
+  box-shadow: 0 15px 28px rgba(242, 142, 28, 0.24);
+}
+
 .hero-illustration {
   position: relative;
   min-height: 220px;
+  border-radius: 2rem;
+  background: rgba(255, 255, 255, 0.35);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.4);
+  backdrop-filter: blur(6px);
+  z-index: 1;
 }
 
-.bubble {
-  position: absolute;
-  border-radius: 50%;
-  filter: blur(0.5px);
-  opacity: 0.75;
+.secondary-banners {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 1.25rem;
 }
 
-.bubble-lg {
-  width: 220px;
-  height: 220px;
-  background: radial-gradient(circle at 30% 30%, rgba(255, 255, 255, 0.95), rgba(242, 177, 66, 0.85));
-  top: 10%;
-  right: 10%;
+.mini-banner {
+  padding: 1.2rem 1.4rem;
+  border-radius: 1.5rem;
+  background: rgba(255, 255, 255, 0.92);
+  border: 1px solid rgba(242, 177, 66, 0.18);
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  box-shadow: 0 18px 32px rgba(242, 177, 66, 0.12);
 }
 
-.bubble-md {
-  width: 160px;
-  height: 160px;
-  background: radial-gradient(circle at 40% 40%, rgba(255, 255, 255, 0.95), rgba(111, 169, 173, 0.8));
-  bottom: 15%;
-  left: 10%;
+.mini-banner h3 {
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: rgba(32, 33, 37, 0.9);
 }
 
-.bubble-sm {
-  width: 120px;
-  height: 120px;
-  background: radial-gradient(circle at 50% 50%, rgba(255, 255, 255, 0.9), rgba(242, 177, 66, 0.7));
-  bottom: 30%;
-  right: -5%;
+.mini-banner p {
+  color: rgba(32, 33, 37, 0.65);
+  font-size: 0.95rem;
+}
+
+.mini-banner a {
+  align-self: flex-start;
+  color: #f28e1c;
+  font-weight: 600;
+  text-decoration: none;
 }
 
 .overview {
@@ -484,6 +600,142 @@ onBeforeUnmount(() => {
 .overview-card strong {
   font-size: 2rem;
   font-weight: 700;
+}
+
+.promotion-strip {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+
+.promotion-card {
+  border-radius: 1.4rem;
+  padding: 1.25rem 1.5rem;
+  background: linear-gradient(135deg, rgba(79, 70, 229, 0.08), rgba(236, 72, 153, 0.08));
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.promotion-card h3 {
+  font-size: 1.05rem;
+  font-weight: 700;
+  margin-bottom: 0.25rem;
+}
+
+.promotion-card p {
+  color: rgba(17, 24, 39, 0.6);
+  font-size: 0.9rem;
+}
+
+.promotion-card .discount {
+  font-weight: 700;
+  color: #4f46e5;
+}
+
+.hot-zone {
+  display: grid;
+  gap: 1.25rem;
+}
+
+.hot-zone header h2 {
+  font-size: 1.6rem;
+  font-weight: 700;
+}
+
+.hot-zone header p {
+  color: rgba(17, 24, 39, 0.6);
+}
+
+.hot-grid {
+  display: grid;
+  gap: 1.2rem;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+}
+
+.hot-card {
+  border-radius: 1.4rem;
+  padding: 1.4rem;
+  background: rgba(255, 255, 255, 0.92);
+  border: 1px solid rgba(79, 70, 229, 0.12);
+  display: grid;
+  gap: 1rem;
+  box-shadow: 0 18px 36px rgba(79, 70, 229, 0.12);
+}
+
+.hot-card h3 {
+  font-weight: 700;
+  font-size: 1.1rem;
+}
+
+.hot-card p {
+  color: rgba(17, 24, 39, 0.6);
+  font-size: 0.9rem;
+}
+
+.hot-card footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.hot-card .price {
+  color: #16a34a;
+  font-weight: 700;
+}
+
+.hot-card a {
+  color: #4f46e5;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.announcement-board {
+  border-radius: 1.5rem;
+  padding: 1.75rem 2rem;
+  background: rgba(255, 255, 255, 0.95);
+  box-shadow: 0 20px 40px rgba(30, 41, 59, 0.08);
+  display: grid;
+  gap: 1.25rem;
+}
+
+.announcement-board header h2 {
+  font-size: 1.5rem;
+  font-weight: 700;
+}
+
+.announcement-board header p {
+  color: rgba(30, 41, 59, 0.6);
+}
+
+.announcement-board ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  gap: 1rem;
+}
+
+.announcement-board li {
+  display: flex;
+  justify-content: space-between;
+  gap: 1.2rem;
+  align-items: flex-start;
+}
+
+.announcement-board strong {
+  display: block;
+  margin-bottom: 0.3rem;
+}
+
+.announcement-board p {
+  color: rgba(30, 41, 59, 0.65);
+}
+
+.announcement-board .category {
+  font-weight: 600;
+  color: #f97316;
 }
 
 .overview-card .label {

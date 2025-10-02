@@ -43,6 +43,21 @@ public class ProductServiceImpl extends BaseServiceImpl<Product, Long> implement
     public List<Product> findTop10ByOrderBySalesDesc() {
         return productRepository.findTop10ByOrderBySalesDesc();
     }
+
+    @Override
+    public List<Product> findTop8ByStatusOrderByCreatedAtDesc(String status) {
+        return productRepository.findTop8ByStatusOrderByCreatedAtDesc(status);
+    }
+
+    @Override
+    public List<Product> findTop8ByStatusOrderBySalesDesc(String status) {
+        return productRepository.findTop8ByStatusOrderBySalesDesc(status);
+    }
+
+    @Override
+    public List<Product> findTop8ByStatusOrderByPriceAsc(String status) {
+        return productRepository.findTop8ByStatusOrderByPriceAsc(status);
+    }
     
     @Override
     public Page<Product> search(String keyword, Pageable pageable) {

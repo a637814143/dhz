@@ -12,6 +12,9 @@ public interface ProductService extends BaseService<Product, Long> {
     Page<Product> findByCategoryId(Long categoryId, Pageable pageable);
     Page<Product> findBySupplierId(Long supplierId, Pageable pageable);
     List<Product> findTop10ByOrderBySalesDesc();
+    List<Product> findTop8ByStatusOrderByCreatedAtDesc(String status);
+    List<Product> findTop8ByStatusOrderBySalesDesc(String status);
+    List<Product> findTop8ByStatusOrderByPriceAsc(String status);
     Page<Product> search(String keyword, Pageable pageable);
     Page<Product> advancedSearch(String keyword,
                                  Long categoryId,

@@ -1,3 +1,10 @@
+export interface ApiResponse<T> {
+  code: number
+  message: string
+  data: T
+  timestamp: number
+}
+
 export interface ProductSummary {
   id: number
   name: string
@@ -51,6 +58,47 @@ export interface ProductOverview {
   soldOutProducts: number
   totalStock: number
   totalSalesVolume: number
+}
+
+export interface Banner {
+  imageUrl: string
+  headline: string
+  subHeadline: string
+  ctaText: string
+  targetUrl: string
+}
+
+export interface Promotion {
+  productId: number
+  title: string
+  description: string
+  discountRate: number
+  validUntil: string
+}
+
+export interface Announcement {
+  id: string
+  title: string
+  content: string
+  category: string
+  publishedAt: string
+}
+
+export interface NewsItem {
+  id: string
+  title: string
+  summary: string
+  source: string
+  publishedAt: string
+}
+
+export interface HomepageContent {
+  recommendations: ProductSummary[]
+  hotSales: ProductSummary[]
+  promotions: Promotion[]
+  banners: Banner[]
+  announcements: Announcement[]
+  news: NewsItem[]
 }
 
 export interface PageResponse<T> {
@@ -127,4 +175,44 @@ export interface ReturnRequest {
   resolution?: string | null
   requestedAt: string
   processedAt?: string | null
+}
+
+export interface CaptchaChallenge {
+  challengeId: string
+  question: string
+  expiresIn: number
+}
+
+export type UserRole = 'consumer' | 'supplier' | 'admin'
+
+export interface AuthUser {
+  id: number
+  username: string
+  email?: string | null
+  phone?: string | null
+  userType: UserRole
+}
+
+export interface LoginPayload {
+  username: string
+  password: string
+  challengeId: string
+  verificationCode: string
+}
+
+export interface LoginResponse {
+  token: string
+  expiresIn: number
+  issuedAt: number
+  redirectUrl: string
+  user: AuthUser
+}
+
+export interface RegisterPayload {
+  username: string
+  password: string
+  confirmPassword: string
+  email: string
+  phone: string
+  userType: UserRole
 }

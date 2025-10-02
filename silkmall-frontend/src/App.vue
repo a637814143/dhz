@@ -1,5 +1,28 @@
 <script setup lang="ts">
-import { RouterLink, RouterView } from 'vue-router'
+import { computed } from 'vue'
+import { RouterLink, RouterView, useRouter } from 'vue-router'
+import { useAuthState } from '@/services/authState'
+
+const router = useRouter()
+const { state, isAuthenticated, clearAuth } = useAuthState()
+
+const roleHome = computed(() => {
+  switch (state.user?.userType) {
+    case 'admin':
+      return '/admin/overview'
+    case 'supplier':
+      return '/supplier/workbench'
+    case 'consumer':
+      return '/consumer/dashboard'
+    default:
+      return '/login'
+  }
+})
+
+function signOut() {
+  clearAuth()
+  router.push({ name: 'login' })
+}
 </script>
 
 <template>
@@ -18,6 +41,18 @@ import { RouterLink, RouterView } from 'vue-router'
         <RouterLink to="/orders" active-class="is-active" class="nav-link">订单中心</RouterLink>
         <RouterLink to="/about" active-class="is-active" class="nav-link">关于项目</RouterLink>
       </nav>
+
+      <div class="auth-controls">
+        <template v-if="isAuthenticated">
+          <span class="user-chip">{{ state.user?.username }}</span>
+          <RouterLink :to="roleHome" class="dashboard-link">我的工作台</RouterLink>
+          <button type="button" class="logout-button" @click="signOut">退出</button>
+        </template>
+        <template v-else>
+          <RouterLink to="/login" class="login-link">登录</RouterLink>
+          <RouterLink to="/register" class="register-link">注册</RouterLink>
+        </template>
+      </div>
     </header>
 
     <main class="app-main">
@@ -117,6 +152,41 @@ import { RouterLink, RouterView } from 'vue-router'
   transform: translateY(0);
 }
 
+.auth-controls {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.login-link,
+.register-link,
+.dashboard-link {
+  font-weight: 600;
+  color: #f07a26;
+}
+
+.register-link {
+  padding: 0.35rem 0.85rem;
+  border-radius: 999px;
+  background: rgba(240, 122, 38, 0.12);
+}
+
+.user-chip {
+  padding: 0.35rem 0.85rem;
+  border-radius: 999px;
+  background: rgba(79, 70, 229, 0.12);
+  color: #4338ca;
+  font-weight: 600;
+}
+
+.logout-button {
+  border: none;
+  background: transparent;
+  color: rgba(0, 0, 0, 0.6);
+  font-weight: 600;
+  cursor: pointer;
+}
+
 .app-main {
   flex: 1;
   padding-bottom: 3rem;
@@ -144,6 +214,12 @@ import { RouterLink, RouterView } from 'vue-router'
   .nav-link {
     flex: 1;
     text-align: center;
+  }
+
+  .auth-controls {
+    width: 100%;
+    justify-content: flex-end;
+    flex-wrap: wrap;
   }
 }
 

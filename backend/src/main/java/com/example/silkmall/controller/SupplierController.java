@@ -6,6 +6,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -22,6 +23,7 @@ public class SupplierController extends BaseController {
     }
     
     @GetMapping("/{id}")
+    @PreAuthorize("hasRole('ADMIN') or (hasRole('SUPPLIER') and #id == principal.id)")
     public ResponseEntity<?> getSupplierById(@PathVariable Long id) {
         Optional<Supplier> supplier = supplierService.findById(id);
         if (supplier.isPresent()) {
@@ -32,12 +34,14 @@ public class SupplierController extends BaseController {
     }
     
     @PutMapping("/{id}")
+    @PreAuthorize("hasRole('ADMIN') or (hasRole('SUPPLIER') and #id == principal.id)")
     public ResponseEntity<Supplier> updateSupplier(@PathVariable Long id, @RequestBody Supplier supplier) {
         supplier.setId(id);
         return success(supplierService.update(supplier));
     }
     
     @DeleteMapping("/{id}")
+    @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<Void> deleteSupplier(@PathVariable Long id) {
         supplierService.deleteById(id);
         return success();
@@ -59,18 +63,21 @@ public class SupplierController extends BaseController {
     }
     
     @PutMapping("/{id}/approve")
+    @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<Void> approveSupplier(@PathVariable Long id) {
         supplierService.approveSupplier(id);
         return success();
     }
     
     @PutMapping("/{id}/reject")
+    @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<Void> rejectSupplier(@PathVariable Long id, @RequestParam String reason) {
         supplierService.rejectSupplier(id, reason);
         return success();
     }
     
     @PutMapping("/{id}/level")
+    @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<Void> updateSupplierLevel(@PathVariable Long id, @RequestParam String level) {
         supplierService.updateSupplierLevel(id, level);
         return success();
