@@ -1,19 +1,23 @@
 package com.example.silkmall.service.impl;
 
+import com.example.silkmall.dto.ProductOverviewDTO;
 import com.example.silkmall.entity.Product;
 import com.example.silkmall.repository.ProductRepository;
 import com.example.silkmall.service.ProductService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import java.math.BigDecimal;
 import java.util.List;
+import java.util.Locale;
 
 @Service
 public class ProductServiceImpl extends BaseServiceImpl<Product, Long> implements ProductService {
     private final ProductRepository productRepository;
-    
+
     @Autowired
     public ProductServiceImpl(ProductRepository productRepository) {
         super(productRepository);
@@ -44,7 +48,54 @@ public class ProductServiceImpl extends BaseServiceImpl<Product, Long> implement
     public Page<Product> search(String keyword, Pageable pageable) {
         return productRepository.findByNameContaining(keyword, pageable);
     }
-    
+
+    @Override
+    public Page<Product> advancedSearch(String keyword,
+                                        Long categoryId,
+                                        Long supplierId,
+                                        BigDecimal minPrice,
+                                        BigDecimal maxPrice,
+                                        String status,
+                                        Pageable pageable) {
+        Specification<Product> specification = Specification.where(null);
+
+        if (keyword != null && !keyword.isBlank()) {
+            String lowerKeyword = "%" + keyword.trim().toLowerCase(Locale.ROOT) + "%";
+            specification = specification.and((root, query, cb) -> cb.or(
+                    cb.like(cb.lower(root.get("name")), lowerKeyword),
+                    cb.like(cb.lower(root.get("description")), lowerKeyword)
+            ));
+        }
+
+        if (categoryId != null) {
+            specification = specification.and((root, query, cb) ->
+                    cb.equal(root.get("category").get("id"), categoryId));
+        }
+
+        if (supplierId != null) {
+            specification = specification.and((root, query, cb) ->
+                    cb.equal(root.get("supplier").get("id"), supplierId));
+        }
+
+        if (minPrice != null) {
+            specification = specification.and((root, query, cb) ->
+                    cb.greaterThanOrEqualTo(root.get("price"), minPrice));
+        }
+
+        if (maxPrice != null) {
+            specification = specification.and((root, query, cb) ->
+                    cb.lessThanOrEqualTo(root.get("price"), maxPrice));
+        }
+
+        if (status != null && !status.isBlank()) {
+            String normalizedStatus = status.trim().toUpperCase(Locale.ROOT);
+            specification = specification.and((root, query, cb) ->
+                    cb.equal(root.get("status"), normalizedStatus));
+        }
+
+        return productRepository.findAll(specification, pageable);
+    }
+
     @Transactional
     @Override
     public void updateStock(Long id, Integer quantity) {
@@ -108,5 +159,22 @@ public class ProductServiceImpl extends BaseServiceImpl<Product, Long> implement
         }
         
         return super.save(product);
+    }
+
+    @Override
+    public ProductOverviewDTO getProductOverview() {
+        ProductOverviewDTO overview = new ProductOverviewDTO();
+        overview.setTotalProducts(productRepository.count());
+        overview.setOnSaleProducts(productRepository.countByStatus("ON_SALE"));
+        overview.setOffSaleProducts(productRepository.countByStatus("OFF_SALE"));
+        overview.setSoldOutProducts(productRepository.countByStockLessThanEqual(0));
+
+        Long totalStock = productRepository.sumStock();
+        overview.setTotalStock(totalStock != null ? totalStock : 0L);
+
+        Long totalSalesVolume = productRepository.sumSales();
+        overview.setTotalSalesVolume(totalSalesVolume != null ? totalSalesVolume : 0L);
+
+        return overview;
     }
 }

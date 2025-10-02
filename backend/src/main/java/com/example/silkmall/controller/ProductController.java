@@ -1,15 +1,22 @@
 package com.example.silkmall.controller;
 
+import com.example.silkmall.dto.ProductOverviewDTO;
+import com.example.silkmall.dto.ProductSummaryDTO;
 import com.example.silkmall.entity.Product;
 import com.example.silkmall.service.ProductService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.math.BigDecimal;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 
 @RestController
 @RequestMapping("/api/products")
@@ -77,7 +84,38 @@ public class ProductController extends BaseController {
     public ResponseEntity<Page<Product>> searchProducts(@RequestParam String keyword, Pageable pageable) {
         return success(productService.search(keyword, pageable));
     }
-    
+
+    @GetMapping("/advanced-search")
+    public ResponseEntity<Page<ProductSummaryDTO>> advancedSearch(
+            @RequestParam(required = false) String keyword,
+            @RequestParam(required = false) Long categoryId,
+            @RequestParam(required = false) Long supplierId,
+            @RequestParam(required = false) BigDecimal minPrice,
+            @RequestParam(required = false) BigDecimal maxPrice,
+            @RequestParam(required = false) String status,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "12") int size,
+            @RequestParam(defaultValue = "createdAt") String sortBy,
+            @RequestParam(defaultValue = "DESC") Sort.Direction sortDirection) {
+        Set<String> allowedSortFields = Set.of("createdAt", "price", "sales", "stock", "name");
+        if (!allowedSortFields.contains(sortBy)) {
+            sortBy = "createdAt";
+        }
+
+        Pageable pageable = PageRequest.of(Math.max(page, 0), Math.max(size, 1), Sort.by(sortDirection, sortBy));
+        Page<Product> products = productService.advancedSearch(
+                keyword,
+                categoryId,
+                supplierId,
+                minPrice,
+                maxPrice,
+                status,
+                pageable);
+
+        Page<ProductSummaryDTO> dtoPage = products.map(this::toSummaryDTO);
+        return success(new PageImpl<>(dtoPage.getContent(), pageable, products.getTotalElements()));
+    }
+
     @PutMapping("/{id}/stock")
     public ResponseEntity<Void> updateStock(@PathVariable Long id, @RequestParam Integer stock) {
         productService.updateStock(id, stock);
@@ -94,5 +132,31 @@ public class ProductController extends BaseController {
     public ResponseEntity<Void> takeProductOffSale(@PathVariable Long id) {
         productService.takeProductOffSale(id);
         return success();
+    }
+
+    @GetMapping("/overview")
+    public ResponseEntity<ProductOverviewDTO> getProductOverview() {
+        return success(productService.getProductOverview());
+    }
+
+    private ProductSummaryDTO toSummaryDTO(Product product) {
+        ProductSummaryDTO dto = new ProductSummaryDTO();
+        dto.setId(product.getId());
+        dto.setName(product.getName());
+        dto.setDescription(product.getDescription());
+        dto.setPrice(product.getPrice());
+        dto.setStock(product.getStock());
+        dto.setSales(product.getSales());
+        dto.setMainImage(product.getMainImage());
+        dto.setStatus(product.getStatus());
+        dto.setCreatedAt(product.getCreatedAt());
+        if (product.getCategory() != null) {
+            dto.setCategoryName(product.getCategory().getName());
+        }
+        if (product.getSupplier() != null) {
+            dto.setSupplierName(product.getSupplier().getCompanyName());
+            dto.setSupplierLevel(product.getSupplier().getSupplierLevel());
+        }
+        return dto;
     }
 }
