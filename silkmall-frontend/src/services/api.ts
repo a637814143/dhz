@@ -8,7 +8,22 @@ const api = axios.create({
 api.interceptors.response.use(
   (response) => response,
   (error) => {
-    const message = error?.response?.data?.message || error.message || '请求失败，请稍后重试'
+    let message: string | undefined
+
+    const responseData = error?.response?.data
+    if (typeof responseData === 'string') {
+      message = responseData
+    } else if (responseData && typeof responseData === 'object' && 'message' in responseData) {
+      const dataMessage = (responseData as { message?: unknown }).message
+      if (typeof dataMessage === 'string') {
+        message = dataMessage
+      }
+    }
+
+    if (!message) {
+      message = error?.message || '请求失败，请稍后重试'
+    }
+
     return Promise.reject(new Error(message))
   }
 )

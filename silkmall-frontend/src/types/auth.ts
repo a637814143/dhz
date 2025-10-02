@@ -7,6 +7,7 @@ export interface AuthUser {
   email?: string | null
   phone?: string | null
   address?: string | null
+  profile?: Record<string, unknown>
   [key: string]: unknown
 }
 

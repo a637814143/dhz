@@ -19,6 +19,12 @@ SET FOREIGN_KEY_CHECKS = 0;
 
 USE `silkmall`;
 
+-- 默认多角色登录账号（密码均已通过 BCrypt 哈希处理）：
+--   消费者：consumer_01 / Consumer@123
+--   供应商：supplier_01 / Supplier@123
+--   管理员：admin_01 / Admin@123
+-- 运行本脚本或启动 Spring Boot 服务（会自动初始化同名账号）即可使用以上凭据登录。
+
 -- 预置统一登录所需的核心账号
 INSERT INTO `consumers` (
   `id`,

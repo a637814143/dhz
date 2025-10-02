@@ -1,16 +1,16 @@
 package com.example.silkmall.controller;
+import com.example.silkmall.dto.AuthenticatedUserDTO;
 import com.example.silkmall.dto.LoginDTO;
 import com.example.silkmall.dto.RegisterDTO;
-import com.example.silkmall.dto.ResponseDTO;
 import com.example.silkmall.entity.Admin;
 import com.example.silkmall.entity.Consumer;
 import com.example.silkmall.entity.Supplier;
+import com.example.silkmall.entity.User;
 import com.example.silkmall.service.impl.NewAdminServiceImpl;
 import com.example.silkmall.service.impl.NewConsumerServiceImpl;
 import com.example.silkmall.service.impl.NewSupplierServiceImpl;
 import com.example.silkmall.controller.BaseController;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -44,20 +44,91 @@ public class NewAuthController extends BaseController {
         // 依次检查不同类型的用户
         Optional<Consumer> consumer = consumerService.findByUsername(loginDTO.getUsername());
         if (consumer.isPresent() && passwordEncoder.matches(loginDTO.getPassword(), consumer.get().getPassword())) {
-            return success(consumer.get());
+            return success(buildAuthenticatedUser(consumer.get(), buildConsumerProfile(consumer.get())));
         }
-        
+
         Optional<Supplier> supplier = supplierService.findByUsername(loginDTO.getUsername());
         if (supplier.isPresent() && passwordEncoder.matches(loginDTO.getPassword(), supplier.get().getPassword())) {
-            return success(supplier.get());
+            return success(buildAuthenticatedUser(supplier.get(), buildSupplierProfile(supplier.get())));
         }
-        
+
         Optional<Admin> admin = adminService.findByUsername(loginDTO.getUsername());
         if (admin.isPresent() && passwordEncoder.matches(loginDTO.getPassword(), admin.get().getPassword())) {
-            return success(admin.get());
+            return success(buildAuthenticatedUser(admin.get(), buildAdminProfile(admin.get())));
         }
-        
+
         return badRequest("用户名或密码错误");
+    }
+
+    private Map<String, Object> buildConsumerProfile(Consumer consumer) {
+        Map<String, Object> profile = new HashMap<>();
+        if (consumer.getRealName() != null) {
+            profile.put("realName", consumer.getRealName());
+        }
+        if (consumer.getPoints() != null) {
+            profile.put("points", consumer.getPoints());
+        }
+        if (consumer.getMembershipLevel() != null) {
+            profile.put("membershipLevel", consumer.getMembershipLevel());
+        }
+        if (consumer.getAvatar() != null) {
+            profile.put("avatar", consumer.getAvatar());
+        }
+        if (consumer.getIdCard() != null) {
+            profile.put("idCard", consumer.getIdCard());
+        }
+        return profile;
+    }
+
+    private Map<String, Object> buildSupplierProfile(Supplier supplier) {
+        Map<String, Object> profile = new HashMap<>();
+        if (supplier.getCompanyName() != null) {
+            profile.put("companyName", supplier.getCompanyName());
+        }
+        if (supplier.getBusinessLicense() != null) {
+            profile.put("businessLicense", supplier.getBusinessLicense());
+        }
+        if (supplier.getContactPerson() != null) {
+            profile.put("contactPerson", supplier.getContactPerson());
+        }
+        if (supplier.getJoinDate() != null) {
+            profile.put("joinDate", supplier.getJoinDate());
+        }
+        if (supplier.getSupplierLevel() != null) {
+            profile.put("supplierLevel", supplier.getSupplierLevel());
+        }
+        if (supplier.getStatus() != null) {
+            profile.put("status", supplier.getStatus());
+        }
+        return profile;
+    }
+
+    private Map<String, Object> buildAdminProfile(Admin admin) {
+        Map<String, Object> profile = new HashMap<>();
+        if (admin.getDepartment() != null) {
+            profile.put("department", admin.getDepartment());
+        }
+        if (admin.getPosition() != null) {
+            profile.put("position", admin.getPosition());
+        }
+        if (admin.getPermissions() != null) {
+            profile.put("permissions", admin.getPermissions());
+        }
+        return profile;
+    }
+
+    private AuthenticatedUserDTO buildAuthenticatedUser(User user, Map<String, Object> profile) {
+        AuthenticatedUserDTO authenticatedUserDTO = new AuthenticatedUserDTO();
+        authenticatedUserDTO.setId(user.getId());
+        authenticatedUserDTO.setUsername(user.getUsername());
+        authenticatedUserDTO.setRole(user.getRole());
+        authenticatedUserDTO.setEmail(user.getEmail());
+        authenticatedUserDTO.setPhone(user.getPhone());
+        authenticatedUserDTO.setAddress(user.getAddress());
+        if (profile != null && !profile.isEmpty()) {
+            authenticatedUserDTO.setProfile(profile);
+        }
+        return authenticatedUserDTO;
     }
 
     @PostMapping("/register")
