@@ -2,11 +2,8 @@ package com.example.silkmall.entity;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
-import lombok.Data;
-
 import java.util.Date;
 
-@Data
 @Entity
 @Table(name = "product_reviews", uniqueConstraints = {
         @UniqueConstraint(columnNames = {"order_item_id"})

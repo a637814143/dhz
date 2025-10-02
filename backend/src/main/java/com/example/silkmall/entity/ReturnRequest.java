@@ -2,11 +2,8 @@ package com.example.silkmall.entity;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
-import lombok.Data;
-
 import java.util.Date;
 
-@Data
 @Entity
 @Table(name = "return_requests")
 public class ReturnRequest {
