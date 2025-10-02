@@ -41,6 +41,42 @@ export interface SupplierOption {
   supplierLevel?: string | null
 }
 
+export interface HomepageBanner {
+  id: string
+  title: string
+  description?: string | null
+  imageUrl?: string | null
+  linkUrl?: string | null
+  ctaText?: string | null
+}
+
+export interface HomepagePromotion {
+  id: string
+  title: string
+  description: string
+  discountRate?: number | null
+  tags?: string[]
+  startDate?: string | null
+  endDate?: string | null
+}
+
+export interface HomepageAnnouncement {
+  id: string
+  title: string
+  content: string
+  type: string
+  publishedAt: string
+  linkUrl?: string | null
+}
+
+export interface HomepageContent {
+  banners: HomepageBanner[]
+  recommendedProducts: ProductSummary[]
+  hotProducts: ProductSummary[]
+  promotions: HomepagePromotion[]
+  announcements: HomepageAnnouncement[]
+}
+
 export interface OrderItemDetail {
   id: number
   quantity: number

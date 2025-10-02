@@ -15,6 +15,8 @@ public interface ProductRepository extends JpaRepository<Product, Long>, JpaSpec
     Page<Product> findByCategoryId(Long categoryId, Pageable pageable);
     Page<Product> findBySupplierId(Long supplierId, Pageable pageable);
     List<Product> findTop10ByOrderBySalesDesc();
+    List<Product> findTop8ByStatusOrderByCreatedAtDesc(String status);
+    List<Product> findTop8ByStatusOrderBySalesDesc(String status);
     Page<Product> findByNameContaining(String keyword, Pageable pageable);
     long countByStatus(String status);
     long countByStockLessThanEqual(Integer stock);
