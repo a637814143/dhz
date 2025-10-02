@@ -17,6 +17,9 @@ import { RouterLink, RouterView } from 'vue-router'
         <RouterLink to="/" active-class="is-active" class="nav-link">产品中心</RouterLink>
         <RouterLink to="/orders" active-class="is-active" class="nav-link">订单中心</RouterLink>
         <RouterLink to="/about" active-class="is-active" class="nav-link">关于项目</RouterLink>
+        <RouterLink to="/login" active-class="is-active" class="nav-link nav-login">
+          多角色登录
+        </RouterLink>
       </nav>
     </header>
 
@@ -92,6 +95,17 @@ import { RouterLink, RouterView } from 'vue-router'
   transition: color 0.3s ease, background 0.3s ease;
 }
 
+.nav-link.nav-login {
+  padding: 0.6rem 1rem;
+  background: linear-gradient(120deg, rgba(242, 142, 28, 0.9), rgba(245, 195, 66, 0.85));
+  color: #4a270e;
+  box-shadow: 0 12px 25px rgba(242, 142, 28, 0.25);
+}
+
+.nav-link.nav-login::after {
+  display: none;
+}
+
 .nav-link::after {
   content: '';
   position: absolute;
@@ -110,6 +124,12 @@ import { RouterLink, RouterView } from 'vue-router'
 .nav-link.is-active {
   color: #1c1c1e;
   background: rgba(242, 142, 28, 0.08);
+}
+
+.nav-link.nav-login:hover,
+.nav-link.nav-login.is-active {
+  background: linear-gradient(120deg, rgba(242, 142, 28, 1), rgba(245, 195, 66, 1));
+  color: #321a07;
 }
 
 .nav-link.is-active::after {
