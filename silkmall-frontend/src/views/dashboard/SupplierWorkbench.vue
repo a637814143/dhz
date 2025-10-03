@@ -259,15 +259,22 @@ async function createCategory() {
   }
   categorySaving.value = true
   try {
-    await api.post('/categories', {
+    const { data } = await api.post<CategoryOption>('/categories', {
       name,
       description: null,
       sortOrder: 0,
       enabled: true,
     })
+    const option: CategoryOption = {
+      id: data.id,
+      name: data.name ?? name,
+    }
+    categories.value = categories.value
+      .filter((existing) => existing.id !== option.id)
+      .concat(option)
+      .sort((a, b) => a.name.localeCompare(b.name, 'zh-CN'))
     categoryNameInput.value = ''
     categoryFeedback.value = '分类创建成功'
-    await loadCategories()
   } catch (err) {
     const message = err instanceof Error ? err.message : '创建分类失败'
     categoryError.value = message
