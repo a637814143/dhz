@@ -22,7 +22,6 @@ import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
-import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -39,20 +38,18 @@ public class NewAuthController extends BaseController {
     private final NewConsumerServiceImpl consumerService;
     private final NewSupplierServiceImpl supplierService;
     private final NewAdminServiceImpl adminService;
-    private final PasswordEncoder passwordEncoder;
     private final AuthenticationManager authenticationManager;
     private final JwtTokenProvider jwtTokenProvider;
     private final CaptchaService captchaService;
 
     @Autowired
     public NewAuthController(NewConsumerServiceImpl consumerService, NewSupplierServiceImpl supplierService,
-                        NewAdminServiceImpl adminService, PasswordEncoder passwordEncoder,
+                        NewAdminServiceImpl adminService,
                         AuthenticationManager authenticationManager, JwtTokenProvider jwtTokenProvider,
                         CaptchaService captchaService) {
         this.consumerService = consumerService;
         this.supplierService = supplierService;
         this.adminService = adminService;
-        this.passwordEncoder = passwordEncoder;
         this.authenticationManager = authenticationManager;
         this.jwtTokenProvider = jwtTokenProvider;
         this.captchaService = captchaService;
@@ -131,7 +128,7 @@ public class NewAuthController extends BaseController {
             case "consumer":
                 Consumer consumer = new Consumer();
                 consumer.setUsername(registerDTO.getUsername());
-                consumer.setPassword(passwordEncoder.encode(registerDTO.getPassword()));
+                consumer.setPassword(registerDTO.getPassword());
                 consumer.setEmail(registerDTO.getEmail());
                 consumer.setPhone(registerDTO.getPhone());
                 consumer.setRole("consumer");
@@ -141,7 +138,7 @@ public class NewAuthController extends BaseController {
             case "supplier":
                 Supplier supplier = new Supplier();
                 supplier.setUsername(registerDTO.getUsername());
-                supplier.setPassword(passwordEncoder.encode(registerDTO.getPassword()));
+                supplier.setPassword(registerDTO.getPassword());
                 supplier.setEmail(registerDTO.getEmail());
                 supplier.setPhone(registerDTO.getPhone());
                 supplier.setRole("supplier");
@@ -151,7 +148,7 @@ public class NewAuthController extends BaseController {
             case "admin":
                 Admin admin = new Admin();
                 admin.setUsername(registerDTO.getUsername());
-                admin.setPassword(passwordEncoder.encode(registerDTO.getPassword()));
+                admin.setPassword(registerDTO.getPassword());
                 admin.setEmail(registerDTO.getEmail());
                 admin.setPhone(registerDTO.getPhone());
                 admin.setRole("admin");

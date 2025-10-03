@@ -7,6 +7,7 @@ import com.example.silkmall.service.impl.NewAdminServiceImpl;
 import com.example.silkmall.service.impl.NewConsumerServiceImpl;
 import com.example.silkmall.service.impl.NewSupplierServiceImpl;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.core.userdetails.UserDetailsService;
@@ -18,14 +19,20 @@ import java.util.Collections;
 @Service
 public class CustomUserDetailsService implements UserDetailsService {
     
+    private final NewConsumerServiceImpl consumerService;
+    private final NewSupplierServiceImpl supplierService;
+    private final NewAdminServiceImpl adminService;
+
     @Autowired
-    private NewConsumerServiceImpl consumerService;
-    
-    @Autowired
-    private NewSupplierServiceImpl supplierService;
-    
-    @Autowired
-    private NewAdminServiceImpl adminService;
+    public CustomUserDetailsService(
+            @Lazy NewConsumerServiceImpl consumerService,
+            @Lazy NewSupplierServiceImpl supplierService,
+            @Lazy NewAdminServiceImpl adminService
+    ) {
+        this.consumerService = consumerService;
+        this.supplierService = supplierService;
+        this.adminService = adminService;
+    }
     
     @Override
     public UserDetails loadUserByUsername(String username) throws UsernameNotFoundException {
