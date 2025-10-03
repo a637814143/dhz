@@ -4,18 +4,19 @@ import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.SignatureAlgorithm;
 import io.jsonwebtoken.io.Decoders;
-import io.jsonwebtoken.security.Keys;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Component;
 
 import javax.crypto.SecretKey;
+import javax.crypto.SecretKeyFactory;
+import javax.crypto.spec.PBEKeySpec;
+import javax.crypto.spec.SecretKeySpec;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.Map;
 import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
+import java.security.GeneralSecurityException;
 
 @Component
 public class JwtTokenProvider {
@@ -77,10 +78,13 @@ public class JwtTokenProvider {
 
     private SecretKey resolveSigningKey() {
         byte[] keyBytes = decodeSecret(jwtSecret);
-        if (keyBytes.length < 64) {
-            keyBytes = expandKeyBytes(keyBytes);
+        if (keyBytes.length < HS512_MIN_KEY_BYTES) {
+            keyBytes = deriveHs512Key(jwtSecret);
         }
-        return Keys.hmacShaKeyFor(keyBytes);
+        if (keyBytes.length < HS512_MIN_KEY_BYTES) {
+            throw new IllegalStateException("JWT secret derivation did not yield a secure key length");
+        }
+        return new SecretKeySpec(keyBytes, "HmacSHA512");
     }
 
     private byte[] decodeSecret(String secret) {
@@ -94,12 +98,20 @@ public class JwtTokenProvider {
         }
     }
 
-    private byte[] expandKeyBytes(byte[] keyBytes) {
+    private byte[] deriveHs512Key(String secret) {
         try {
-            MessageDigest digest = MessageDigest.getInstance("SHA-512");
-            return digest.digest(keyBytes);
-        } catch (NoSuchAlgorithmException e) {
-            throw new IllegalStateException("SHA-512 algorithm not available", e);
+            SecretKeyFactory factory = SecretKeyFactory.getInstance("PBKDF2WithHmacSHA512");
+            PBEKeySpec spec = new PBEKeySpec(secret.toCharArray(), KEY_DERIVATION_SALT, KEY_DERIVATION_ITERATIONS, HS512_MIN_KEY_BYTES * 8);
+            byte[] derived = factory.generateSecret(spec).getEncoded();
+            spec.clearPassword();
+            return derived;
+        } catch (GeneralSecurityException e) {
+            throw new IllegalStateException("Unable to derive a secure JWT signing key", e);
         }
     }
+
+    private static final int HS512_MIN_KEY_BYTES = 64;
+    private static final int KEY_DERIVATION_ITERATIONS = 120_000;
+    private static final byte[] KEY_DERIVATION_SALT =
+            "com.example.silkmall.jwt.key-derivation".getBytes(StandardCharsets.UTF_8);
 }
