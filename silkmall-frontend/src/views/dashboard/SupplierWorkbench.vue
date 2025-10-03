@@ -99,11 +99,67 @@ function sortCategoryOptions(options: CategoryOption[]): CategoryOption[] {
   })
 }
 
-function normaliseCategoryOptions(payload: unknown): CategoryOption[] {
-  const rawList = Array.isArray((payload as any)?.data) ? (payload as any).data : payload
-  if (!Array.isArray(rawList)) {
+function extractCategoryArray(payload: unknown): unknown[] {
+  if (Array.isArray(payload)) {
+    return payload
+  }
+
+  if (!payload || typeof payload !== 'object') {
     return []
   }
+
+  const container = payload as Record<string, unknown>
+  const nestedSources: unknown[] = []
+
+  const directData = container['data']
+  if (Array.isArray(directData)) {
+    return directData
+  }
+
+  if (directData && typeof directData === 'object' && directData !== payload) {
+    nestedSources.push(directData)
+  }
+
+  const candidateKeys = ['records', 'content', 'list', 'items', 'rows', 'result']
+  for (const key of candidateKeys) {
+    const value = container[key]
+    if (Array.isArray(value)) {
+      return value
+    }
+    if (value && typeof value === 'object' && value !== payload) {
+      nestedSources.push(value)
+    }
+  }
+
+  for (const source of nestedSources) {
+    const extracted = extractCategoryArray(source)
+    if (extracted.length > 0) {
+      return extracted
+    }
+  }
+
+  return []
+}
+
+function extractSingleCategory(payload: unknown): unknown {
+  const list = extractCategoryArray(payload)
+  if (list.length > 0) {
+    return list[0]
+  }
+
+  if (payload && typeof payload === 'object') {
+    const container = payload as Record<string, unknown>
+    const directData = container['data']
+    if (directData && directData !== payload) {
+      return extractSingleCategory(directData)
+    }
+  }
+
+  return payload
+}
+
+function normaliseCategoryOptions(payload: unknown): CategoryOption[] {
+  const rawList = extractCategoryArray(payload)
 
   const deduped = new Map<number, CategoryOption>()
   for (const item of rawList) {
@@ -326,7 +382,7 @@ async function createCategory() {
       sortOrder: 0,
       enabled: true,
     })
-    const option = toCategoryOption((data as any)?.data ?? data, name)
+    const option = toCategoryOption(extractSingleCategory(data), name)
 
     if (!option) {
       categoryError.value = '分类创建成功，但解析新分类失败，请刷新后重试'
