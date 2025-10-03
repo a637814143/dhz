@@ -8,6 +8,7 @@ const RegisterView = () => import('../views/auth/RegisterView.vue')
 const ConsumerDashboard = () => import('../views/dashboard/ConsumerDashboard.vue')
 const SupplierWorkbench = () => import('../views/dashboard/SupplierWorkbench.vue')
 const AdminOverview = () => import('../views/dashboard/AdminOverview.vue')
+const AdminConsumerManagement = () => import('../views/dashboard/AdminConsumerManagement.vue')
 
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
@@ -59,6 +60,12 @@ const router = createRouter({
       path: '/admin/overview',
       name: 'admin-overview',
       component: AdminOverview,
+      meta: { requiresAuth: true, roles: ['admin'] },
+    },
+    {
+      path: '/admin/consumers',
+      name: 'admin-consumers',
+      component: AdminConsumerManagement,
       meta: { requiresAuth: true, roles: ['admin'] },
     },
   ],

@@ -57,6 +57,7 @@ function formatNumber(value?: number | null) {
         <h1>平台运营总览</h1>
         <p>掌握商品、库存、用户互动与资讯发布情况，及时调整销售策略。</p>
       </div>
+      <RouterLink class="manage-link" to="/admin/consumers">采购账号管理</RouterLink>
     </header>
 
     <div v-if="loading" class="placeholder">正在加载平台数据…</div>
@@ -148,6 +149,10 @@ function formatNumber(value?: number | null) {
   padding: 2.5rem;
   border-radius: 24px;
   background: linear-gradient(135deg, rgba(249, 115, 22, 0.12), rgba(234, 179, 8, 0.12));
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1.5rem;
 }
 
 .admin-header h1 {
@@ -158,6 +163,20 @@ function formatNumber(value?: number | null) {
 
 .admin-header p {
   color: rgba(30, 41, 59, 0.65);
+}
+
+.manage-link {
+  padding: 0.6rem 1.4rem;
+  border-radius: 999px;
+  background: rgba(249, 115, 22, 0.18);
+  color: #b45309;
+  font-weight: 600;
+  text-decoration: none;
+  transition: background 0.2s ease;
+}
+
+.manage-link:hover {
+  background: rgba(249, 115, 22, 0.28);
 }
 
 .placeholder {
