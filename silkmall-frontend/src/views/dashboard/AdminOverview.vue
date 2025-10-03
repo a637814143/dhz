@@ -5,7 +5,6 @@ import type {
   Announcement,
   HomepageContent,
   NewsItem,
-  PageResponse,
   ProductOverview,
   ProductSummary,
   CategoryOption,
@@ -83,16 +82,37 @@ const statusOptions = [
   { value: 'OFF_SALE', label: '未上架' },
 ]
 
+function unwrapData<T>(payload: unknown): T | null {
+  if (!payload || typeof payload !== 'object') {
+    return null
+  }
+
+  const source = payload as Record<string, unknown>
+  if ('data' in source && source.data && typeof source.data === 'object') {
+    return source.data as T
+  }
+
+  return payload as T
+}
+
 async function loadOverview() {
-  const { data } = await api.get<ProductOverview>('/products/overview')
-  overview.value = data
+  const response = await api.get<unknown>('/products/overview')
+  const parsed = unwrapData<ProductOverview>(response.data)
+  overview.value = parsed ?? null
 }
 
 async function loadHomeContent() {
-  const { data } = await api.get<HomepageContent>('/content/home')
-  announcements.value = data.announcements
-  news.value = data.news
-  hotProducts.value = data.hotSales.slice(0, 5)
+  const response = await api.get<unknown>('/content/home')
+  const parsed = unwrapData<HomepageContent>(response.data)
+  if (!parsed) {
+    announcements.value = []
+    news.value = []
+    hotProducts.value = []
+    return
+  }
+  announcements.value = parsed.announcements
+  news.value = parsed.news
+  hotProducts.value = parsed.hotSales.slice(0, 5)
 }
 
 function normaliseCategoryOptions(payload: unknown): CategoryOption[] {
@@ -117,8 +137,9 @@ function normaliseCategoryOptions(payload: unknown): CategoryOption[] {
 }
 
 async function loadCategoryOptions() {
-  const { data } = await api.get<CategoryOption[]>('/categories/options')
-  categoryOptions.value = normaliseCategoryOptions(data)
+  const response = await api.get<unknown>('/categories/options')
+  const parsed = unwrapData<CategoryOption[]>(response.data)
+  categoryOptions.value = normaliseCategoryOptions(parsed ?? [])
 }
 
 function normaliseSupplierOptions(payload: unknown): SupplierOption[] {
@@ -145,8 +166,48 @@ function normaliseSupplierOptions(payload: unknown): SupplierOption[] {
 }
 
 async function loadSupplierOptions() {
-  const { data } = await api.get<unknown[]>('/suppliers/status/APPROVED')
-  supplierOptions.value = normaliseSupplierOptions(data)
+  const response = await api.get<unknown>('/suppliers/status/APPROVED')
+  const parsed = unwrapData<unknown[]>(response.data)
+  supplierOptions.value = normaliseSupplierOptions(parsed ?? [])
+}
+
+interface PagePayload<T> {
+  content: T[]
+  totalElements?: number
+  number?: number
+}
+
+function resolvePage<T>(payload: unknown): PagePayload<T> {
+  const fallback: PagePayload<T> = { content: [] }
+  if (!payload || typeof payload !== 'object') {
+    return fallback
+  }
+
+  const source = payload as Record<string, unknown>
+  let pageLike: unknown = null
+
+  if (Array.isArray(source.content)) {
+    pageLike = source
+  } else if (source.data && typeof source.data === 'object' && Array.isArray((source.data as Record<string, unknown>).content)) {
+    pageLike = source.data
+  }
+
+  if (!pageLike || typeof pageLike !== 'object') {
+    return fallback
+  }
+
+  const page = pageLike as Record<string, unknown>
+  if (Array.isArray(page.content)) {
+    fallback.content = page.content as T[]
+  }
+  if (typeof page.totalElements === 'number' && Number.isFinite(page.totalElements)) {
+    fallback.totalElements = page.totalElements
+  }
+  if (typeof page.number === 'number' && Number.isFinite(page.number)) {
+    fallback.number = page.number
+  }
+
+  return fallback
 }
 
 async function loadProducts(withSpinner = true) {
@@ -164,13 +225,17 @@ async function loadProducts(withSpinner = true) {
     if (productFilters.categoryId > 0) params.categoryId = productFilters.categoryId
     if (productFilters.status) params.status = productFilters.status
 
-    const { data } = await api.get<PageResponse<ProductSummary>>('/products/advanced-search', {
+    const response = await api.get<unknown>('/products/advanced-search', {
       params,
     })
 
-    productRows.value = Array.isArray(data?.content) ? data.content : []
+    const page = resolvePage<ProductSummary>(response.data)
+    productRows.value = Array.isArray(page.content) ? page.content : []
     productPagination.total =
-      typeof data?.totalElements === 'number' ? data.totalElements : productRows.value.length
+      typeof page.totalElements === 'number' ? page.totalElements : productRows.value.length
+    if (typeof page.number === 'number' && Number.isFinite(page.number)) {
+      productPagination.page = page.number
+    }
   } catch (err) {
     const message = err instanceof Error ? err.message : '加载商品列表失败'
     productError.value = message
@@ -246,22 +311,26 @@ async function openProductDialog(product?: ProductSummary) {
 
   if (product) {
     try {
-      const { data } = await api.get<ProductDetail>(`/products/${product.id}`)
-      productForm.id = data.id
-      productForm.name = data.name ?? ''
-      productForm.description = data.description ?? ''
-      if (typeof data.price === 'number') {
-        productForm.price = data.price.toString()
+      const response = await api.get<unknown>(`/products/${product.id}`)
+      const detail = unwrapData<ProductDetail>(response.data)
+      if (!detail) {
+        throw new Error('加载商品详情失败')
+      }
+      productForm.id = detail.id
+      productForm.name = detail.name ?? ''
+      productForm.description = detail.description ?? ''
+      if (typeof detail.price === 'number') {
+        productForm.price = detail.price.toString()
       } else {
-        const parsed = Number(data.price)
+        const parsed = Number(detail.price)
         productForm.price = Number.isFinite(parsed) ? parsed.toString() : ''
       }
-      const stockValue = Number((data as Record<string, unknown>).stock)
+      const stockValue = Number((detail as Record<string, unknown>).stock)
       productForm.stock = Number.isFinite(stockValue) ? stockValue : 0
-      productForm.status = data.status ?? 'OFF_SALE'
-      productForm.categoryId = data.category?.id ?? 0
-      productForm.supplierId = data.supplier?.id ?? 0
-      productForm.mainImage = data.mainImage ?? ''
+      productForm.status = detail.status ?? 'OFF_SALE'
+      productForm.categoryId = detail.category?.id ?? 0
+      productForm.supplierId = detail.supplier?.id ?? 0
+      productForm.mainImage = detail.mainImage ?? ''
     } catch (err) {
       const message = err instanceof Error ? err.message : '加载商品详情失败'
       window.alert(message)
@@ -355,16 +424,21 @@ async function refreshProductsAndOverview() {
   } catch (err) {
     error.value = err instanceof Error ? err.message : '加载管理数据失败'
   }
+  productPagination.page = 0
   await loadProducts().catch(() => {})
 }
 
 async function openProductView(product: ProductSummary) {
   try {
-    const { data } = await api.get<ProductDetail>(`/products/${product.id}`)
-    const stockValue = Number((data as Record<string, unknown>).stock)
-    const salesValue = Number((data as Record<string, unknown>).sales)
+    const response = await api.get<unknown>(`/products/${product.id}`)
+    const detail = unwrapData<ProductDetail>(response.data)
+    if (!detail) {
+      throw new Error('加载商品详情失败')
+    }
+    const stockValue = Number((detail as Record<string, unknown>).stock)
+    const salesValue = Number((detail as Record<string, unknown>).sales)
     viewingProduct.value = {
-      ...data,
+      ...detail,
       stock: Number.isFinite(stockValue) ? stockValue : 0,
       sales: Number.isFinite(salesValue) ? salesValue : undefined,
     }
@@ -397,11 +471,12 @@ onMounted(() => {
   initProductManagement()
 })
 
-function formatCurrency(amount?: number | null) {
-  if (typeof amount !== 'number' || Number.isNaN(amount)) {
+function formatCurrency(amount?: number | string | null) {
+  const numeric = typeof amount === 'string' ? Number(amount) : amount
+  if (typeof numeric !== 'number' || Number.isNaN(numeric)) {
     return '¥0.00'
   }
-  return new Intl.NumberFormat('zh-CN', { style: 'currency', currency: 'CNY' }).format(amount)
+  return new Intl.NumberFormat('zh-CN', { style: 'currency', currency: 'CNY' }).format(numeric)
 }
 
 function formatStatus(status?: string | null) {
