@@ -133,9 +133,10 @@ function resetProductForm() {
   productFormMessage.value = null
 }
 
-function openProductForm(product?: ProductSummary) {
+async function openProductForm(product?: ProductSummary) {
   productFormError.value = null
   productFormMessage.value = null
+  await loadCategories()
   if (product) {
     productForm.id = product.id
     productForm.name = product.name
