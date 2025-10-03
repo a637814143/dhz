@@ -1,13 +1,31 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 import api from '@/services/api'
 import type {
   Announcement,
   HomepageContent,
   NewsItem,
+  PageResponse,
   ProductOverview,
   ProductSummary,
+  CategoryOption,
+  SupplierOption,
 } from '@/types'
+
+interface ProductDetail {
+  id: number
+  name: string
+  description?: string | null
+  price: number | string
+  stock: number
+  sales?: number
+  mainImage?: string | null
+  status?: string | null
+  createdAt?: string | null
+  updatedAt?: string | null
+  category?: { id: number; name?: string | null } | null
+  supplier?: { id: number; companyName?: string | null } | null
+}
 
 const overview = ref<ProductOverview | null>(null)
 const announcements = ref<Announcement[]>([])
@@ -15,6 +33,55 @@ const news = ref<NewsItem[]>([])
 const hotProducts = ref<ProductSummary[]>([])
 const loading = ref(true)
 const error = ref<string | null>(null)
+
+const productLoading = ref(false)
+const productError = ref<string | null>(null)
+const productRows = ref<ProductSummary[]>([])
+const categoryOptions = ref<CategoryOption[]>([])
+const supplierOptions = ref<SupplierOption[]>([])
+
+const productFilters = reactive({
+  keyword: '',
+  categoryId: 0,
+  status: '',
+})
+
+const productPagination = reactive({
+  page: 0,
+  size: 8,
+  total: 0,
+})
+
+const totalProductPages = computed(() =>
+  productPagination.total > 0
+    ? Math.ceil(productPagination.total / productPagination.size)
+    : 0
+)
+
+const productDialogOpen = ref(false)
+const productViewOpen = ref(false)
+const productFormError = ref<string | null>(null)
+const productFormMessage = ref<string | null>(null)
+const savingProduct = ref(false)
+const deletingProductId = ref<number | null>(null)
+const viewingProduct = ref<ProductDetail | null>(null)
+
+const productForm = reactive({
+  id: null as number | null,
+  name: '',
+  description: '',
+  price: '',
+  stock: 0,
+  status: 'ON_SALE',
+  categoryId: 0,
+  supplierId: 0,
+  mainImage: '',
+})
+
+const statusOptions = [
+  { value: 'ON_SALE', label: '在售' },
+  { value: 'OFF_SALE', label: '未上架' },
+]
 
 async function loadOverview() {
   const { data } = await api.get<ProductOverview>('/products/overview')
@@ -26,6 +93,291 @@ async function loadHomeContent() {
   announcements.value = data.announcements
   news.value = data.news
   hotProducts.value = data.hotSales.slice(0, 5)
+}
+
+function normaliseCategoryOptions(payload: unknown): CategoryOption[] {
+  if (!Array.isArray(payload)) {
+    return []
+  }
+  return payload
+    .map((item) => {
+      if (!item || typeof item !== 'object') return null
+      const source = item as Record<string, unknown>
+      const id = Number(source.id)
+      if (!Number.isFinite(id)) return null
+      const rawName = source.name ?? source['categoryName'] ?? `分类 ${id}`
+      const name = typeof rawName === 'string' ? rawName.trim() : String(rawName ?? '').trim()
+      return {
+        id,
+        name: name.length > 0 ? name : `分类 ${id}`,
+      }
+    })
+    .filter((item): item is CategoryOption => item !== null)
+    .sort((a, b) => a.name.localeCompare(b.name, 'zh-CN'))
+}
+
+async function loadCategoryOptions() {
+  const { data } = await api.get<CategoryOption[]>('/categories/options')
+  categoryOptions.value = normaliseCategoryOptions(data)
+}
+
+function normaliseSupplierOptions(payload: unknown): SupplierOption[] {
+  if (!Array.isArray(payload)) {
+    return []
+  }
+  return payload
+    .map((item) => {
+      if (!item || typeof item !== 'object') return null
+      const source = item as Record<string, unknown>
+      const id = Number(source.id)
+      if (!Number.isFinite(id)) return null
+      const rawName = source.companyName ?? source.username ?? `供应商 ${id}`
+      const companyName = typeof rawName === 'string' ? rawName.trim() : String(rawName ?? '').trim()
+      return {
+        id,
+        companyName: companyName.length > 0 ? companyName : `供应商 ${id}`,
+        supplierLevel:
+          typeof source.supplierLevel === 'string' ? source.supplierLevel : undefined,
+      }
+    })
+    .filter((item): item is SupplierOption => item !== null)
+    .sort((a, b) => a.companyName.localeCompare(b.companyName, 'zh-CN'))
+}
+
+async function loadSupplierOptions() {
+  const { data } = await api.get<unknown[]>('/suppliers/status/APPROVED')
+  supplierOptions.value = normaliseSupplierOptions(data)
+}
+
+async function loadProducts(withSpinner = true) {
+  if (withSpinner) productLoading.value = true
+  productError.value = null
+  try {
+    const params: Record<string, unknown> = {
+      page: productPagination.page,
+      size: productPagination.size,
+      sortBy: 'createdAt',
+      sortDirection: 'DESC',
+    }
+    const keyword = productFilters.keyword.trim()
+    if (keyword) params.keyword = keyword
+    if (productFilters.categoryId > 0) params.categoryId = productFilters.categoryId
+    if (productFilters.status) params.status = productFilters.status
+
+    const { data } = await api.get<PageResponse<ProductSummary>>('/products/advanced-search', {
+      params,
+    })
+
+    productRows.value = Array.isArray(data?.content) ? data.content : []
+    productPagination.total =
+      typeof data?.totalElements === 'number' ? data.totalElements : productRows.value.length
+  } catch (err) {
+    const message = err instanceof Error ? err.message : '加载商品列表失败'
+    productError.value = message
+    throw err instanceof Error ? err : new Error(message)
+  } finally {
+    if (withSpinner) productLoading.value = false
+  }
+}
+
+async function initProductManagement() {
+  productLoading.value = true
+  productError.value = null
+  try {
+    await Promise.all([loadCategoryOptions(), loadSupplierOptions()])
+    await loadProducts(false)
+  } catch (err) {
+    const message = err instanceof Error ? err.message : '加载商品概览失败'
+    productError.value = message
+  } finally {
+    productLoading.value = false
+  }
+}
+
+function resetProductForm() {
+  productForm.id = null
+  productForm.name = ''
+  productForm.description = ''
+  productForm.price = ''
+  productForm.stock = 0
+  productForm.status = 'ON_SALE'
+  productForm.categoryId = 0
+  productForm.supplierId = 0
+  productForm.mainImage = ''
+  productFormError.value = null
+  productFormMessage.value = null
+}
+
+function resetProductFilters() {
+  productFilters.keyword = ''
+  productFilters.categoryId = 0
+  productFilters.status = ''
+  productPagination.page = 0
+  loadProducts().catch(() => {})
+}
+
+function applyProductFilters() {
+  productPagination.page = 0
+  loadProducts().catch(() => {})
+}
+
+function changeProductPage(target: number) {
+  if (target < 0 || target === productPagination.page) return
+  if (totalProductPages.value && target >= totalProductPages.value) return
+  productPagination.page = target
+  loadProducts().catch(() => {})
+}
+
+function cancelProductDialog() {
+  productDialogOpen.value = false
+  resetProductForm()
+}
+
+async function openProductDialog(product?: ProductSummary) {
+  productFormError.value = null
+  productFormMessage.value = null
+  try {
+    await Promise.all([loadCategoryOptions(), loadSupplierOptions()])
+  } catch (err) {
+    const message = err instanceof Error ? err.message : '加载商品数据失败'
+    window.alert(message)
+    return
+  }
+
+  if (product) {
+    try {
+      const { data } = await api.get<ProductDetail>(`/products/${product.id}`)
+      productForm.id = data.id
+      productForm.name = data.name ?? ''
+      productForm.description = data.description ?? ''
+      if (typeof data.price === 'number') {
+        productForm.price = data.price.toString()
+      } else {
+        const parsed = Number(data.price)
+        productForm.price = Number.isFinite(parsed) ? parsed.toString() : ''
+      }
+      const stockValue = Number((data as Record<string, unknown>).stock)
+      productForm.stock = Number.isFinite(stockValue) ? stockValue : 0
+      productForm.status = data.status ?? 'OFF_SALE'
+      productForm.categoryId = data.category?.id ?? 0
+      productForm.supplierId = data.supplier?.id ?? 0
+      productForm.mainImage = data.mainImage ?? ''
+    } catch (err) {
+      const message = err instanceof Error ? err.message : '加载商品详情失败'
+      window.alert(message)
+      return
+    }
+  } else {
+    resetProductForm()
+  }
+
+  productDialogOpen.value = true
+}
+
+async function saveProduct() {
+  const name = productForm.name.trim()
+  if (!name) {
+    productFormError.value = '请填写商品名称'
+    return
+  }
+
+  const price = Number(productForm.price)
+  if (!Number.isFinite(price) || price <= 0) {
+    productFormError.value = '请输入有效的商品价格'
+    return
+  }
+
+  if (!productForm.supplierId) {
+    productFormError.value = '请选择商品所属供应商'
+    return
+  }
+
+  const stock = Number(productForm.stock)
+  if (!Number.isInteger(stock) || stock < 0) {
+    productFormError.value = '库存必须为非负整数'
+    return
+  }
+
+  const payload: Record<string, unknown> = {
+    name,
+    description: productForm.description.trim() || null,
+    price,
+    stock,
+    status: productForm.status,
+    mainImage: productForm.mainImage.trim() || null,
+    supplier: { id: productForm.supplierId },
+  }
+
+  if (productForm.categoryId > 0) {
+    payload.category = { id: productForm.categoryId }
+  }
+
+  savingProduct.value = true
+  productFormError.value = null
+
+  try {
+    if (productForm.id) {
+      await api.put(`/products/${productForm.id}`, payload)
+      productFormMessage.value = '商品信息已更新'
+    } else {
+      await api.post('/products', payload)
+      productFormMessage.value = '商品已创建并保存'
+    }
+
+    await refreshProductsAndOverview()
+    productDialogOpen.value = false
+    resetProductForm()
+  } catch (err) {
+    const message = err instanceof Error ? err.message : '保存商品失败'
+    productFormError.value = message
+  } finally {
+    savingProduct.value = false
+  }
+}
+
+async function deleteProduct(productId: number) {
+  if (!window.confirm('确定删除该商品吗？')) return
+  deletingProductId.value = productId
+  try {
+    await api.delete(`/products/${productId}`)
+    await refreshProductsAndOverview()
+  } catch (err) {
+    const message = err instanceof Error ? err.message : '删除商品失败'
+    window.alert(message)
+  } finally {
+    deletingProductId.value = null
+  }
+}
+
+async function refreshProductsAndOverview() {
+  try {
+    await loadOverview()
+  } catch (err) {
+    error.value = err instanceof Error ? err.message : '加载管理数据失败'
+  }
+  await loadProducts().catch(() => {})
+}
+
+async function openProductView(product: ProductSummary) {
+  try {
+    const { data } = await api.get<ProductDetail>(`/products/${product.id}`)
+    const stockValue = Number((data as Record<string, unknown>).stock)
+    const salesValue = Number((data as Record<string, unknown>).sales)
+    viewingProduct.value = {
+      ...data,
+      stock: Number.isFinite(stockValue) ? stockValue : 0,
+      sales: Number.isFinite(salesValue) ? salesValue : undefined,
+    }
+    productViewOpen.value = true
+  } catch (err) {
+    const message = err instanceof Error ? err.message : '加载商品详情失败'
+    window.alert(message)
+  }
+}
+
+function closeProductView() {
+  productViewOpen.value = false
+  viewingProduct.value = null
 }
 
 async function bootstrap() {
@@ -42,7 +394,27 @@ async function bootstrap() {
 
 onMounted(() => {
   bootstrap()
+  initProductManagement()
 })
+
+function formatCurrency(amount?: number | null) {
+  if (typeof amount !== 'number' || Number.isNaN(amount)) {
+    return '¥0.00'
+  }
+  return new Intl.NumberFormat('zh-CN', { style: 'currency', currency: 'CNY' }).format(amount)
+}
+
+function formatStatus(status?: string | null) {
+  if (!status) return '未知'
+  return status === 'ON_SALE' ? '在售' : '未上架'
+}
+
+function formatDate(value?: string | Date | null) {
+  if (!value) return '—'
+  const date = typeof value === 'string' ? new Date(value) : value
+  if (Number.isNaN(date.getTime())) return '—'
+  return date.toLocaleString('zh-CN', { hour12: false })
+}
 
 function formatNumber(value?: number | null) {
   if (typeof value !== 'number' || Number.isNaN(value)) return '0'
@@ -89,6 +461,109 @@ function formatNumber(value?: number | null) {
             <span>累计销量</span>
             <strong>{{ formatNumber(overview?.totalSalesVolume) }}</strong>
           </div>
+        </div>
+      </section>
+
+      <section class="panel product-admin" aria-labelledby="admin-product-title">
+        <header class="product-admin-header">
+          <div>
+            <div class="panel-title" id="admin-product-title">商品概览</div>
+            <p class="panel-subtitle">快速查看、搜索并管理全站商品，新增后立即更新统计。</p>
+          </div>
+          <button type="button" class="primary" @click="openProductDialog()">新增商品</button>
+        </header>
+
+        <form class="product-filters" @submit.prevent="applyProductFilters">
+          <label>
+            <span>关键字</span>
+            <input v-model.trim="productFilters.keyword" type="text" placeholder="商品名称或描述" />
+          </label>
+          <label>
+            <span>分类</span>
+            <select v-model.number="productFilters.categoryId">
+              <option :value="0">全部分类</option>
+              <option v-for="option in categoryOptions" :key="option.id" :value="option.id">
+                {{ option.name }}
+              </option>
+            </select>
+          </label>
+          <label>
+            <span>状态</span>
+            <select v-model="productFilters.status">
+              <option value="">全部状态</option>
+              <option v-for="option in statusOptions" :key="option.value" :value="option.value">
+                {{ option.label }}
+              </option>
+            </select>
+          </label>
+          <div class="filter-actions">
+            <button type="submit" class="primary">搜索</button>
+            <button type="button" class="secondary" @click="resetProductFilters">重置</button>
+          </div>
+        </form>
+
+        <div v-if="productError" class="product-placeholder is-error">{{ productError }}</div>
+        <div v-else-if="productLoading" class="product-placeholder">正在加载商品列表…</div>
+        <div v-else>
+          <div v-if="productRows.length" class="table-wrapper">
+            <table class="product-table">
+              <thead>
+                <tr>
+                  <th scope="col">商品名称</th>
+                  <th scope="col">分类</th>
+                  <th scope="col">供应商</th>
+                  <th scope="col">售价</th>
+                  <th scope="col">库存</th>
+                  <th scope="col">销量</th>
+                  <th scope="col">状态</th>
+                  <th scope="col">创建时间</th>
+                  <th scope="col">操作</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="item in productRows" :key="item.id">
+                  <td class="name-cell">
+                    <strong>{{ item.name }}</strong>
+                    <p v-if="item.description" class="description">{{ item.description }}</p>
+                  </td>
+                  <td>{{ item.categoryName ?? '—' }}</td>
+                  <td>{{ item.supplierName ?? '—' }}</td>
+                  <td>{{ formatCurrency(item.price) }}</td>
+                  <td>{{ formatNumber(item.stock) }}</td>
+                  <td>{{ formatNumber(item.sales) }}</td>
+                  <td><span class="status-pill">{{ formatStatus(item.status) }}</span></td>
+                  <td>{{ formatDate(item.createdAt) }}</td>
+                  <td class="product-actions">
+                    <button type="button" class="link-button" @click="openProductView(item)">查看</button>
+                    <button type="button" class="link-button" @click="openProductDialog(item)">编辑</button>
+                    <button
+                      type="button"
+                      class="link-button danger"
+                      @click="deleteProduct(item.id)"
+                      :disabled="deletingProductId === item.id"
+                    >
+                      删除
+                    </button>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <p v-else class="product-placeholder">暂无商品记录，请尝试调整筛选条件或新增商品。</p>
+
+          <nav v-if="totalProductPages > 1" class="pagination" aria-label="商品分页导航">
+            <button type="button" :disabled="productPagination.page === 0" @click="changeProductPage(productPagination.page - 1)">
+              上一页
+            </button>
+            <span>第 {{ productPagination.page + 1 }} / {{ totalProductPages }} 页</span>
+            <button
+              type="button"
+              :disabled="totalProductPages && productPagination.page + 1 >= totalProductPages"
+              @click="changeProductPage(productPagination.page + 1)"
+            >
+              下一页
+            </button>
+          </nav>
         </div>
       </section>
 
@@ -139,6 +614,128 @@ function formatNumber(value?: number | null) {
         </ul>
       </section>
     </template>
+
+    <form v-if="productDialogOpen" class="product-dialog" @submit.prevent="saveProduct">
+      <div class="dialog-surface">
+        <header class="dialog-header">
+          <h2>{{ productForm.id ? '编辑商品' : '新增商品' }}</h2>
+          <button type="button" class="ghost" @click="cancelProductDialog">关闭</button>
+        </header>
+
+        <div class="dialog-grid">
+          <label>
+            <span>商品名称</span>
+            <input v-model="productForm.name" type="text" placeholder="请输入商品名称" />
+          </label>
+          <label>
+            <span>所属分类</span>
+            <select v-model.number="productForm.categoryId">
+              <option :value="0">未分类</option>
+              <option v-for="option in categoryOptions" :key="option.id" :value="option.id">
+                {{ option.name }}
+              </option>
+            </select>
+          </label>
+          <label>
+            <span>供应商</span>
+            <select v-model.number="productForm.supplierId">
+              <option :value="0">请选择供应商</option>
+              <option v-for="option in supplierOptions" :key="option.id" :value="option.id">
+                {{ option.companyName }}
+              </option>
+            </select>
+          </label>
+          <label>
+            <span>商品状态</span>
+            <select v-model="productForm.status">
+              <option v-for="option in statusOptions" :key="option.value" :value="option.value">
+                {{ option.label }}
+              </option>
+            </select>
+          </label>
+          <label>
+            <span>商品价格</span>
+            <input v-model="productForm.price" type="number" min="0" step="0.01" placeholder="¥0.00" />
+          </label>
+          <label>
+            <span>库存数量</span>
+            <input v-model.number="productForm.stock" type="number" min="0" step="1" />
+          </label>
+          <label class="full-width">
+            <span>主图地址</span>
+            <input v-model="productForm.mainImage" type="text" placeholder="请输入图片链接（可选）" />
+          </label>
+          <label class="full-width">
+            <span>商品描述</span>
+            <textarea v-model="productForm.description" rows="4" placeholder="请输入商品描述"></textarea>
+          </label>
+        </div>
+
+        <div v-if="productFormError" class="form-feedback is-error">{{ productFormError }}</div>
+        <div v-if="productFormMessage" class="form-feedback is-success">{{ productFormMessage }}</div>
+
+        <footer class="dialog-footer">
+          <button type="submit" class="primary" :disabled="savingProduct">
+            {{ savingProduct ? '保存中…' : '保存商品' }}
+          </button>
+        </footer>
+      </div>
+    </form>
+
+    <div v-if="productViewOpen && viewingProduct" class="product-view-dialog" role="dialog" aria-modal="true">
+      <div class="dialog-surface">
+        <header class="dialog-header">
+          <h2>商品详情</h2>
+          <button type="button" class="ghost" @click="closeProductView">关闭</button>
+        </header>
+        <dl class="product-details">
+          <div>
+            <dt>商品名称</dt>
+            <dd>{{ viewingProduct?.name }}</dd>
+          </div>
+          <div>
+            <dt>分类</dt>
+            <dd>{{ viewingProduct?.category?.name ?? '—' }}</dd>
+          </div>
+          <div>
+            <dt>供应商</dt>
+            <dd>{{ viewingProduct?.supplier?.companyName ?? '—' }}</dd>
+          </div>
+          <div>
+            <dt>售价</dt>
+            <dd>{{ formatCurrency(Number(viewingProduct?.price)) }}</dd>
+          </div>
+          <div>
+            <dt>库存</dt>
+            <dd>{{ formatNumber(viewingProduct?.stock) }}</dd>
+          </div>
+          <div>
+            <dt>销量</dt>
+            <dd>{{ formatNumber(viewingProduct?.sales ?? 0) }}</dd>
+          </div>
+          <div>
+            <dt>状态</dt>
+            <dd>{{ formatStatus(viewingProduct?.status) }}</dd>
+          </div>
+          <div>
+            <dt>创建时间</dt>
+            <dd>{{ formatDate(viewingProduct?.createdAt) }}</dd>
+          </div>
+          <div>
+            <dt>最近更新</dt>
+            <dd>{{ formatDate(viewingProduct?.updatedAt) }}</dd>
+          </div>
+          <div class="full-width">
+            <dt>商品描述</dt>
+            <dd>{{ viewingProduct?.description || '—' }}</dd>
+          </div>
+          <div v-if="viewingProduct?.mainImage" class="full-width">
+            <dt>商品主图</dt>
+            <dd><img :src="viewingProduct.mainImage" alt="商品主图" /></dd>
+          </div>
+        </dl>
+      </div>
+    </div>
   </section>
 </template>
 
@@ -217,6 +814,98 @@ function formatNumber(value?: number | null) {
   color: rgba(30, 41, 59, 0.78);
 }
 
+.panel-subtitle {
+  margin-top: 0.35rem;
+  color: rgba(30, 41, 59, 0.6);
+}
+
+.product-admin-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 1.5rem;
+  flex-wrap: wrap;
+  align-items: flex-start;
+}
+
+.primary {
+  padding: 0.55rem 1.4rem;
+  border-radius: 999px;
+  border: none;
+  background: linear-gradient(135deg, #2563eb, #1d4ed8);
+  color: #fff;
+  font-weight: 600;
+  cursor: pointer;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.primary:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
+.primary:not(:disabled):hover {
+  transform: translateY(-1px);
+  box-shadow: 0 10px 20px rgba(37, 99, 235, 0.28);
+}
+
+.secondary {
+  padding: 0.55rem 1.4rem;
+  border-radius: 999px;
+  border: 1px solid rgba(30, 41, 59, 0.18);
+  background: rgba(226, 232, 240, 0.4);
+  color: rgba(30, 41, 59, 0.75);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.ghost {
+  border: none;
+  background: none;
+  color: rgba(30, 41, 59, 0.65);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.product-filters {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 1rem;
+  align-items: end;
+}
+
+.product-filters label {
+  display: grid;
+  gap: 0.4rem;
+  font-weight: 600;
+  color: rgba(15, 23, 42, 0.75);
+}
+
+.product-filters input,
+.product-filters select {
+  padding: 0.55rem 0.65rem;
+  border: 1px solid rgba(15, 23, 42, 0.12);
+  border-radius: 0.75rem;
+}
+
+.filter-actions {
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.product-placeholder {
+  padding: 1.5rem;
+  border-radius: 1rem;
+  text-align: center;
+  color: rgba(15, 23, 42, 0.55);
+  background: rgba(37, 99, 235, 0.08);
+}
+
+.product-placeholder.is-error {
+  background: rgba(248, 113, 113, 0.12);
+  color: #7f1d1d;
+}
+
 .metric-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
@@ -244,6 +933,214 @@ function formatNumber(value?: number | null) {
 .hot-products table {
   width: 100%;
   border-collapse: collapse;
+}
+
+.table-wrapper {
+  overflow-x: auto;
+}
+
+.product-table {
+  width: 100%;
+  min-width: 860px;
+  border-collapse: collapse;
+}
+
+.product-table thead {
+  background: rgba(15, 23, 42, 0.04);
+  color: rgba(15, 23, 42, 0.6);
+}
+
+.product-table th,
+.product-table td {
+  padding: 0.75rem 0.5rem;
+  text-align: left;
+  border-bottom: 1px solid rgba(15, 23, 42, 0.08);
+}
+
+.product-table tbody tr:nth-child(odd) {
+  background: rgba(59, 130, 246, 0.05);
+}
+
+.name-cell strong {
+  display: block;
+}
+
+.name-cell .description {
+  margin: 0.25rem 0 0;
+  font-size: 0.85rem;
+  color: rgba(15, 23, 42, 0.6);
+}
+
+.status-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.25rem 0.6rem;
+  border-radius: 999px;
+  background: rgba(14, 165, 233, 0.18);
+  color: #0ea5e9;
+  font-weight: 600;
+}
+
+.product-actions {
+  display: flex;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+}
+
+.link-button {
+  border: none;
+  background: none;
+  color: #2563eb;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 0;
+}
+
+.link-button.danger {
+  color: #dc2626;
+}
+
+.link-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.pagination {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 1rem;
+  margin-top: 1.25rem;
+}
+
+.pagination button {
+  padding: 0.45rem 1.2rem;
+  border-radius: 999px;
+  border: 1px solid rgba(15, 23, 42, 0.18);
+  background: rgba(226, 232, 240, 0.4);
+  cursor: pointer;
+}
+
+.pagination button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.product-dialog,
+.product-view-dialog {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem 1rem;
+  z-index: 40;
+}
+
+.dialog-surface {
+  background: #fff;
+  border-radius: 20px;
+  padding: 1.8rem;
+  width: min(720px, 100%);
+  max-height: 90vh;
+  overflow-y: auto;
+  box-shadow: 0 30px 60px rgba(15, 23, 42, 0.2);
+  display: grid;
+  gap: 1.5rem;
+}
+
+.dialog-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+}
+
+.dialog-header h2 {
+  font-size: 1.4rem;
+  font-weight: 700;
+}
+
+.dialog-grid {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+}
+
+.dialog-grid label {
+  display: grid;
+  gap: 0.4rem;
+  font-weight: 600;
+  color: rgba(15, 23, 42, 0.75);
+}
+
+.dialog-grid input,
+.dialog-grid select,
+.dialog-grid textarea {
+  padding: 0.55rem 0.65rem;
+  border: 1px solid rgba(15, 23, 42, 0.14);
+  border-radius: 0.75rem;
+  font-size: 0.95rem;
+}
+
+.dialog-grid .full-width {
+  grid-column: 1 / -1;
+}
+
+.dialog-footer {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.form-feedback {
+  padding: 0.75rem 1rem;
+  border-radius: 0.75rem;
+  font-weight: 600;
+}
+
+.form-feedback.is-error {
+  background: rgba(248, 113, 113, 0.12);
+  color: #7f1d1d;
+}
+
+.form-feedback.is-success {
+  background: rgba(16, 185, 129, 0.12);
+  color: #047857;
+}
+
+.product-details {
+  display: grid;
+  gap: 0.9rem;
+}
+
+.product-details div {
+  display: grid;
+  gap: 0.25rem;
+  grid-template-columns: max-content 1fr;
+  align-items: flex-start;
+}
+
+.product-details .full-width {
+  grid-template-columns: 1fr;
+}
+
+.product-details dt {
+  font-weight: 600;
+  color: rgba(15, 23, 42, 0.6);
+}
+
+.product-details dd {
+  margin: 0;
+  color: rgba(15, 23, 42, 0.9);
+  word-break: break-word;
+}
+
+.product-details img {
+  max-width: 100%;
+  border-radius: 12px;
+  border: 1px solid rgba(15, 23, 42, 0.08);
 }
 
 .hot-products th,
