@@ -9,6 +9,7 @@ const ConsumerDashboard = () => import('../views/dashboard/ConsumerDashboard.vue
 const SupplierWorkbench = () => import('../views/dashboard/SupplierWorkbench.vue')
 const AdminOverview = () => import('../views/dashboard/AdminOverview.vue')
 const AdminConsumerManagement = () => import('../views/dashboard/AdminConsumerManagement.vue')
+const AdminProductManagement = () => import('../views/dashboard/AdminProductManagement.vue')
 
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
@@ -60,6 +61,12 @@ const router = createRouter({
       path: '/admin/overview',
       name: 'admin-overview',
       component: AdminOverview,
+      meta: { requiresAuth: true, roles: ['admin'] },
+    },
+    {
+      path: '/admin/products',
+      name: 'admin-products',
+      component: AdminProductManagement,
       meta: { requiresAuth: true, roles: ['admin'] },
     },
     {

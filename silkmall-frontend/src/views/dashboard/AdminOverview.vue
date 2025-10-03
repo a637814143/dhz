@@ -57,7 +57,10 @@ function formatNumber(value?: number | null) {
         <h1>平台运营总览</h1>
         <p>掌握商品、库存、用户互动与资讯发布情况，及时调整销售策略。</p>
       </div>
-      <RouterLink class="manage-link" to="/admin/consumers">采购账号管理</RouterLink>
+      <nav class="admin-actions">
+        <RouterLink class="manage-link" to="/admin/products">商品管理</RouterLink>
+        <RouterLink class="manage-link" to="/admin/consumers">采购账号管理</RouterLink>
+      </nav>
     </header>
 
     <div v-if="loading" class="placeholder">正在加载平台数据…</div>
@@ -153,6 +156,13 @@ function formatNumber(value?: number | null) {
   align-items: center;
   justify-content: space-between;
   gap: 1.5rem;
+}
+
+.admin-actions {
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  justify-content: flex-end;
 }
 
 .admin-header h1 {
