@@ -181,7 +181,7 @@ function mergeCategoryOption(option: CategoryOption) {
 
 async function loadCategories() {
   try {
-    const { data } = await api.get('/categories')
+    const { data } = await api.get<CategoryOption[]>('/categories/options')
     categories.value = normaliseCategoryOptions(data)
   } catch (err) {
     console.warn('加载分类失败', err)

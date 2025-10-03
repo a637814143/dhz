@@ -1,6 +1,7 @@
 package com.example.silkmall.controller;
 
 import com.example.silkmall.dto.CategoryDTO;
+import com.example.silkmall.dto.CategoryOptionDTO;
 import com.example.silkmall.entity.Category;
 import com.example.silkmall.service.CategoryService;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -107,10 +108,15 @@ public class CategoryController extends BaseController {
     public ResponseEntity<List<Category>> getAllCategories() {
         return success(categoryService.findAll());
     }
-    
+
     @GetMapping("/enabled")
     public ResponseEntity<List<Category>> getEnabledCategories() {
         return success(categoryService.findEnabledCategories());
+    }
+
+    @GetMapping("/options")
+    public ResponseEntity<List<CategoryOptionDTO>> getCategoryOptions() {
+        return success(categoryService.findAllOptions());
     }
     
     @GetMapping("/parent/{parentId}")

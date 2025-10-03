@@ -1,5 +1,6 @@
 package com.example.silkmall.service.impl;
 
+import com.example.silkmall.dto.CategoryOptionDTO;
 import com.example.silkmall.entity.Category;
 import com.example.silkmall.repository.CategoryRepository;
 import com.example.silkmall.service.CategoryService;
@@ -58,5 +59,10 @@ public class CategoryServiceImpl extends BaseServiceImpl<Category, Long> impleme
     @Override
     public List<Category> findRootCategories() {
         return findByParentId(null);
+    }
+
+    @Override
+    public List<CategoryOptionDTO> findAllOptions() {
+        return categoryRepository.findAllOptions();
     }
 }
