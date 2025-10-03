@@ -7,6 +7,7 @@ public interface CategoryService extends BaseService<Category, Long> {
     List<Category> findEnabledCategories();
     List<Category> findByParentId(Long parentId);
     boolean existsByName(String name);
+    boolean existsByNameExcludingId(String name, Long id);
     void enableCategory(Long id);
     void disableCategory(Long id);
     List<Category> findRootCategories();

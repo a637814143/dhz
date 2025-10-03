@@ -31,12 +31,17 @@ public class CategoryServiceImpl extends BaseServiceImpl<Category, Long> impleme
     public boolean existsByName(String name) {
         return categoryRepository.existsByName(name);
     }
-    
+
+    @Override
+    public boolean existsByNameExcludingId(String name, Long id) {
+        return categoryRepository.existsByNameAndIdNot(name, id);
+    }
+
     @Override
     public void enableCategory(Long id) {
         Category category = findById(id)
                 .orElseThrow(() -> new RuntimeException("分类不存在"));
-        
+
         category.setEnabled(true);
         categoryRepository.save(category);
     }
@@ -53,15 +58,5 @@ public class CategoryServiceImpl extends BaseServiceImpl<Category, Long> impleme
     @Override
     public List<Category> findRootCategories() {
         return findByParentId(null);
-    }
-    
-    @Override
-    public Category save(Category category) {
-        // 检查分类名称是否已存在
-        if (existsByName(category.getName())) {
-            throw new RuntimeException("分类名称已存在");
-        }
-        
-        return super.save(category);
     }
 }

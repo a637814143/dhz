@@ -34,18 +34,23 @@ public class CategoryController extends BaseController {
     
     @PostMapping
     public ResponseEntity<?> createCategory(@RequestBody CategoryDTO categoryDTO) {
-        if (categoryService.existsByName(categoryDTO.getName())) {
+        String name = categoryDTO.getName() != null ? categoryDTO.getName().trim() : "";
+        if (name.isEmpty()) {
+            return badRequest("分类名称不能为空");
+        }
+
+        if (categoryService.existsByName(name)) {
             return badRequest("分类名称已存在");
         }
-        
+
         // 创建Category实体对象
         Category category = new Category();
-        category.setName(categoryDTO.getName());
+        category.setName(name);
         category.setDescription(categoryDTO.getDescription());
-        category.setSortOrder(categoryDTO.getSortOrder());
+        category.setSortOrder(categoryDTO.getSortOrder() != null ? categoryDTO.getSortOrder() : 0);
         category.setIcon(categoryDTO.getIcon());
         category.setEnabled(categoryDTO.getEnabled() != null ? categoryDTO.getEnabled() : true);
-        
+
         // 设置父分类
         if (categoryDTO.getParentId() != null) {
             Category parent = new Category();
@@ -61,11 +66,22 @@ public class CategoryController extends BaseController {
         // 检查分类是否存在
         Category existingCategory = categoryService.findById(id)
                 .orElseThrow(() -> new RuntimeException("分类不存在"));
-        
+
+        String name = categoryDTO.getName() != null ? categoryDTO.getName().trim() : "";
+        if (name.isEmpty()) {
+            return badRequest("分类名称不能为空");
+        }
+
+        if (categoryService.existsByNameExcludingId(name, id)) {
+            return badRequest("分类名称已存在");
+        }
+
         // 更新分类信息
-        existingCategory.setName(categoryDTO.getName());
+        existingCategory.setName(name);
         existingCategory.setDescription(categoryDTO.getDescription());
-        existingCategory.setSortOrder(categoryDTO.getSortOrder());
+        if (categoryDTO.getSortOrder() != null) {
+            existingCategory.setSortOrder(categoryDTO.getSortOrder());
+        }
         existingCategory.setIcon(categoryDTO.getIcon());
         existingCategory.setEnabled(categoryDTO.getEnabled() != null ? categoryDTO.getEnabled() : true);
         

@@ -27,7 +27,11 @@ api.interceptors.response.use(
         window.location.href = `/login?redirect=${encodeURIComponent(current)}`
       }
     }
-    const message = error?.response?.data?.message || error.message || '请求失败，请稍后重试'
+    const data = error?.response?.data
+    const message =
+      (typeof data === 'string' && data.trim().length > 0 ? data : data?.message) ||
+      error.message ||
+      '请求失败，请稍后重试'
     return Promise.reject(new Error(message))
   }
 )
