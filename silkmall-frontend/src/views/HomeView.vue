@@ -242,7 +242,8 @@ function closePurchaseDialog() {
 
 function handlePurchaseSuccess(order: PurchaseOrderResult) {
   const orderNo = order.orderNo ? `（订单号：${order.orderNo}）` : ''
-  purchaseSuccessMessage.value = `下单成功！${orderNo}`.trim()
+  const lookup = order.consumerLookupId ? `（查询编号：${order.consumerLookupId}）` : ''
+  purchaseSuccessMessage.value = `下单成功！${orderNo}${lookup}`.trim()
 
   if (purchaseMessageTimer.value) {
     clearTimeout(purchaseMessageTimer.value)

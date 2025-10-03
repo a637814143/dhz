@@ -31,6 +31,7 @@ export interface PurchaseOrderPayload {
   consumer: {
     id: number
   }
+  consumerLookupId?: string
   recipientName: string
   recipientPhone: string
   shippingAddress: string
@@ -45,6 +46,7 @@ export interface PurchaseOrderResult {
   status: string
   totalAmount: number
   totalQuantity: number
+  consumerLookupId?: string
   paymentMethod?: string | null
   shippingAddress?: string | null
   recipientName?: string | null
@@ -155,8 +157,11 @@ export interface ProductReview {
   orderItemId: number
   productId: number
   productName: string
-  consumerId: number
-  consumerName: string
+  consumerId?: number | null
+  consumerName?: string | null
+  authorId?: number | null
+  authorName?: string | null
+  authorRole?: string | null
   rating: number
   comment?: string | null
   createdAt: string

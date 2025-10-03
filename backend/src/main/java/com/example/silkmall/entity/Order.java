@@ -22,6 +22,7 @@ public class Order {
     private String shippingAddress;
     private String recipientName;
     private String recipientPhone;
+    private String consumerLookupId;
     private Date orderTime;
     private Date paymentTime;
     private Date shippingTime;
@@ -107,9 +108,17 @@ public class Order {
     public String getRecipientPhone() {
         return recipientPhone;
     }
-    
+
     public void setRecipientPhone(String recipientPhone) {
         this.recipientPhone = recipientPhone;
+    }
+
+    public String getConsumerLookupId() {
+        return consumerLookupId;
+    }
+
+    public void setConsumerLookupId(String consumerLookupId) {
+        this.consumerLookupId = consumerLookupId;
     }
     
     public Date getOrderTime() {

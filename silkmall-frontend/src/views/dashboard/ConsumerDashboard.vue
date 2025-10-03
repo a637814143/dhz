@@ -36,6 +36,11 @@ const homeContent = ref<HomepageContent | null>(null)
 const announcements = ref<Announcement[]>([])
 const loading = ref(true)
 const error = ref<string | null>(null)
+const walletBalance = ref<number | null>(null)
+const redeemCodeInput = ref('')
+const redeeming = ref(false)
+const redeemMessage = ref<string | null>(null)
+const redeemError = ref<string | null>(null)
 
 async function loadProfile() {
   if (!state.user) return
@@ -57,11 +62,22 @@ async function loadHomeContent() {
   announcements.value = data.announcements
 }
 
+async function loadWallet() {
+  if (!state.user) return
+  try {
+    const { data } = await api.get<{ balance: number }>('/wallet')
+    walletBalance.value = data.balance
+  } catch (err) {
+    console.warn('加载钱包信息失败', err)
+    walletBalance.value = null
+  }
+}
+
 async function bootstrap() {
   loading.value = true
   error.value = null
   try {
-    await Promise.all([loadProfile(), loadOrders(), loadHomeContent()])
+    await Promise.all([loadProfile(), loadOrders(), loadHomeContent(), loadWallet()])
   } catch (err) {
     error.value = err instanceof Error ? err.message : '加载数据失败'
   } finally {
@@ -88,6 +104,28 @@ function formatDateTime(value?: string | null) {
 function membershipBadge(level?: string | null) {
   if (!level) return '普通会员'
   return level
+}
+
+async function redeemWallet() {
+  redeemMessage.value = null
+  redeemError.value = null
+  const code = redeemCodeInput.value.trim()
+  if (!code) {
+    redeemError.value = '请输入兑换码'
+    return
+  }
+  redeeming.value = true
+  try {
+    const { data } = await api.post<{ balance: number }>('/wallet/redeem', { code })
+    walletBalance.value = data.balance
+    redeemCodeInput.value = ''
+    redeemMessage.value = '兑换成功，余额已更新'
+  } catch (err) {
+    const message = err instanceof Error ? err.message : '兑换失败'
+    redeemError.value = message
+  } finally {
+    redeeming.value = false
+  }
 }
 
 const shortcutLinks = [
@@ -136,7 +174,29 @@ const shortcutLinks = [
               <span>积分</span>
               <strong>{{ profile?.points ?? 0 }}</strong>
             </li>
+            <li>
+              <span>钱包余额</span>
+              <strong>{{ formatCurrency(walletBalance ?? 0) }}</strong>
+            </li>
           </ul>
+          <div class="redeem-box">
+            <label>
+              <span>兑换码</span>
+              <input
+                v-model="redeemCodeInput"
+                type="text"
+                placeholder="输入兑换码兑换余额"
+                :disabled="redeeming"
+              />
+            </label>
+            <div class="redeem-actions">
+              <button type="button" @click="redeemWallet" :disabled="redeeming">
+                {{ redeeming ? '兑换中…' : '兑换余额' }}
+              </button>
+              <p v-if="redeemMessage" class="redeem-success">{{ redeemMessage }}</p>
+              <p v-if="redeemError" class="redeem-error">{{ redeemError }}</p>
+            </div>
+          </div>
         </section>
 
         <section class="panel orders" aria-labelledby="orders-title">
@@ -291,6 +351,56 @@ const shortcutLinks = [
 
 .profile-list strong {
   color: rgba(17, 24, 39, 0.85);
+}
+
+.redeem-box {
+  display: grid;
+  gap: 0.75rem;
+  padding-top: 1rem;
+  border-top: 1px solid rgba(17, 24, 39, 0.08);
+}
+
+.redeem-box label {
+  display: grid;
+  gap: 0.4rem;
+  font-weight: 600;
+}
+
+.redeem-box input {
+  padding: 0.6rem 0.75rem;
+  border-radius: 0.75rem;
+  border: 1px solid rgba(17, 24, 39, 0.12);
+  font-size: 0.95rem;
+}
+
+.redeem-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.redeem-actions button {
+  padding: 0.55rem 1.4rem;
+  border-radius: 0.75rem;
+  border: none;
+  background: linear-gradient(135deg, #16a34a, #22c55e);
+  color: #fff;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.redeem-actions button:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+}
+
+.redeem-success {
+  color: #15803d;
+}
+
+.redeem-error {
+  color: #b91c1c;
 }
 
 .orders-table {

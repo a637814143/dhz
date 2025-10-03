@@ -2,6 +2,7 @@ package com.example.silkmall.service.impl;
 
 import com.example.silkmall.entity.OrderItem;
 import com.example.silkmall.entity.ReturnRequest;
+import com.example.silkmall.security.CustomUserDetails;
 import com.example.silkmall.repository.OrderItemRepository;
 import com.example.silkmall.repository.ReturnRequestRepository;
 import com.example.silkmall.service.ReturnRequestService;
@@ -12,6 +13,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.util.Date;
 import java.util.List;
 import java.util.Set;
+import java.util.Objects;
 
 @Service
 public class ReturnRequestServiceImpl extends BaseServiceImpl<ReturnRequest, Long> implements ReturnRequestService {
@@ -55,12 +57,28 @@ public class ReturnRequestServiceImpl extends BaseServiceImpl<ReturnRequest, Lon
 
     @Override
     @Transactional
-    public ReturnRequest processReturnRequest(Long id, String status, String resolution) {
+    public ReturnRequest processReturnRequest(Long id, String status, String resolution, CustomUserDetails actor) {
         ReturnRequest request = returnRequestRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("退货申请不存在"));
 
         if (!PROCESSABLE_STATUSES.contains(status)) {
             throw new RuntimeException("不支持的退货处理状态");
+        }
+
+        if (!isAdmin(actor)) {
+            if (actor == null || actor.getUserType() == null || !"supplier".equalsIgnoreCase(actor.getUserType())) {
+                throw new RuntimeException("只有对应商家或管理员可以处理退货");
+            }
+            if (request.getProduct() == null || request.getProduct().getSupplier() == null
+                    || !Objects.equals(request.getProduct().getSupplier().getId(), actor.getId())) {
+                throw new RuntimeException("无法处理其他商家的退货申请");
+            }
+            if ("COMPLETED".equalsIgnoreCase(status)) {
+                throw new RuntimeException("只有管理员可以完成退货");
+            }
+            if ("COMPLETED".equalsIgnoreCase(request.getStatus())) {
+                throw new RuntimeException("退货申请已由管理员完成");
+            }
         }
 
         request.setStatus(status);
@@ -78,5 +96,9 @@ public class ReturnRequestServiceImpl extends BaseServiceImpl<ReturnRequest, Lon
     @Override
     public List<ReturnRequest> findByOrderId(Long orderId) {
         return returnRequestRepository.findByOrderId(orderId);
+    }
+
+    private boolean isAdmin(CustomUserDetails actor) {
+        return actor != null && "admin".equalsIgnoreCase(actor.getUserType());
     }
 }

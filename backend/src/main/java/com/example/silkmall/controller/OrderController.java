@@ -1,5 +1,6 @@
 package com.example.silkmall.controller;
 
+import com.example.silkmall.entity.Consumer;
 import com.example.silkmall.entity.Order;
 import com.example.silkmall.service.OrderService;
 import com.example.silkmall.security.CustomUserDetails;
@@ -12,6 +13,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
+import java.util.List;
 import java.util.Optional;
 
 @RestController
@@ -43,6 +45,12 @@ public class OrderController extends BaseController {
     @PreAuthorize("hasRole('ADMIN') or hasRole('CONSUMER')")
     public ResponseEntity<?> createOrder(@RequestBody Order order,
                                          @AuthenticationPrincipal CustomUserDetails currentUser) {
+        if (order.getConsumer() == null && currentUser != null
+                && "consumer".equalsIgnoreCase(currentUser.getUserType())) {
+            Consumer consumer = new Consumer();
+            consumer.setId(currentUser.getId());
+            order.setConsumer(consumer);
+        }
         if (!isOwnerOrAdmin(currentUser, order)) {
             return redirectForUser(currentUser);
         }
@@ -90,6 +98,24 @@ public class OrderController extends BaseController {
         }
     }
 
+    @GetMapping("/lookup/{lookupId}")
+    public ResponseEntity<?> getOrderByLookupId(@PathVariable String lookupId,
+                                                @AuthenticationPrincipal CustomUserDetails currentUser) {
+        List<Order> orders = orderService.findByConsumerLookupId(lookupId);
+        if (orders.isEmpty()) {
+            return notFound("订单不存在");
+        }
+
+        if (currentUser != null && "consumer".equalsIgnoreCase(currentUser.getUserType())) {
+            boolean ownsAny = orders.stream().anyMatch(order -> isOwnerOrAdmin(currentUser, order));
+            if (!ownsAny) {
+                return redirectForUser(currentUser);
+            }
+        }
+
+        return success(orders);
+    }
+
     @PutMapping("/{id}/cancel")
     @PreAuthorize("hasRole('ADMIN') or hasRole('CONSUMER')")
     public ResponseEntity<?> cancelOrder(@PathVariable Long id,
@@ -112,6 +138,13 @@ public class OrderController extends BaseController {
             return success();
         }
         return redirectForUser(currentUser);
+    }
+
+    @PutMapping("/{id}/revoke")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<?> revokeOrder(@PathVariable Long id) {
+        orderService.revokeOrder(id);
+        return success();
     }
 
     @PutMapping("/{id}/ship")

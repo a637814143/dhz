@@ -3,9 +3,12 @@ package com.example.silkmall.controller;
 import com.example.silkmall.dto.CreateProductReviewDTO;
 import com.example.silkmall.dto.ProductReviewDTO;
 import com.example.silkmall.entity.ProductReview;
+import com.example.silkmall.security.CustomUserDetails;
 import com.example.silkmall.service.ProductReviewService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -22,13 +25,28 @@ public class ProductReviewController extends BaseController {
     }
 
     @PostMapping("/order-items/{orderItemId}")
+    @PreAuthorize("hasAnyRole('CONSUMER', 'ADMIN')")
     public ResponseEntity<ProductReviewDTO> createReview(@PathVariable Long orderItemId,
-                                                          @RequestBody CreateProductReviewDTO request) {
+                                                         @RequestBody CreateProductReviewDTO request,
+                                                         @AuthenticationPrincipal CustomUserDetails currentUser) {
         ProductReview review = new ProductReview();
         review.setRating(request.getRating());
         review.setComment(request.getComment());
 
-        ProductReview saved = productReviewService.createReview(orderItemId, review);
+        ProductReview saved = productReviewService.createReview(orderItemId, review, currentUser);
+        return created(toDto(saved));
+    }
+
+    @PostMapping("/products/{productId}")
+    @PreAuthorize("hasAnyRole('SUPPLIER', 'ADMIN')")
+    public ResponseEntity<ProductReviewDTO> createDirectReview(@PathVariable Long productId,
+                                                               @RequestBody CreateProductReviewDTO request,
+                                                               @AuthenticationPrincipal CustomUserDetails currentUser) {
+        ProductReview review = new ProductReview();
+        review.setRating(request.getRating());
+        review.setComment(request.getComment());
+
+        ProductReview saved = productReviewService.createDirectReview(productId, review, currentUser);
         return created(toDto(saved));
     }
 
@@ -50,15 +68,35 @@ public class ProductReviewController extends BaseController {
         return success(reviews);
     }
 
+    @PutMapping("/{reviewId}")
+    @PreAuthorize("hasAnyRole('CONSUMER', 'SUPPLIER', 'ADMIN')")
+    public ResponseEntity<ProductReviewDTO> updateReview(@PathVariable Long reviewId,
+                                                         @RequestBody CreateProductReviewDTO request,
+                                                         @AuthenticationPrincipal CustomUserDetails currentUser) {
+        ProductReview updated = productReviewService.updateReview(reviewId, request.getRating(), request.getComment(), currentUser);
+        return success(toDto(updated));
+    }
+
+    @DeleteMapping("/{reviewId}")
+    @PreAuthorize("hasAnyRole('CONSUMER', 'SUPPLIER', 'ADMIN')")
+    public ResponseEntity<Void> deleteReview(@PathVariable Long reviewId,
+                                             @AuthenticationPrincipal CustomUserDetails currentUser) {
+        productReviewService.deleteReview(reviewId, currentUser);
+        return success();
+    }
+
     private ProductReviewDTO toDto(ProductReview review) {
         return ProductReviewDTO.builder()
                 .id(review.getId())
-                .orderId(review.getOrder().getId())
-                .orderItemId(review.getOrderItem().getId())
+                .orderId(review.getOrder() != null ? review.getOrder().getId() : null)
+                .orderItemId(review.getOrderItem() != null ? review.getOrderItem().getId() : null)
                 .productId(review.getProduct().getId())
                 .productName(review.getProduct().getName())
-                .consumerId(review.getConsumer().getId())
-                .consumerName(review.getConsumer().getUsername())
+                .consumerId(review.getConsumer() != null ? review.getConsumer().getId() : null)
+                .consumerName(review.getConsumer() != null ? review.getConsumer().getUsername() : null)
+                .authorId(review.getAuthorId())
+                .authorName(review.getAuthorName())
+                .authorRole(review.getAuthorRole())
                 .rating(review.getRating())
                 .comment(review.getComment())
                 .createdAt(review.getCreatedAt())

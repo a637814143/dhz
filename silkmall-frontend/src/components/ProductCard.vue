@@ -68,10 +68,10 @@ const formattedPrice = computed(() =>
         <button
           type="button"
           class="buy"
-          :disabled="product.status !== 'ON_SALE' || product.stock <= 0"
+          :disabled="product.status !== 'ON_SALE' || product.stock <= 1"
           @click="emit('purchase', product)"
         >
-          {{ product.status === 'ON_SALE' && product.stock > 0 ? '立即购买' : '暂不可购' }}
+          {{ product.status === 'ON_SALE' && product.stock > 1 ? '点击购买' : '暂不可购' }}
         </button>
       </div>
     </div>

@@ -10,6 +10,9 @@ public class ProductReviewDTO {
     private String productName;
     private Long consumerId;
     private String consumerName;
+    private Long authorId;
+    private String authorName;
+    private String authorRole;
     private Integer rating;
     private String comment;
     private Date createdAt;
@@ -72,6 +75,30 @@ public class ProductReviewDTO {
 
     public void setConsumerName(String consumerName) {
         this.consumerName = consumerName;
+    }
+
+    public Long getAuthorId() {
+        return authorId;
+    }
+
+    public void setAuthorId(Long authorId) {
+        this.authorId = authorId;
+    }
+
+    public String getAuthorName() {
+        return authorName;
+    }
+
+    public void setAuthorName(String authorName) {
+        this.authorName = authorName;
+    }
+
+    public String getAuthorRole() {
+        return authorRole;
+    }
+
+    public void setAuthorRole(String authorRole) {
+        this.authorRole = authorRole;
     }
 
     public Integer getRating() {
@@ -137,6 +164,21 @@ public class ProductReviewDTO {
 
         public Builder consumerName(String consumerName) {
             instance.setConsumerName(consumerName);
+            return this;
+        }
+
+        public Builder authorId(Long authorId) {
+            instance.setAuthorId(authorId);
+            return this;
+        }
+
+        public Builder authorName(String authorName) {
+            instance.setAuthorName(authorName);
+            return this;
+        }
+
+        public Builder authorRole(String authorRole) {
+            instance.setAuthorRole(authorRole);
             return this;
         }
 

@@ -2,6 +2,7 @@
 import { computed, reactive, ref } from 'vue'
 import api from '@/services/api'
 import type { OrderDetail, OrderItemDetail, ProductReview, ReturnRequest } from '@/types'
+import { useAuthState } from '@/services/authState'
 
 const orderIdInput = ref('')
 const loadingOrder = ref(false)
@@ -15,6 +16,10 @@ const returnRequests = ref<ReturnRequest[]>([])
 
 const activeReviewItemId = ref<number | null>(null)
 const activeReturnItemId = ref<number | null>(null)
+const editingReviewId = ref<number | null>(null)
+
+const { state } = useAuthState()
+const currentUserRole = computed(() => state.user?.userType ?? null)
 
 const reviewForm = reactive({
   rating: 5,
@@ -29,10 +34,16 @@ const submittingReview = ref(false)
 const submittingReturn = ref(false)
 
 const reviewMap = computed(() => {
-  const map = new Map<number, ProductReview>()
+  const map = new Map<number, ProductReview[]>()
   reviews.value.forEach((review) => {
-    map.set(review.orderItemId, review)
+    if (!map.has(review.orderItemId)) {
+      map.set(review.orderItemId, [])
+    }
+    map.get(review.orderItemId)!.push(review)
   })
+  map.forEach((list) =>
+    list.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+  )
   return map
 })
 
@@ -133,13 +144,26 @@ async function fetchReturnRequests(orderId: number) {
 
 function openReviewForm(item: OrderItemDetail) {
   resetMessages()
+  const existing = reviews.value.find(
+    (review) => review.orderItemId === item.id && canEditReview(review)
+  )
+  if (existing) {
+    startEditExistingReview(existing)
+    return
+  }
+  if (!canCreateReviewForItem(item)) {
+    actionError.value = '您已经评价过该商品'
+    return
+  }
   activeReviewItemId.value = item.id
+  editingReviewId.value = null
   reviewForm.rating = 5
   reviewForm.comment = ''
 }
 
 function cancelReviewForm() {
   activeReviewItemId.value = null
+  editingReviewId.value = null
 }
 
 async function submitReview() {
@@ -158,10 +182,15 @@ async function submitReview() {
       rating,
       comment: reviewForm.comment.trim() || null,
     }
-    const { data } = await api.post<ProductReview>(`/reviews/order-items/${activeReviewItemId.value}`, payload)
-    reviews.value = reviews.value.filter((item) => item.orderItemId !== data.orderItemId)
-    reviews.value.push(data)
-    actionMessage.value = '评价提交成功'
+    if (editingReviewId.value) {
+      const { data } = await api.put<ProductReview>(`/reviews/${editingReviewId.value}`, payload)
+      upsertReview(data)
+      actionMessage.value = '评价更新成功'
+    } else {
+      const { data } = await api.post<ProductReview>(`/reviews/order-items/${activeReviewItemId.value}`, payload)
+      upsertReview(data)
+      actionMessage.value = '评价提交成功'
+    }
     cancelReviewForm()
   } catch (err) {
     const message = err instanceof Error ? err.message : '提交评价失败'
@@ -209,6 +238,81 @@ async function submitReturnRequest() {
 }
 
 const hasOrder = computed(() => !!orderDetail.value)
+
+function reviewRoleLabel(role?: string | null) {
+  if (!role) return '评价人'
+  switch (role.toUpperCase()) {
+    case 'CONSUMER':
+      return '消费者'
+    case 'SUPPLIER':
+      return '商家'
+    case 'ADMIN':
+      return '管理员'
+    default:
+      return role
+  }
+}
+
+function canEditReview(review: ProductReview) {
+  if (!state.user) return false
+  const role = currentUserRole.value
+  if (role === 'admin') {
+    return review.authorRole?.toUpperCase() === 'ADMIN' && review.authorId === state.user.id
+  }
+  if (role === 'consumer') {
+    return review.authorRole?.toUpperCase() === 'CONSUMER' && review.authorId === state.user.id
+  }
+  if (role === 'supplier') {
+    return review.authorRole?.toUpperCase() === 'SUPPLIER' && review.authorId === state.user.id
+  }
+  return false
+}
+
+function canDeleteReview(review: ProductReview) {
+  if (!state.user) return false
+  if (currentUserRole.value === 'admin') {
+    return true
+  }
+  return canEditReview(review)
+}
+
+function canCreateReviewForItem(item: OrderItemDetail) {
+  if (currentUserRole.value !== 'consumer' || !state.user) return false
+  return !reviews.value.some(
+    (review) =>
+      review.orderItemId === item.id &&
+      review.authorRole?.toUpperCase() === 'CONSUMER' &&
+      review.authorId === state.user!.id
+  )
+}
+
+function startEditExistingReview(review: ProductReview) {
+  activeReviewItemId.value = review.orderItemId
+  editingReviewId.value = review.id
+  reviewForm.rating = review.rating
+  reviewForm.comment = review.comment ?? ''
+}
+
+async function deleteReview(review: ProductReview) {
+  resetMessages()
+  try {
+    await api.delete(`/reviews/${review.id}`)
+    reviews.value = reviews.value.filter((item) => item.id !== review.id)
+    actionMessage.value = '评价已删除'
+  } catch (err) {
+    const message = err instanceof Error ? err.message : '删除评价失败'
+    actionError.value = message
+  }
+}
+
+function upsertReview(review: ProductReview) {
+  const index = reviews.value.findIndex((item) => item.id === review.id)
+  if (index >= 0) {
+    reviews.value.splice(index, 1, review)
+  } else {
+    reviews.value.push(review)
+  }
+}
 </script>
 
 <template>
@@ -281,14 +385,36 @@ const hasOrder = computed(() => !!orderDetail.value)
               <div class="item-actions">
                 <div class="action-block">
                   <strong>商品评价</strong>
-                  <template v-if="reviewMap.get(item.id)">
-                    <p class="muted">
-                      评分：{{ reviewMap.get(item.id)!.rating }} 分
-                      <span v-if="reviewMap.get(item.id)!.comment">— {{ reviewMap.get(item.id)!.comment }}</span>
-                    </p>
-                    <p class="muted">评价时间：{{ formatDateTime(reviewMap.get(item.id)!.createdAt) }}</p>
-                  </template>
-                  <template v-else>
+                  <div v-if="reviewMap.get(item.id)?.length" class="review-stack">
+                    <article v-for="review in reviewMap.get(item.id)!" :key="review.id" class="review-entry">
+                      <header>
+                        <span class="review-author">{{ review.authorName ?? review.consumerName ?? '用户' }}</span>
+                        <span class="review-role">{{ reviewRoleLabel(review.authorRole) }}</span>
+                        <span class="muted">评分：{{ review.rating }} 分</span>
+                        <span class="muted">{{ formatDateTime(review.createdAt) }}</span>
+                      </header>
+                      <p v-if="review.comment" class="muted">{{ review.comment }}</p>
+                      <footer class="review-actions">
+                        <button
+                          v-if="canEditReview(review)"
+                          type="button"
+                          class="link-button"
+                          @click="startEditExistingReview(review)"
+                        >
+                          编辑
+                        </button>
+                        <button
+                          v-if="canDeleteReview(review)"
+                          type="button"
+                          class="link-button danger"
+                          @click="deleteReview(review)"
+                        >
+                          删除
+                        </button>
+                      </footer>
+                    </article>
+                  </div>
+                  <template v-if="canCreateReviewForItem(item)">
                     <button
                       class="link-button"
                       type="button"
@@ -298,6 +424,7 @@ const hasOrder = computed(() => !!orderDetail.value)
                       我要评价
                     </button>
                   </template>
+                  <p v-else-if="!(reviewMap.get(item.id)?.length)" class="muted">暂无评价记录</p>
                 </div>
 
                 <div class="action-block">
@@ -348,7 +475,9 @@ const hasOrder = computed(() => !!orderDetail.value)
                   />
                 </label>
                 <div class="form-actions">
-                  <button type="submit" :disabled="submittingReview">{{ submittingReview ? '提交中…' : '提交评价' }}</button>
+                  <button type="submit" :disabled="submittingReview">
+                    {{ submittingReview ? '提交中…' : editingReviewId ? '保存修改' : '提交评价' }}
+                  </button>
                   <button type="button" class="ghost" @click="cancelReviewForm" :disabled="submittingReview">
                     取消
                   </button>
@@ -563,6 +692,47 @@ const hasOrder = computed(() => !!orderDetail.value)
 .action-block {
   display: grid;
   gap: 0.4rem;
+}
+
+.review-stack {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.review-entry {
+  padding: 0.75rem;
+  border-radius: 0.75rem;
+  background: rgba(250, 250, 250, 0.8);
+  border: 1px solid rgba(0, 0, 0, 0.05);
+}
+
+.review-entry header {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.review-author {
+  font-weight: 600;
+}
+
+.review-role {
+  background: rgba(217, 119, 6, 0.12);
+  color: #b45309;
+  font-size: 0.75rem;
+  padding: 0.15rem 0.5rem;
+  border-radius: 999px;
+}
+
+.review-actions {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+}
+
+.link-button.danger {
+  color: #b91c1c;
 }
 
 .link-button {

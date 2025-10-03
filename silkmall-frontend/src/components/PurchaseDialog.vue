@@ -2,6 +2,7 @@
 import { computed, reactive, ref, watch } from 'vue'
 import api from '@/services/api'
 import type { ProductSummary, PurchaseOrderPayload, PurchaseOrderResult } from '@/types'
+import { useAuthState } from '@/services/authState'
 
 const props = defineProps<{
   open: boolean
@@ -13,8 +14,10 @@ const emit = defineEmits<{
   (e: 'success', payload: PurchaseOrderResult): void
 }>()
 
+const { state } = useAuthState()
+
 const form = reactive({
-  consumerId: '',
+  consumerLookupId: '',
   recipientName: '',
   recipientPhone: '',
   shippingAddress: '',
@@ -43,7 +46,7 @@ const totalAmount = computed(() => {
 })
 
 function resetForm() {
-  form.consumerId = ''
+  form.consumerLookupId = generateConsumerLookupId()
   form.recipientName = ''
   form.recipientPhone = ''
   form.shippingAddress = ''
@@ -51,6 +54,12 @@ function resetForm() {
   form.quantity = 1
   form.remark = ''
   error.value = null
+}
+
+function generateConsumerLookupId() {
+  const random = Math.random().toString(36).slice(2, 10).toUpperCase()
+  const timestamp = Date.now().toString().slice(-4)
+  return `C${timestamp}${random}`.slice(0, 12)
 }
 
 function close() {
@@ -64,9 +73,8 @@ function validate() {
     return false
   }
 
-  const consumerId = Number(form.consumerId.trim())
-  if (!Number.isInteger(consumerId) || consumerId <= 0) {
-    error.value = '请输入有效的消费者ID（正整数）'
+  if (!state.user?.id) {
+    error.value = '请先登录消费者账号再下单'
     return false
   }
 
@@ -105,7 +113,8 @@ async function submit() {
   submitting.value = true
   try {
     const payload: PurchaseOrderPayload = {
-      consumer: { id: Number(form.consumerId.trim()) },
+      consumer: { id: state.user!.id },
+      consumerLookupId: form.consumerLookupId,
       recipientName: form.recipientName.trim(),
       recipientPhone: form.recipientPhone.trim(),
       shippingAddress: form.shippingAddress.trim(),
@@ -155,7 +164,8 @@ async function submit() {
           <form class="purchase-form" @submit.prevent="submit">
             <label>
               <span>消费者ID</span>
-              <input v-model="form.consumerId" type="number" min="1" placeholder="请输入消费者ID" required />
+              <input v-model="form.consumerLookupId" type="text" readonly />
+              <small class="hint">系统已为您生成订单查询编号</small>
             </label>
 
             <div class="grid">
@@ -322,6 +332,11 @@ async function submit() {
   gap: 0.35rem;
   font-size: 0.9rem;
   color: rgba(15, 23, 42, 0.75);
+}
+
+.purchase-form .hint {
+  font-size: 0.75rem;
+  color: rgba(15, 23, 42, 0.6);
 }
 
 .purchase-form input,

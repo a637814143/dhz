@@ -4,9 +4,12 @@ import com.example.silkmall.dto.CreateReturnRequestDTO;
 import com.example.silkmall.dto.ProcessReturnRequestDTO;
 import com.example.silkmall.dto.ReturnRequestDTO;
 import com.example.silkmall.entity.ReturnRequest;
+import com.example.silkmall.security.CustomUserDetails;
 import com.example.silkmall.service.ReturnRequestService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -23,6 +26,7 @@ public class ReturnRequestController extends BaseController {
     }
 
     @PostMapping("/order-items/{orderItemId}")
+    @PreAuthorize("hasAnyRole('CONSUMER', 'ADMIN')")
     public ResponseEntity<ReturnRequestDTO> createReturnRequest(@PathVariable Long orderItemId,
                                                                  @RequestBody CreateReturnRequestDTO request) {
         ReturnRequest entity = new ReturnRequest();
@@ -33,9 +37,11 @@ public class ReturnRequestController extends BaseController {
     }
 
     @PutMapping("/{id}/status")
+    @PreAuthorize("hasAnyRole('SUPPLIER', 'ADMIN')")
     public ResponseEntity<ReturnRequestDTO> processReturn(@PathVariable Long id,
-                                                           @RequestBody ProcessReturnRequestDTO request) {
-        ReturnRequest updated = returnRequestService.processReturnRequest(id, request.getStatus(), request.getResolution());
+                                                           @RequestBody ProcessReturnRequestDTO request,
+                                                           @AuthenticationPrincipal CustomUserDetails currentUser) {
+        ReturnRequest updated = returnRequestService.processReturnRequest(id, request.getStatus(), request.getResolution(), currentUser);
         return success(toDto(updated));
     }
 
