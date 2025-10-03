@@ -69,10 +69,64 @@ async function loadHomeContent() {
   homeContent.value = data
 }
 
+function toCategoryOption(raw: unknown, fallbackName?: string): CategoryOption | null {
+  if (!raw || typeof raw !== 'object') {
+    return null
+  }
+
+  const source = raw as Record<string, unknown>
+  const idRaw = source.id ?? source.categoryId ?? source.value
+  const id = typeof idRaw === 'number' ? idRaw : Number(idRaw)
+
+  if (!Number.isFinite(id)) {
+    return null
+  }
+
+  const rawName = source.name ?? source.categoryName ?? fallbackName ?? ''
+  const name = typeof rawName === 'string' ? rawName.trim() : String(rawName ?? '').trim()
+
+  return {
+    id,
+    name: name.length > 0 ? name : `分类 ${id}`,
+  }
+}
+
+function sortCategoryOptions(options: CategoryOption[]): CategoryOption[] {
+  return [...options].sort((a, b) => {
+    const nameA = (a.name ?? '').trim()
+    const nameB = (b.name ?? '').trim()
+    return nameA.localeCompare(nameB, 'zh-CN')
+  })
+}
+
+function normaliseCategoryOptions(payload: unknown): CategoryOption[] {
+  const rawList = Array.isArray((payload as any)?.data) ? (payload as any).data : payload
+  if (!Array.isArray(rawList)) {
+    return []
+  }
+
+  const deduped = new Map<number, CategoryOption>()
+  for (const item of rawList) {
+    const option = toCategoryOption(item)
+    if (option) {
+      deduped.set(option.id, option)
+    }
+  }
+
+  return sortCategoryOptions([...deduped.values()])
+}
+
+function mergeCategoryOption(option: CategoryOption) {
+  categories.value = sortCategoryOptions([
+    ...categories.value.filter((existing) => existing.id !== option.id),
+    option,
+  ])
+}
+
 async function loadCategories() {
   try {
-    const { data } = await api.get<CategoryOption[]>('/categories')
-    categories.value = data
+    const { data } = await api.get('/categories')
+    categories.value = normaliseCategoryOptions(data)
   } catch (err) {
     console.warn('加载分类失败', err)
     categories.value = []
@@ -144,7 +198,14 @@ async function openProductForm(product?: ProductSummary) {
     productForm.price = product.price?.toString() ?? ''
     productForm.stock = product.stock ?? 0
     const categoryRef = (product as any).categoryId ?? (product as any).category?.id ?? null
-    productForm.categoryId = categoryRef
+    if (typeof categoryRef === 'number') {
+      productForm.categoryId = categoryRef
+    } else if (categoryRef !== null && categoryRef !== undefined) {
+      const parsed = Number(categoryRef)
+      productForm.categoryId = Number.isFinite(parsed) ? parsed : null
+    } else {
+      productForm.categoryId = null
+    }
     productForm.status = product.status ?? 'ON_SALE'
     productForm.mainImage = product.mainImage ?? ''
   } else {
@@ -259,20 +320,21 @@ async function createCategory() {
   }
   categorySaving.value = true
   try {
-    const { data } = await api.post<CategoryOption>('/categories', {
+    const { data } = await api.post('/categories', {
       name,
       description: null,
       sortOrder: 0,
       enabled: true,
     })
-    const option: CategoryOption = {
-      id: data.id,
-      name: data.name ?? name,
+    const option = toCategoryOption((data as any)?.data ?? data, name)
+
+    if (!option) {
+      categoryError.value = '分类创建成功，但解析新分类失败，请刷新后重试'
+      await loadCategories()
+      return
     }
-    categories.value = categories.value
-      .filter((existing) => existing.id !== option.id)
-      .concat(option)
-      .sort((a, b) => a.name.localeCompare(b.name, 'zh-CN'))
+
+    mergeCategoryOption(option)
     categoryNameInput.value = ''
     categoryFeedback.value = '分类创建成功'
   } catch (err) {
@@ -418,7 +480,7 @@ const statusOptions = [
 
           <label>
             <span>所属分类</span>
-            <select v-model="productForm.categoryId">
+            <select v-model.number="productForm.categoryId">
               <option :value="null">未选择分类</option>
               <option v-for="category in categories" :key="category.id" :value="category.id">
                 {{ category.name }}
