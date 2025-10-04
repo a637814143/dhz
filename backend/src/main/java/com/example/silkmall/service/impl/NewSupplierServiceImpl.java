@@ -105,11 +105,56 @@ public class NewSupplierServiceImpl implements SupplierService {
     
     @Override
     public Supplier update(Supplier supplier) {
-        // 确保密码不会被明文保存
-        if (supplier.getPassword() != null && !supplier.getPassword().startsWith("{bcrypt}")) {
-            supplier.setPassword(passwordEncoder.encode(supplier.getPassword()));
+        if (supplier.getId() == null) {
+            throw new IllegalArgumentException("更新供应商信息时必须提供ID");
         }
-        return newSupplierRepository.save(supplier);
+        Supplier existingSupplier = newSupplierRepository.findById(supplier.getId())
+                .orElseThrow(() -> new RuntimeException("供应商不存在"));
+
+        // 基础账号信息
+        if (supplier.getUsername() != null) {
+            existingSupplier.setUsername(supplier.getUsername());
+        }
+        if (supplier.getEmail() != null) {
+            existingSupplier.setEmail(supplier.getEmail());
+        }
+        if (supplier.getPhone() != null) {
+            existingSupplier.setPhone(supplier.getPhone());
+        }
+        if (supplier.getAddress() != null) {
+            existingSupplier.setAddress(supplier.getAddress());
+        }
+
+        // 供应商扩展信息
+        if (supplier.getCompanyName() != null) {
+            existingSupplier.setCompanyName(supplier.getCompanyName());
+        }
+        if (supplier.getBusinessLicense() != null) {
+            existingSupplier.setBusinessLicense(supplier.getBusinessLicense());
+        }
+        if (supplier.getContactPerson() != null) {
+            existingSupplier.setContactPerson(supplier.getContactPerson());
+        }
+        if (supplier.getJoinDate() != null) {
+            existingSupplier.setJoinDate(supplier.getJoinDate());
+        }
+        if (supplier.getSupplierLevel() != null) {
+            existingSupplier.setSupplierLevel(supplier.getSupplierLevel());
+        }
+        if (supplier.getStatus() != null) {
+            existingSupplier.setStatus(supplier.getStatus());
+        }
+
+        // 密码单独处理，避免重复加密
+        if (supplier.getPassword() != null && !supplier.getPassword().isEmpty()) {
+            String password = supplier.getPassword();
+            if (!isPasswordEncoded(password)) {
+                password = passwordEncoder.encode(password);
+            }
+            existingSupplier.setPassword(password);
+        }
+
+        return newSupplierRepository.save(existingSupplier);
     }
     
     @Override
@@ -166,5 +211,12 @@ public class NewSupplierServiceImpl implements SupplierService {
         
         supplier.setSupplierLevel(level);
         newSupplierRepository.save(supplier);
+    }
+
+    private boolean isPasswordEncoded(String password) {
+        return password.startsWith("{bcrypt}")
+                || password.startsWith("$2a$")
+                || password.startsWith("$2b$")
+                || password.startsWith("$2y$");
     }
 }
