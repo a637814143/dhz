@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { onMounted, reactive, ref } from 'vue'
 import api from '@/services/api'
 import { useAuthState } from '@/services/authState'
 import type {
@@ -24,8 +24,12 @@ interface ConsumerProfile {
   email?: string | null
   phone?: string | null
   address?: string | null
+  realName?: string | null
+  idCard?: string | null
+  avatar?: string | null
   points?: number | null
-  membershipLevel?: string | null
+  membershipLevel?: number | string | null
+  enabled?: boolean | null
 }
 
 const { state } = useAuthState()
@@ -42,10 +46,126 @@ const redeeming = ref(false)
 const redeemMessage = ref<string | null>(null)
 const redeemError = ref<string | null>(null)
 
+const editingProfile = ref(false)
+const profileSaving = ref(false)
+const profileFormError = ref<string | null>(null)
+const profileFeedback = ref<string | null>(null)
+
+const profileForm = reactive({
+  email: '',
+  phone: '',
+  address: '',
+  realName: '',
+  idCard: '',
+})
+
+function resetProfileForm() {
+  profileForm.email = ''
+  profileForm.phone = ''
+  profileForm.address = ''
+  profileForm.realName = ''
+  profileForm.idCard = ''
+  profileFormError.value = null
+}
+
+function populateProfileForm(source: ConsumerProfile) {
+  profileForm.email = source.email ?? ''
+  profileForm.phone = source.phone ?? ''
+  profileForm.address = source.address ?? ''
+  profileForm.realName = source.realName ?? ''
+  profileForm.idCard = source.idCard ?? ''
+  profileFormError.value = null
+}
+
+function openProfileEditor() {
+  if (!profile.value) {
+    return
+  }
+  populateProfileForm(profile.value)
+  profileFeedback.value = null
+  editingProfile.value = true
+}
+
+function cancelProfileEdit() {
+  editingProfile.value = false
+  profileFormError.value = null
+  if (profile.value) {
+    populateProfileForm(profile.value)
+  } else {
+    resetProfileForm()
+  }
+}
+
+async function saveProfile() {
+  if (!state.user) {
+    profileFormError.value = '请先登录账号'
+    return
+  }
+  if (!profile.value) {
+    profileFormError.value = '暂无账户信息可更新'
+    return
+  }
+
+  const email = profileForm.email.trim()
+  const phone = profileForm.phone.trim()
+  const address = profileForm.address.trim()
+  const realName = profileForm.realName.trim()
+  const idCard = profileForm.idCard.trim()
+
+  if (!realName) {
+    profileFormError.value = '请填写真实姓名'
+    return
+  }
+
+  if (!idCard) {
+    profileFormError.value = '请填写身份证号'
+    return
+  }
+
+  profileSaving.value = true
+  profileFormError.value = null
+
+  const payload = {
+    id: profile.value.id,
+    username: profile.value.username,
+    email: email || null,
+    phone: phone || null,
+    address: address || null,
+    realName,
+    idCard,
+    avatar: profile.value.avatar ?? null,
+    points: profile.value.points ?? undefined,
+    membershipLevel: profile.value.membershipLevel ?? undefined,
+    enabled: profile.value.enabled ?? undefined,
+  }
+
+  try {
+    const { data } = await api.put<ConsumerProfile>(`/consumers/${profile.value.id}`, payload)
+    profile.value = data
+    populateProfileForm(data)
+    editingProfile.value = false
+    profileFeedback.value = '账户信息已更新'
+    if (state.user) {
+      Object.assign(state.user, {
+        email: data.email ?? null,
+        phone: data.phone ?? null,
+      })
+    }
+  } catch (err) {
+    const message = err instanceof Error ? err.message : '更新失败，请稍后重试'
+    profileFormError.value = message
+  } finally {
+    profileSaving.value = false
+  }
+}
+
 async function loadProfile() {
   if (!state.user) return
   const { data } = await api.get<ConsumerProfile>(`/consumers/${state.user.id}`)
   profile.value = data
+  if (editingProfile.value) {
+    populateProfileForm(data)
+  }
 }
 
 async function loadOrders() {
@@ -101,9 +221,27 @@ function formatDateTime(value?: string | null) {
   return date.toLocaleString('zh-CN', { hour12: false })
 }
 
-function membershipBadge(level?: string | null) {
-  if (!level) return '普通会员'
-  return level
+function membershipBadge(level?: number | string | null) {
+  if (level === null || level === undefined) return '普通会员'
+  if (typeof level === 'number') {
+    switch (level) {
+      case 1:
+        return '普通会员'
+      case 2:
+        return '银卡会员'
+      case 3:
+        return '金卡会员'
+      case 4:
+        return '钻石会员'
+      default:
+        return `会员等级 ${level}`
+    }
+  }
+  const numeric = Number(level)
+  if (!Number.isNaN(numeric)) {
+    return membershipBadge(numeric)
+  }
+  return String(level)
 }
 
 async function redeemWallet() {
@@ -152,33 +290,88 @@ const shortcutLinks = [
     <template v-else>
       <div class="grid">
         <section class="panel profile" aria-labelledby="profile-title">
-          <div class="panel-title" id="profile-title">账户信息</div>
-          <ul class="profile-list">
-            <li>
-              <span>邮箱</span>
-              <strong>{{ profile?.email ?? '—' }}</strong>
-            </li>
-            <li>
-              <span>联系电话</span>
-              <strong>{{ profile?.phone ?? '—' }}</strong>
-            </li>
-            <li>
+          <div class="panel-title-row">
+            <div class="panel-title" id="profile-title">账户信息</div>
+            <button v-if="!editingProfile" type="button" class="link-button" @click="openProfileEditor">
+              编辑账户信息
+            </button>
+          </div>
+
+          <p v-if="profileFeedback" class="form-feedback is-success">{{ profileFeedback }}</p>
+
+          <form v-if="editingProfile" class="profile-form" @submit.prevent="saveProfile">
+            <div class="grid">
+              <label>
+                <span>邮箱</span>
+                <input v-model="profileForm.email" type="email" placeholder="用于接收通知" />
+              </label>
+              <label>
+                <span>联系电话</span>
+                <input v-model="profileForm.phone" type="tel" placeholder="便于联系您" />
+              </label>
+            </div>
+            <label>
               <span>收货地址</span>
-              <strong>{{ profile?.address ?? '尚未填写' }}</strong>
-            </li>
-            <li>
-              <span>会员等级</span>
-              <strong>{{ membershipBadge(profile?.membershipLevel) }}</strong>
-            </li>
-            <li>
-              <span>积分</span>
-              <strong>{{ profile?.points ?? 0 }}</strong>
-            </li>
-            <li>
-              <span>钱包余额</span>
-              <strong>{{ formatCurrency(walletBalance ?? 0) }}</strong>
-            </li>
-          </ul>
+              <textarea v-model="profileForm.address" rows="3" placeholder="请输入常用收货地址"></textarea>
+            </label>
+            <div class="grid">
+              <label>
+                <span>真实姓名</span>
+                <input v-model="profileForm.realName" type="text" placeholder="用于开票及售后" />
+              </label>
+              <label>
+                <span>身份证号</span>
+                <input v-model="profileForm.idCard" type="text" placeholder="用于实名认证" />
+              </label>
+            </div>
+            <p v-if="profileFormError" class="form-feedback is-error">{{ profileFormError }}</p>
+            <div class="profile-form-actions">
+              <button type="button" class="ghost" @click="cancelProfileEdit" :disabled="profileSaving">
+                取消
+              </button>
+              <button type="submit" class="primary" :disabled="profileSaving">
+                {{ profileSaving ? '保存中…' : '保存信息' }}
+              </button>
+            </div>
+          </form>
+
+          <template v-else>
+            <ul class="profile-list">
+              <li>
+                <span>邮箱</span>
+                <strong>{{ profile?.email ?? '—' }}</strong>
+              </li>
+              <li>
+                <span>联系电话</span>
+                <strong>{{ profile?.phone ?? '—' }}</strong>
+              </li>
+              <li>
+                <span>收货地址</span>
+                <strong>{{ profile?.address ?? '尚未填写' }}</strong>
+              </li>
+              <li>
+                <span>真实姓名</span>
+                <strong>{{ profile?.realName ?? '—' }}</strong>
+              </li>
+              <li>
+                <span>身份证号</span>
+                <strong>{{ profile?.idCard ?? '—' }}</strong>
+              </li>
+              <li>
+                <span>会员等级</span>
+                <strong>{{ membershipBadge(profile?.membershipLevel) }}</strong>
+              </li>
+              <li>
+                <span>积分</span>
+                <strong>{{ profile?.points ?? 0 }}</strong>
+              </li>
+              <li>
+                <span>钱包余额</span>
+                <strong>{{ formatCurrency(walletBalance ?? 0) }}</strong>
+              </li>
+            </ul>
+          </template>
+
           <div class="redeem-box">
             <label>
               <span>兑换码</span>
@@ -334,11 +527,131 @@ const shortcutLinks = [
   color: rgba(17, 24, 39, 0.78);
 }
 
+.panel-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.link-button {
+  border: none;
+  background: none;
+  color: #4f46e5;
+  cursor: pointer;
+  font-weight: 600;
+  padding: 0;
+}
+
+.link-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
 .profile-list {
   list-style: none;
   display: grid;
   gap: 0.85rem;
   padding: 0;
+}
+
+.profile-form {
+  display: grid;
+  gap: 1.25rem;
+  margin-top: 0.75rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid rgba(17, 24, 39, 0.08);
+}
+
+.profile-form .grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 1rem;
+}
+
+.profile-form label {
+  display: grid;
+  gap: 0.45rem;
+  font-weight: 600;
+  color: rgba(17, 24, 39, 0.75);
+}
+
+.profile-form input,
+.profile-form textarea {
+  padding: 0.65rem 0.75rem;
+  border-radius: 0.75rem;
+  border: 1px solid rgba(17, 24, 39, 0.12);
+  font-size: 0.95rem;
+  background: rgba(255, 255, 255, 0.96);
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.profile-form input:focus,
+.profile-form textarea:focus {
+  outline: none;
+  border-color: rgba(79, 70, 229, 0.45);
+  box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.16);
+}
+
+.profile-form textarea {
+  resize: vertical;
+  min-height: 96px;
+}
+
+.profile-form-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.75rem;
+}
+
+.profile-form-actions .ghost,
+.profile-form-actions .primary {
+  padding: 0.6rem 1.2rem;
+  border-radius: 0.75rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 0.2s ease, color 0.2s ease, opacity 0.2s ease;
+}
+
+.profile-form-actions .ghost {
+  border: 1px solid rgba(17, 24, 39, 0.18);
+  background: rgba(255, 255, 255, 0.85);
+  color: rgba(17, 24, 39, 0.78);
+}
+
+.profile-form-actions .ghost:hover {
+  background: rgba(17, 24, 39, 0.08);
+}
+
+.profile-form-actions .primary {
+  border: none;
+  background: linear-gradient(135deg, #6366f1, #8b5cf6);
+  color: #fff;
+  box-shadow: 0 10px 20px rgba(99, 102, 241, 0.25);
+}
+
+.profile-form-actions .primary:hover {
+  background: linear-gradient(135deg, #4f46e5, #7c3aed);
+}
+
+.profile-form-actions button:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+.form-feedback {
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+
+.form-feedback.is-error {
+  color: #b91c1c;
+}
+
+.form-feedback.is-success {
+  color: #15803d;
 }
 
 .profile-list li {
