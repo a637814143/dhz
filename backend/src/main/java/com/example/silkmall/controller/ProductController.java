@@ -64,8 +64,32 @@ public class ProductController extends BaseController {
         if (!canManageProduct(currentUser, existing.get())) {
             return redirectForUser(currentUser);
         }
-        product.setId(id);
-        return success(productService.save(product));
+        Product toUpdate = existing.get();
+
+        // 始终保持创建时间不变，避免更新时写入 null 值
+        if (product.getName() != null) {
+            toUpdate.setName(product.getName());
+        }
+        toUpdate.setDescription(product.getDescription());
+        if (product.getPrice() != null) {
+            toUpdate.setPrice(product.getPrice());
+        }
+        if (product.getStock() != null) {
+            toUpdate.setStock(product.getStock());
+        }
+        if (product.getSales() != null) {
+            toUpdate.setSales(product.getSales());
+        }
+        if (product.getStatus() != null) {
+            toUpdate.setStatus(product.getStatus());
+        }
+        toUpdate.setMainImage(product.getMainImage());
+        toUpdate.setCategory(product.getCategory());
+        if (product.getSupplier() != null) {
+            toUpdate.setSupplier(product.getSupplier());
+        }
+
+        return success(productService.save(toUpdate));
     }
 
     @DeleteMapping("/{id}")
