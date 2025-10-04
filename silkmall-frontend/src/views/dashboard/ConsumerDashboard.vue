@@ -801,18 +801,20 @@ const shortcutLinks = [
 .orders-table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 0.95rem;
+  font-size: 0.88rem;
 }
 
 .orders-table .col-order-no {
-  max-width: 12rem;
-  word-break: break-all;
+  max-width: 14rem;
+  font-size: 0.85rem;
+  line-height: 1.35;
   overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .orders-table th,
 .orders-table td {
-  padding: 0.75rem 0.5rem;
+  padding: 0.6rem 0.35rem;
   text-align: left;
 }
 
@@ -1103,9 +1105,9 @@ const shortcutLinks = [
 .product-card {
   border-radius: 16px;
   border: 1px solid rgba(79, 70, 229, 0.15);
-  padding: 1.2rem;
+  padding: 1rem;
   display: grid;
-  gap: 1rem;
+  gap: 0.85rem;
   background: rgba(255, 255, 255, 0.95);
   transition: transform 0.2s ease, box-shadow 0.2s ease;
 }
@@ -1116,14 +1118,14 @@ const shortcutLinks = [
 }
 
 .product-card h3 {
-  font-size: 1.05rem;
+  font-size: 0.98rem;
   font-weight: 700;
   color: rgba(17, 24, 39, 0.85);
 }
 
 .product-card p {
   color: rgba(17, 24, 39, 0.58);
-  font-size: 0.92rem;
+  font-size: 0.86rem;
 }
 
 .product-card footer {
