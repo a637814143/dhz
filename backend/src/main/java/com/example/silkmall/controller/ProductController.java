@@ -61,10 +61,14 @@ public class ProductController extends BaseController {
         if (existing.isEmpty()) {
             return notFound("产品不存在");
         }
-        if (!canManageProduct(currentUser, existing.get())) {
+        Product existingProduct = existing.get();
+        if (!canManageProduct(currentUser, existingProduct)) {
             return redirectForUser(currentUser);
         }
         product.setId(id);
+        if (product.getCreatedAt() == null) {
+            product.setCreatedAt(existingProduct.getCreatedAt());
+        }
         return success(productService.save(product));
     }
 
