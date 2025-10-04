@@ -1,5 +1,7 @@
 package com.example.silkmall.controller;
 
+import com.example.silkmall.dto.OrderDetailDTO;
+import com.example.silkmall.dto.OrderItemDetailDTO;
 import com.example.silkmall.dto.UpdateOrderContactDTO;
 import com.example.silkmall.entity.Consumer;
 import com.example.silkmall.entity.Order;
@@ -16,6 +18,7 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 import java.util.List;
 import java.util.Optional;
+import java.util.stream.Collectors;
 
 @RestController
 @RequestMapping("/api/orders")
@@ -182,7 +185,8 @@ public class OrderController extends BaseController {
         String phone = request.getRecipientPhone() == null ? null : request.getRecipientPhone().trim();
 
         Order updated = orderService.updateContactInfo(id, address, name, phone);
-        return success(updated);
+        Order reloaded = orderService.findOrderDetail(updated.getId());
+        return success(toOrderDetailDto(reloaded));
     }
 
     @GetMapping("/{id}/detail")
@@ -194,9 +198,49 @@ public class OrderController extends BaseController {
             return notFound("订单不存在");
         }
         if (isOwnerOrAdmin(currentUser, detail)) {
-            return success(detail);
+            return success(toOrderDetailDto(detail));
         }
         return redirectForUser(currentUser);
+    }
+
+    private OrderDetailDTO toOrderDetailDto(Order order) {
+        OrderDetailDTO dto = new OrderDetailDTO();
+        dto.setId(order.getId());
+        dto.setOrderNo(order.getOrderNo());
+        dto.setTotalAmount(order.getTotalAmount());
+        dto.setTotalQuantity(order.getTotalQuantity());
+        dto.setStatus(order.getStatus());
+        dto.setShippingAddress(order.getShippingAddress());
+        dto.setRecipientName(order.getRecipientName());
+        dto.setRecipientPhone(order.getRecipientPhone());
+        dto.setOrderTime(order.getOrderTime());
+        dto.setPaymentTime(order.getPaymentTime());
+        dto.setShippingTime(order.getShippingTime());
+        dto.setDeliveryTime(order.getDeliveryTime());
+
+        List<OrderItemDetailDTO> items = Optional.ofNullable(order.getOrderItems())
+                .orElse(List.of())
+                .stream()
+                .map(item -> {
+                    OrderItemDetailDTO itemDto = new OrderItemDetailDTO();
+                    itemDto.setId(item.getId());
+                    itemDto.setQuantity(item.getQuantity());
+                    itemDto.setUnitPrice(item.getUnitPrice());
+                    itemDto.setTotalPrice(item.getTotalPrice());
+                    itemDto.setCreatedAt(item.getCreatedAt());
+
+                    OrderItemDetailDTO.OrderedProductDTO productDto = new OrderItemDetailDTO.OrderedProductDTO();
+                    if (item.getProduct() != null) {
+                        productDto.setId(item.getProduct().getId());
+                        productDto.setName(item.getProduct().getName());
+                        productDto.setMainImage(item.getProduct().getMainImage());
+                    }
+                    itemDto.setProduct(productDto);
+                    return itemDto;
+                })
+                .collect(Collectors.toList());
+        dto.setOrderItems(items);
+        return dto;
     }
 
     private boolean isOwnerOrAdmin(CustomUserDetails currentUser, Order order) {

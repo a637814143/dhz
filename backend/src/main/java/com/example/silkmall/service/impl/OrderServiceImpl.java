@@ -216,9 +216,7 @@ public class OrderServiceImpl extends BaseServiceImpl<Order, Long> implements Or
 
     @Override
     public Order findOrderDetail(Long id) {
-        // 这里可以返回包含订单项和产品详情的完整订单信息
-        // 实际项目中可能需要使用@EntityGraph或DTO来优化查询
-        return findById(id)
+        return orderRepository.findDetailedById(id)
                 .orElseThrow(() -> new RuntimeException("订单不存在"));
     }
     
