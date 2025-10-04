@@ -160,6 +160,11 @@ public class ProductServiceImpl extends BaseServiceImpl<Product, Long> implement
     
     @Override
     public Product save(Product product) {
+        if (product.getId() != null && product.getCreatedAt() == null) {
+            productRepository.findById(product.getId())
+                    .map(Product::getCreatedAt)
+                    .ifPresent(product::setCreatedAt);
+        }
         // 初始化销量为0
         if (product.getSales() == null) {
             product.setSales(0);
