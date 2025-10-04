@@ -20,6 +20,30 @@ export interface ProductSummary {
   supplierLevel?: string | null
 }
 
+export interface ProductImage {
+  id: number
+  imageUrl: string
+  sortOrder?: number | null
+  createdAt?: string | null
+}
+
+export interface ProductDetail extends ProductSummary {
+  updatedAt?: string | null
+  images?: ProductImage[] | null
+  category?: {
+    id: number
+    name: string
+    description?: string | null
+  } | null
+  supplier?: {
+    id: number
+    companyName: string
+    supplierLevel?: string | null
+    contactName?: string | null
+    contactPhone?: string | null
+  } | null
+}
+
 export interface PurchaseOrderItemPayload {
   product: {
     id: number

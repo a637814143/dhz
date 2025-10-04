@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
-import { RouterLink } from 'vue-router'
+import { RouterLink, useRouter } from 'vue-router'
 import ProductCard from '@/components/ProductCard.vue'
 import PurchaseDialog from '@/components/PurchaseDialog.vue'
 import api from '@/services/api'
@@ -48,6 +48,7 @@ const pageSize = ref(12)
 const purchaseTarget = ref<ProductSummary | null>(null)
 const purchaseSuccessMessage = ref<string | null>(null)
 const purchaseMessageTimer = ref<number | null>(null)
+const router = useRouter()
 
 const statusOptions = [
   { label: '全部状态', value: 'all' },
@@ -257,6 +258,10 @@ function handlePurchaseSuccess(order: PurchaseOrderResult) {
   fetchProducts()
 }
 
+function goToProductDetail(product: ProductSummary) {
+  router.push({ name: 'product-detail', params: { id: product.id } })
+}
+
 onMounted(async () => {
   pagination.size = pageSize.value
   await Promise.all([fetchOverview(), fetchCategories(), fetchSuppliers(), fetchHomepageContent()])
@@ -426,7 +431,13 @@ onBeforeUnmount(() => {
       <div v-else-if="emptyState" class="empty">暂无符合条件的商品，尝试调整筛选条件。</div>
 
       <div v-if="!loading && !emptyState" class="grid">
-        <ProductCard v-for="item in products" :key="item.id" :product="item" @purchase="openPurchaseDialog" />
+        <ProductCard
+          v-for="item in products"
+          :key="item.id"
+          :product="item"
+          @purchase="openPurchaseDialog"
+          @view-detail="goToProductDetail"
+        />
       </div>
 
       <div v-if="pagination.totalPages > 1" class="pagination" role="navigation" aria-label="分页导航">

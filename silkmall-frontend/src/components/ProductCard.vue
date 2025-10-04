@@ -6,7 +6,12 @@ const props = defineProps<{ product: ProductSummary }>()
 
 const emit = defineEmits<{
   (e: 'purchase', product: ProductSummary): void
+  (e: 'view-detail', product: ProductSummary): void
 }>()
+
+function openDetail() {
+  emit('view-detail', props.product)
+}
 
 const statusLabel = computed(() => {
   const labelMap: Record<string, string> = {
@@ -32,7 +37,15 @@ const formattedPrice = computed(() =>
 </script>
 
 <template>
-  <article class="product-card">
+  <article
+    class="product-card"
+    role="button"
+    tabindex="0"
+    :aria-label="`查看商品详情：${product.name}`"
+    @click="openDetail"
+    @keydown.enter.prevent.stop="openDetail"
+    @keydown.space.prevent.stop="openDetail"
+  >
     <div class="media">
       <div class="image-frame" role="img" :aria-label="product.name">
         <img v-if="product.mainImage" :src="product.mainImage" :alt="product.name" loading="lazy" />
@@ -69,7 +82,7 @@ const formattedPrice = computed(() =>
           type="button"
           class="buy"
           :disabled="product.status !== 'ON_SALE' || product.stock <= 1"
-          @click="emit('purchase', product)"
+          @click.stop="emit('purchase', product)"
         >
           {{ product.status === 'ON_SALE' && product.stock > 1 ? '点击购买' : '暂不可购' }}
         </button>
@@ -89,11 +102,17 @@ const formattedPrice = computed(() =>
   box-shadow: 0 18px 40px rgba(15, 23, 42, 0.08);
   backdrop-filter: blur(6px);
   transition: transform 0.25s ease, box-shadow 0.25s ease;
+  cursor: pointer;
 }
 
 .product-card:hover {
   transform: translateY(-6px);
   box-shadow: 0 24px 48px rgba(15, 23, 42, 0.12);
+}
+
+.product-card:focus-visible {
+  outline: 3px solid rgba(111, 169, 173, 0.65);
+  outline-offset: 4px;
 }
 
 .media {
