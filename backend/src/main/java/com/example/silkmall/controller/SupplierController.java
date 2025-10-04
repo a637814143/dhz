@@ -1,7 +1,9 @@
 package com.example.silkmall.controller;
 
+import com.example.silkmall.dto.SupplierProfileUpdateDTO;
 import com.example.silkmall.entity.Supplier;
 import com.example.silkmall.service.SupplierService;
+import jakarta.validation.Valid;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -38,6 +40,14 @@ public class SupplierController extends BaseController {
     public ResponseEntity<Supplier> updateSupplier(@PathVariable Long id, @RequestBody Supplier supplier) {
         supplier.setId(id);
         return success(supplierService.update(supplier));
+    }
+
+    @PutMapping("/{id}/profile")
+    @PreAuthorize("hasRole('ADMIN') or (hasRole('SUPPLIER') and #id == principal.id)")
+    public ResponseEntity<Supplier> updateSupplierProfile(@PathVariable Long id,
+                                                          @Valid @RequestBody SupplierProfileUpdateDTO updateDTO) {
+        Supplier updated = supplierService.updateProfile(id, updateDTO);
+        return success(updated);
     }
     
     @DeleteMapping("/{id}")

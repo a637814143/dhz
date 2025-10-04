@@ -88,12 +88,19 @@ public class AuthController extends BaseController {
                 consumer.setRole("consumer");
                 return created(consumerService.register(consumer));
             case "supplier":
+                String companyName = registerDTO.getCompanyName() != null
+                        ? registerDTO.getCompanyName().trim()
+                        : "";
+                if (companyName.isEmpty()) {
+                    return badRequest("企业名称不能为空");
+                }
                 Supplier supplier = new Supplier();
                 supplier.setUsername(registerDTO.getUsername());
                 supplier.setPassword(passwordEncoder.encode(registerDTO.getPassword()));
                 supplier.setEmail(registerDTO.getEmail());
                 supplier.setPhone(registerDTO.getPhone());
                 supplier.setRole("supplier");
+                supplier.setCompanyName(companyName);
                 return created(supplierService.register(supplier));
             case "admin":
                 Admin admin = new Admin();

@@ -22,7 +22,10 @@ public class RegisterDTO {
     
     @NotBlank(message = "手机号不能为空")
     private String phone;
-    
+
+    @Size(max = 120, message = "企业名称长度不能超过120个字符")
+    private String companyName;
+
     @NotBlank(message = "用户类型不能为空")
     private String userType; // CONSUMER, SUPPLIER, ADMIN
     
@@ -61,9 +64,17 @@ public class RegisterDTO {
     public String getPhone() {
         return phone;
     }
-    
+
     public void setPhone(String phone) {
         this.phone = phone;
+    }
+
+    public String getCompanyName() {
+        return companyName;
+    }
+
+    public void setCompanyName(String companyName) {
+        this.companyName = companyName;
     }
     
     public String getUserType() {

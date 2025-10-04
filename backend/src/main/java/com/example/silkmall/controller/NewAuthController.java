@@ -136,12 +136,19 @@ public class NewAuthController extends BaseController {
                 return ResponseEntity.status(HttpStatus.CREATED)
                         .body(ResponseDTO.success());
             case "supplier":
+                String companyName = registerDTO.getCompanyName() != null
+                        ? registerDTO.getCompanyName().trim()
+                        : "";
+                if (companyName.isEmpty()) {
+                    return ResponseEntity.badRequest().body(ResponseDTO.error("企业名称不能为空"));
+                }
                 Supplier supplier = new Supplier();
                 supplier.setUsername(registerDTO.getUsername());
                 supplier.setPassword(registerDTO.getPassword());
                 supplier.setEmail(registerDTO.getEmail());
                 supplier.setPhone(registerDTO.getPhone());
                 supplier.setRole("supplier");
+                supplier.setCompanyName(companyName);
                 supplierService.register(supplier);
                 return ResponseEntity.status(HttpStatus.CREATED)
                         .body(ResponseDTO.success());

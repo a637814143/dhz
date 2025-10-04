@@ -12,6 +12,7 @@ const form = reactive<RegisterPayload>({
   confirmPassword: '',
   email: '',
   phone: '',
+  companyName: '',
   userType: 'consumer',
 })
 
@@ -32,6 +33,7 @@ const canSubmit = computed(() => {
     form.password === form.confirmPassword &&
     form.email.trim().length > 0 &&
     form.phone.trim().length > 0 &&
+    (form.userType !== 'supplier' || form.companyName?.trim().length) &&
     !loading.value
   )
 })
@@ -42,7 +44,12 @@ async function submit() {
   successMessage.value = null
 
   try {
-    await register({ ...form })
+    const payload: RegisterPayload = {
+      ...form,
+      companyName: form.userType === 'supplier' ? form.companyName?.trim() || '' : null,
+    }
+
+    await register(payload)
     successMessage.value = '注册成功，请使用账号登录'
     window.setTimeout(() => {
       router.replace({ name: 'login', query: { redirect: router.currentRoute.value.query.redirect } })
@@ -87,6 +94,11 @@ async function submit() {
         <label class="form-control">
           <span>确认密码</span>
           <input v-model="form.confirmPassword" type="password" placeholder="再次输入密码" autocomplete="new-password" />
+        </label>
+
+        <label v-if="form.userType === 'supplier'" class="form-control">
+          <span>企业名称</span>
+          <input v-model.trim="form.companyName" type="text" placeholder="请填写贵司名称" />
         </label>
       </div>
 

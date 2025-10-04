@@ -1,5 +1,6 @@
 package com.example.silkmall.service.impl;
 
+import com.example.silkmall.dto.SupplierProfileUpdateDTO;
 import com.example.silkmall.entity.Supplier;
 import com.example.silkmall.repository.NewSupplierRepository;
 import com.example.silkmall.service.SupplierService;
@@ -9,6 +10,7 @@ import org.springframework.stereotype.Service;
 import java.util.List;
 import java.util.Optional;
 import org.springframework.context.annotation.Primary;
+import org.springframework.util.StringUtils;
 
 @Service
 @Primary
@@ -85,21 +87,25 @@ public class NewSupplierServiceImpl implements SupplierService {
         if (existsByEmail(supplier.getEmail())) {
             throw new RuntimeException("邮箱已存在");
         }
-        
+
+        if (!StringUtils.hasText(supplier.getCompanyName())) {
+            throw new RuntimeException("企业名称不能为空");
+        }
+
         // 加密密码
         supplier.setPassword(passwordEncoder.encode(supplier.getPassword()));
         supplier.setEnabled(true);
-        
+
         // 新供应商默认状态为待审核
         if (supplier.getStatus() == null || supplier.getStatus().isEmpty()) {
             supplier.setStatus("PENDING");
         }
-        
+
         // 默认供应商等级
         if (supplier.getSupplierLevel() == null || supplier.getSupplierLevel().isEmpty()) {
             supplier.setSupplierLevel("BRONZE");
         }
-        
+
         return newSupplierRepository.save(supplier);
     }
     
@@ -163,8 +169,51 @@ public class NewSupplierServiceImpl implements SupplierService {
     public void updateSupplierLevel(Long id, String level) {
         Supplier supplier = findById(id)
                 .orElseThrow(() -> new RuntimeException("供应商不存在"));
-        
+
         supplier.setSupplierLevel(level);
         newSupplierRepository.save(supplier);
+    }
+
+    @Override
+    public Supplier updateProfile(Long id, SupplierProfileUpdateDTO updateDTO) {
+        Supplier supplier = findById(id)
+                .orElseThrow(() -> new RuntimeException("供应商不存在"));
+
+        String companyName = updateDTO.getCompanyName() != null ? updateDTO.getCompanyName().trim() : "";
+        if (!StringUtils.hasText(companyName)) {
+            throw new RuntimeException("企业名称不能为空");
+        }
+
+        String email = updateDTO.getEmail() != null ? updateDTO.getEmail().trim() : "";
+        if (!StringUtils.hasText(email)) {
+            throw new RuntimeException("邮箱不能为空");
+        }
+
+        newSupplierRepository.findByEmail(email).ifPresent(existing -> {
+            if (!existing.getId().equals(id)) {
+                throw new RuntimeException("邮箱已被其他账户使用");
+            }
+        });
+
+        String phone = updateDTO.getPhone() != null ? updateDTO.getPhone().trim() : "";
+        if (!StringUtils.hasText(phone)) {
+            throw new RuntimeException("联系电话不能为空");
+        }
+
+        supplier.setCompanyName(companyName);
+        supplier.setEmail(email);
+        supplier.setPhone(phone);
+        supplier.setContactPerson(
+                StringUtils.hasText(updateDTO.getContactPerson())
+                        ? updateDTO.getContactPerson().trim()
+                        : null
+        );
+        supplier.setBusinessLicense(
+                StringUtils.hasText(updateDTO.getBusinessLicense())
+                        ? updateDTO.getBusinessLicense().trim()
+                        : null
+        );
+
+        return newSupplierRepository.save(supplier);
     }
 }

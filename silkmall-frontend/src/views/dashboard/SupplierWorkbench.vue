@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, onUnmounted, reactive, ref } from 'vue'
 import api from '@/services/api'
 import { useAuthState } from '@/services/authState'
 import type { CategoryOption, HomepageContent, PageResponse, ProductSummary } from '@/types'
@@ -10,6 +10,8 @@ interface SupplierProfile {
   companyName?: string | null
   email?: string | null
   phone?: string | null
+  contactPerson?: string | null
+  businessLicense?: string | null
   supplierLevel?: string | null
   status?: string | null
 }
@@ -18,6 +20,8 @@ const { state } = useAuthState()
 
 const profile = ref<SupplierProfile | null>(null)
 const products = ref<ProductSummary[]>([])
+const productListLoading = ref(false)
+const productListError = ref<string | null>(null)
 const homeContent = ref<HomepageContent | null>(null)
 const loading = ref(true)
 const error = ref<string | null>(null)
@@ -33,6 +37,40 @@ const savingProduct = ref(false)
 const productFormError = ref<string | null>(null)
 const productFormMessage = ref<string | null>(null)
 const deletingProductId = ref<number | null>(null)
+
+const editingProfile = ref(false)
+const profileSaving = ref(false)
+const profileFormError = ref<string | null>(null)
+const profileFeedback = ref<string | null>(null)
+
+const profileForm = reactive({
+  companyName: '',
+  email: '',
+  phone: '',
+  contactPerson: '',
+  businessLicense: '',
+})
+
+const productSearchTerm = ref('')
+let productSearchTimer: number | undefined
+
+function resetProfileForm() {
+  profileForm.companyName = ''
+  profileForm.email = ''
+  profileForm.phone = ''
+  profileForm.contactPerson = ''
+  profileForm.businessLicense = ''
+  profileFormError.value = null
+}
+
+function populateProfileForm(source: SupplierProfile) {
+  profileForm.companyName = source.companyName ?? ''
+  profileForm.email = source.email ?? ''
+  profileForm.phone = source.phone ?? ''
+  profileForm.contactPerson = source.contactPerson ?? ''
+  profileForm.businessLicense = source.businessLicense ?? ''
+  profileFormError.value = null
+}
 
 const productForm = reactive({
   id: null as number | null,
@@ -54,14 +92,134 @@ async function loadProfile() {
   if (!state.user) return
   const { data } = await api.get<SupplierProfile>(`/suppliers/${state.user.id}`)
   profile.value = data
+  if (editingProfile.value) {
+    populateProfileForm(data)
+  }
 }
 
-async function loadProducts() {
+async function loadProducts(options: { keyword?: string } = {}) {
   if (!state.user) return
-  const { data } = await api.get<PageResponse<ProductSummary>>(`/products/supplier/${state.user.id}`, {
-    params: { page: 0, size: 6 },
-  })
-  products.value = data.content ?? []
+  const keyword = options.keyword ?? productSearchTerm.value
+  if (options.keyword !== undefined) {
+    productSearchTerm.value = options.keyword
+  }
+  const trimmedKeyword = keyword.trim()
+  const params: Record<string, unknown> = {
+    supplierId: state.user.id,
+    page: 0,
+    size: 30,
+    sortBy: 'createdAt',
+    sortDirection: 'DESC',
+  }
+  if (trimmedKeyword) {
+    params.keyword = trimmedKeyword
+  }
+  productListLoading.value = true
+  productListError.value = null
+  try {
+    const { data } = await api.get<PageResponse<ProductSummary>>('/products/advanced-search', {
+      params,
+    })
+    products.value = data.content ?? []
+  } catch (err) {
+    console.warn('加载商品失败', err)
+    productListError.value = err instanceof Error ? err.message : '加载商品失败'
+    products.value = []
+  } finally {
+    productListLoading.value = false
+  }
+}
+
+function applyProductSearch() {
+  if (productSearchTimer) {
+    window.clearTimeout(productSearchTimer)
+    productSearchTimer = undefined
+  }
+  loadProducts({ keyword: productSearchTerm.value })
+}
+
+function onProductSearchInput() {
+  if (productSearchTimer) {
+    window.clearTimeout(productSearchTimer)
+  }
+  productSearchTimer = window.setTimeout(() => {
+    loadProducts({ keyword: productSearchTerm.value })
+  }, 400)
+}
+
+function clearProductSearch() {
+  if (productSearchTimer) {
+    window.clearTimeout(productSearchTimer)
+    productSearchTimer = undefined
+  }
+  if (!productSearchTerm.value) {
+    return
+  }
+  productSearchTerm.value = ''
+  loadProducts({ keyword: '' })
+}
+
+function openProfileEditor() {
+  if (!profile.value) {
+    return
+  }
+  populateProfileForm(profile.value)
+  profileFeedback.value = null
+  editingProfile.value = true
+}
+
+function cancelProfileEdit() {
+  editingProfile.value = false
+  profileFormError.value = null
+  if (profile.value) {
+    populateProfileForm(profile.value)
+  } else {
+    resetProfileForm()
+  }
+}
+
+async function saveProfile() {
+  if (!state.user) {
+    profileFormError.value = '请先登录供应商账号'
+    return
+  }
+  const companyName = profileForm.companyName.trim()
+  if (!companyName) {
+    profileFormError.value = '请填写企业名称'
+    return
+  }
+  const email = profileForm.email.trim()
+  if (!email) {
+    profileFormError.value = '请填写联系人邮箱'
+    return
+  }
+  const phone = profileForm.phone.trim()
+  if (!phone) {
+    profileFormError.value = '请填写联系电话'
+    return
+  }
+
+  const payload: Record<string, unknown> = {
+    companyName,
+    email,
+    phone,
+    contactPerson: profileForm.contactPerson.trim() || null,
+    businessLicense: profileForm.businessLicense.trim() || null,
+  }
+
+  profileSaving.value = true
+  profileFormError.value = null
+  try {
+    const { data } = await api.put<SupplierProfile>(`/suppliers/${state.user.id}/profile`, payload)
+    profile.value = data
+    populateProfileForm(data)
+    editingProfile.value = false
+    profileFeedback.value = '基础信息已更新'
+  } catch (err) {
+    profileFormError.value = err instanceof Error ? err.message : '更新失败，请稍后重试'
+  } finally {
+    profileSaving.value = false
+  }
 }
 
 async function loadHomeContent() {
@@ -405,6 +563,12 @@ const statusOptions = [
   { value: 'ON_SALE', label: '在售' },
   { value: 'OFF_SALE', label: '未上架' },
 ]
+
+onUnmounted(() => {
+  if (productSearchTimer) {
+    window.clearTimeout(productSearchTimer)
+  }
+})
 </script>
 
 <template>
@@ -438,14 +602,63 @@ const statusOptions = [
     <div v-else-if="error" class="placeholder is-error">{{ error }}</div>
     <template v-else>
       <section class="panel profile" aria-labelledby="supplier-info">
-        <div class="panel-title" id="supplier-info">基础信息</div>
-        <ul>
-          <li><span>企业名称</span><strong>{{ profile?.companyName ?? '—' }}</strong></li>
-          <li><span>联系人邮箱</span><strong>{{ profile?.email ?? '—' }}</strong></li>
-          <li><span>联系电话</span><strong>{{ profile?.phone ?? '—' }}</strong></li>
-          <li><span>等级</span><strong>{{ profile?.supplierLevel ?? '未评级' }}</strong></li>
-          <li><span>审核状态</span><strong>{{ profile?.status ?? '待审核' }}</strong></li>
-        </ul>
+        <div class="panel-title-row">
+          <div class="panel-title" id="supplier-info">基础信息</div>
+          <button v-if="!editingProfile" type="button" class="link-button" @click="openProfileEditor">
+            编辑基础信息
+          </button>
+        </div>
+
+        <p v-if="profileFeedback" class="form-feedback is-success">{{ profileFeedback }}</p>
+
+        <form v-if="editingProfile" class="profile-form" @submit.prevent="saveProfile">
+          <div class="grid">
+            <label>
+              <span>企业名称</span>
+              <input v-model="profileForm.companyName" type="text" placeholder="请输入企业名称" />
+            </label>
+            <label>
+              <span>联系人邮箱</span>
+              <input v-model="profileForm.email" type="email" placeholder="用于接收通知" />
+            </label>
+          </div>
+          <div class="grid">
+            <label>
+              <span>联系电话</span>
+              <input v-model="profileForm.phone" type="tel" placeholder="客服电话" />
+            </label>
+            <label>
+              <span>联系人</span>
+              <input v-model="profileForm.contactPerson" type="text" placeholder="可选：联系人姓名" />
+            </label>
+          </div>
+          <label>
+            <span>营业执照信息</span>
+            <input v-model="profileForm.businessLicense" type="text" placeholder="可选：统一社会信用代码" />
+          </label>
+          <p v-if="profileFormError" class="form-feedback is-error">{{ profileFormError }}</p>
+          <div class="profile-form-actions">
+            <button type="button" class="ghost" @click="cancelProfileEdit" :disabled="profileSaving">
+              取消
+            </button>
+            <button type="submit" class="primary" :disabled="profileSaving">
+              {{ profileSaving ? '保存中…' : '保存信息' }}
+            </button>
+          </div>
+        </form>
+
+        <template v-else>
+          <ul>
+            <li><span>企业名称</span><strong>{{ profile?.companyName ?? '—' }}</strong></li>
+            <li><span>联系人邮箱</span><strong>{{ profile?.email ?? '—' }}</strong></li>
+            <li><span>联系电话</span><strong>{{ profile?.phone ?? '—' }}</strong></li>
+            <li><span>联系人</span><strong>{{ profile?.contactPerson ?? '—' }}</strong></li>
+            <li><span>营业执照</span><strong>{{ profile?.businessLicense ?? '—' }}</strong></li>
+            <li><span>等级</span><strong>{{ profile?.supplierLevel ?? '未评级' }}</strong></li>
+            <li><span>审核状态</span><strong>{{ profile?.status ?? '待审核' }}</strong></li>
+          </ul>
+        </template>
+
         <div class="redeem-box">
           <label>
             <span>兑换码</span>
@@ -469,9 +682,25 @@ const statusOptions = [
       <section class="panel products" aria-labelledby="product-list">
         <div class="panel-title-row">
           <div class="panel-title" id="product-list">商品概览</div>
-          <button type="button" class="primary" @click="openProductForm()">新增商品</button>
+          <div class="panel-actions">
+            <form class="product-search" @submit.prevent="applyProductSearch">
+              <input
+                v-model="productSearchTerm"
+                type="search"
+                placeholder="按名称或描述查询商品"
+                @input="onProductSearchInput"
+              />
+              <button type="submit" class="secondary">查询</button>
+              <button v-if="productSearchTerm" type="button" class="link-button" @click="clearProductSearch">
+                清除
+              </button>
+            </form>
+            <button type="button" class="primary" @click="openProductForm()">新增商品</button>
+          </div>
         </div>
-        <div v-if="products.length" class="product-table">
+        <p v-if="productListError" class="form-feedback is-error">{{ productListError }}</p>
+        <div v-if="productListLoading" class="inline-placeholder">商品加载中…</div>
+        <div v-else-if="products.length" class="product-table">
           <table>
             <thead>
               <tr>
@@ -681,6 +910,27 @@ const statusOptions = [
   gap: 1rem;
 }
 
+.panel-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.product-search {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.product-search input {
+  padding: 0.55rem 0.85rem;
+  border-radius: 0.75rem;
+  border: 1px solid rgba(15, 23, 42, 0.12);
+  min-width: 200px;
+}
+
 .primary {
   border: none;
   border-radius: 0.75rem;
@@ -689,6 +939,36 @@ const statusOptions = [
   color: #fff;
   font-weight: 600;
   cursor: pointer;
+}
+
+.secondary {
+  border: 1px solid rgba(37, 99, 235, 0.4);
+  border-radius: 0.75rem;
+  padding: 0.5rem 1.2rem;
+  background: rgba(37, 99, 235, 0.08);
+  color: #1d4ed8;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.secondary:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+}
+
+.ghost {
+  border: 1px solid rgba(15, 23, 42, 0.15);
+  border-radius: 0.75rem;
+  padding: 0.5rem 1.2rem;
+  background: transparent;
+  color: rgba(15, 23, 42, 0.75);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.ghost:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 
 .primary:disabled {
@@ -701,6 +981,35 @@ const statusOptions = [
   padding: 0;
   display: grid;
   gap: 0.9rem;
+}
+
+.profile-form {
+  display: grid;
+  gap: 1rem;
+}
+
+.profile-form .grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 1rem;
+}
+
+.profile-form label {
+  display: grid;
+  gap: 0.4rem;
+  font-weight: 600;
+  color: rgba(15, 23, 42, 0.65);
+}
+
+.profile-form input {
+  padding: 0.6rem 0.75rem;
+  border-radius: 0.75rem;
+  border: 1px solid rgba(15, 23, 42, 0.12);
+}
+
+.profile-form-actions {
+  display: flex;
+  gap: 0.75rem;
 }
 
 .panel.profile li {
@@ -760,6 +1069,28 @@ const statusOptions = [
 
 .redeem-error {
   color: #b91c1c;
+}
+
+.form-feedback {
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+
+.form-feedback.is-error {
+  color: #b91c1c;
+}
+
+.form-feedback.is-success {
+  color: #15803d;
+}
+
+.inline-placeholder {
+  padding: 1.25rem;
+  border-radius: 1rem;
+  background: rgba(14, 165, 233, 0.08);
+  color: rgba(15, 23, 42, 0.7);
+  text-align: center;
 }
 
 .product-table table {

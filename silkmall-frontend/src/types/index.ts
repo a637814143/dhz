@@ -219,5 +219,6 @@ export interface RegisterPayload {
   confirmPassword: string
   email: string
   phone: string
+  companyName?: string | null
   userType: UserRole
 }
