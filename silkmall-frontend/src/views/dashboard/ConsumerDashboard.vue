@@ -408,7 +408,7 @@ const shortcutLinks = [
           <table v-if="orders.length" class="orders-table">
             <thead>
               <tr>
-                <th scope="col">订单编号</th>
+                <th scope="col" class="col-order-no">订单编号</th>
                 <th scope="col">金额</th>
                 <th scope="col">数量</th>
                 <th scope="col">状态</th>
@@ -418,7 +418,7 @@ const shortcutLinks = [
             </thead>
             <tbody>
               <tr v-for="order in orders" :key="order.id">
-                <td>{{ order.orderNo }}</td>
+                <td class="col-order-no">{{ order.orderNo }}</td>
                 <td>{{ formatCurrency(order.totalAmount) }}</td>
                 <td>{{ order.totalQuantity }}</td>
                 <td><span class="status-pill">{{ order.status }}</span></td>
@@ -802,6 +802,12 @@ const shortcutLinks = [
   width: 100%;
   border-collapse: collapse;
   font-size: 0.95rem;
+}
+
+.orders-table .col-order-no {
+  max-width: 12rem;
+  word-break: break-all;
+  overflow-wrap: anywhere;
 }
 
 .orders-table th,
