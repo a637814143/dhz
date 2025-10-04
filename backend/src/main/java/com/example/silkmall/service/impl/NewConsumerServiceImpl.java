@@ -91,11 +91,50 @@ public class NewConsumerServiceImpl implements ConsumerService {
     
     @Override
     public Consumer update(Consumer consumer) {
-        // 确保密码不会被明文保存
-        if (consumer.getPassword() != null && !consumer.getPassword().startsWith("{bcrypt}")) {
-            consumer.setPassword(passwordEncoder.encode(consumer.getPassword()));
+        if (consumer.getId() == null) {
+            throw new IllegalArgumentException("更新消费者信息时必须提供ID");
         }
-        return newConsumerRepository.save(consumer);
+        Consumer existingConsumer = newConsumerRepository.findById(consumer.getId())
+                .orElseThrow(() -> new RuntimeException("消费者不存在"));
+
+        if (consumer.getUsername() != null) {
+            existingConsumer.setUsername(consumer.getUsername());
+        }
+        if (consumer.getEmail() != null) {
+            existingConsumer.setEmail(consumer.getEmail());
+        }
+        if (consumer.getPhone() != null) {
+            existingConsumer.setPhone(consumer.getPhone());
+        }
+        if (consumer.getAddress() != null) {
+            existingConsumer.setAddress(consumer.getAddress());
+        }
+
+        if (consumer.getRealName() != null) {
+            existingConsumer.setRealName(consumer.getRealName());
+        }
+        if (consumer.getIdCard() != null) {
+            existingConsumer.setIdCard(consumer.getIdCard());
+        }
+        if (consumer.getAvatar() != null) {
+            existingConsumer.setAvatar(consumer.getAvatar());
+        }
+        if (consumer.getPoints() != null) {
+            existingConsumer.setPoints(consumer.getPoints());
+        }
+        if (consumer.getMembershipLevel() != null) {
+            existingConsumer.setMembershipLevel(consumer.getMembershipLevel());
+        }
+
+        if (consumer.getPassword() != null && !consumer.getPassword().isEmpty()) {
+            String password = consumer.getPassword();
+            if (!isPasswordEncoded(password)) {
+                password = passwordEncoder.encode(password);
+            }
+            existingConsumer.setPassword(password);
+        }
+
+        return newConsumerRepository.save(existingConsumer);
     }
     
     @Override
@@ -190,5 +229,11 @@ public class NewConsumerServiceImpl implements ConsumerService {
                     ? criteriaBuilder.conjunction()
                     : criteriaBuilder.and(predicates.toArray(new Predicate[0]));
         };
+    }
+    private boolean isPasswordEncoded(String password) {
+        return password.startsWith("{bcrypt}")
+                || password.startsWith("$2a$")
+                || password.startsWith("$2b$")
+                || password.startsWith("$2y$");
     }
 }
