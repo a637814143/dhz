@@ -208,6 +208,37 @@ public class OrderServiceImpl extends BaseServiceImpl<Order, Long> implements Or
         return findById(id)
                 .orElseThrow(() -> new RuntimeException("订单不存在"));
     }
+
+    @Transactional
+    @Override
+    public Order updateContactInfo(Long id, String shippingAddress, String recipientName, String recipientPhone) {
+        Order order = findById(id)
+                .orElseThrow(() -> new RuntimeException("订单不存在"));
+
+        String status = order.getStatus();
+        if (status != null) {
+            switch (status) {
+                case "DELIVERED", "CANCELLED", "REVOKED" ->
+                        throw new RuntimeException("当前状态下无法修改收货信息");
+                default -> {
+                }
+            }
+        }
+
+        order.setShippingAddress(normalizeBlankToNull(shippingAddress));
+        order.setRecipientName(normalizeBlankToNull(recipientName));
+        order.setRecipientPhone(normalizeBlankToNull(recipientPhone));
+
+        return orderRepository.save(order);
+    }
+
+    private String normalizeBlankToNull(String value) {
+        if (value == null) {
+            return null;
+        }
+        String trimmed = value.trim();
+        return trimmed.isEmpty() ? null : trimmed;
+    }
     
     // 生成订单编号
     private String generateOrderNo() {

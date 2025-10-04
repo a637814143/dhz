@@ -1,5 +1,6 @@
 package com.example.silkmall.controller;
 
+import com.example.silkmall.dto.OrderContactUpdateRequest;
 import com.example.silkmall.entity.Consumer;
 import com.example.silkmall.entity.Order;
 import com.example.silkmall.service.OrderService;
@@ -114,6 +115,27 @@ public class OrderController extends BaseController {
         }
 
         return success(orders);
+    }
+
+    @PutMapping("/{id}/contact")
+    @PreAuthorize("hasRole('ADMIN') or hasRole('CONSUMER')")
+    public ResponseEntity<?> updateOrderContact(@PathVariable Long id,
+                                                @RequestBody OrderContactUpdateRequest request,
+                                                @AuthenticationPrincipal CustomUserDetails currentUser) {
+        Optional<Order> order = orderService.findById(id);
+        if (order.isEmpty()) {
+            return notFound("订单不存在");
+        }
+        if (!isOwnerOrAdmin(currentUser, order.get())) {
+            return redirectForUser(currentUser);
+        }
+
+        Order updated = orderService.updateContactInfo(
+                id,
+                request.getShippingAddress(),
+                request.getRecipientName(),
+                request.getRecipientPhone());
+        return success(updated);
     }
 
     @PutMapping("/{id}/cancel")

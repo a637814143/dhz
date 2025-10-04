@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 import api from '@/services/api'
 import { useAuthState } from '@/services/authState'
 import type {
@@ -7,6 +7,8 @@ import type {
   HomepageContent,
   PageResponse,
   ProductSummary,
+  OrderDetail,
+  ReturnRequest,
 } from '@/types'
 
 interface OrderSummary {
@@ -17,6 +19,8 @@ interface OrderSummary {
   status: string
   orderTime: string
 }
+
+type OrderActionMode = 'view' | 'edit' | 'return'
 
 interface WalletBalanceResponse {
   balance: number | string
@@ -47,6 +51,28 @@ const redeemCodeInput = ref('')
 const redeeming = ref(false)
 const redeemMessage = ref<string | null>(null)
 const redeemError = ref<string | null>(null)
+
+const showOrderModal = ref(false)
+const activeOrderId = ref<number | null>(null)
+const orderActionMode = ref<OrderActionMode | null>(null)
+const orderDetail = ref<OrderDetail | null>(null)
+const orderActionLoading = ref(false)
+const orderActionError = ref<string | null>(null)
+const orderActionSuccess = ref<string | null>(null)
+const returnRequests = ref<ReturnRequest[]>([])
+const savingOrderContact = ref(false)
+const submittingReturn = ref(false)
+
+const orderEditForm = reactive({
+  shippingAddress: '',
+  recipientName: '',
+  recipientPhone: '',
+})
+
+const returnForm = reactive({
+  orderItemId: null as number | null,
+  reason: '',
+})
 
 const editingProfile = ref(false)
 const profileSaving = ref(false)
@@ -169,6 +195,233 @@ async function loadOrders() {
   orders.value = data.content ?? []
 }
 
+function resetOrderActionState() {
+  orderDetail.value = null
+  orderActionError.value = null
+  orderActionSuccess.value = null
+  orderActionLoading.value = false
+  returnRequests.value = []
+  orderEditForm.shippingAddress = ''
+  orderEditForm.recipientName = ''
+  orderEditForm.recipientPhone = ''
+  returnForm.orderItemId = null
+  returnForm.reason = ''
+  savingOrderContact.value = false
+  submittingReturn.value = false
+}
+
+function closeOrderModal() {
+  showOrderModal.value = false
+  activeOrderId.value = null
+  orderActionMode.value = null
+  resetOrderActionState()
+}
+
+function openOrderAction(orderId: number, mode: OrderActionMode) {
+  activeOrderId.value = orderId
+  orderActionMode.value = mode
+  orderActionError.value = null
+  orderActionSuccess.value = null
+  returnForm.reason = ''
+  returnForm.orderItemId = null
+  orderEditForm.shippingAddress = ''
+  orderEditForm.recipientName = ''
+  orderEditForm.recipientPhone = ''
+  orderDetail.value = null
+  returnRequests.value = []
+  orderActionLoading.value = true
+  showOrderModal.value = true
+  void loadOrderDetail(orderId)
+}
+
+async function loadOrderDetail(orderId: number) {
+  orderActionLoading.value = true
+  orderActionError.value = null
+  try {
+    const { data } = await api.get<OrderDetail>(`/orders/${orderId}/detail`)
+    orderDetail.value = data
+    await loadReturnRequests(orderId)
+    if (orderActionMode.value === 'edit' && orderDetail.value) {
+      populateOrderEditForm(orderDetail.value)
+    }
+    if (orderActionMode.value === 'return' && orderDetail.value) {
+      prepareReturnForm(orderDetail.value)
+    }
+  } catch (err) {
+    const message = err instanceof Error ? err.message : '加载订单详情失败'
+    orderActionError.value = message
+    orderDetail.value = null
+  } finally {
+    orderActionLoading.value = false
+  }
+}
+
+async function loadReturnRequests(orderId: number) {
+  try {
+    const { data } = await api.get<ReturnRequest[]>(`/returns/orders/${orderId}`)
+    returnRequests.value = data ?? []
+  } catch (err) {
+    console.warn('加载退货信息失败', err)
+    returnRequests.value = []
+  }
+}
+
+function populateOrderEditForm(detail: OrderDetail) {
+  orderEditForm.shippingAddress = detail.shippingAddress ?? ''
+  orderEditForm.recipientName = detail.recipientName ?? ''
+  orderEditForm.recipientPhone = detail.recipientPhone ?? ''
+}
+
+function prepareReturnForm(detail: OrderDetail) {
+  if (!detail.orderItems || detail.orderItems.length === 0) {
+    returnForm.orderItemId = null
+    return
+  }
+  const eligible = detail.orderItems.find((item) => !isReturnDisabledForItem(item.id))
+  if (eligible) {
+    returnForm.orderItemId = eligible.id
+  } else {
+    returnForm.orderItemId = detail.orderItems[0].id
+  }
+  returnForm.reason = ''
+}
+
+function selectReturnItem(orderItemId: number) {
+  if (isReturnDisabledForItem(orderItemId)) {
+    return
+  }
+  returnForm.orderItemId = orderItemId
+}
+
+function canEditOrder(status?: string | null) {
+  if (!status) return true
+  const normalized = status.toUpperCase()
+  return !['DELIVERED', 'CANCELLED', 'REVOKED'].includes(normalized)
+}
+
+function canReturnOrder(status?: string | null) {
+  if (!status) return true
+  const normalized = status.toUpperCase()
+  return !['CANCELLED', 'REVOKED'].includes(normalized)
+}
+
+function findReturnRequest(orderItemId: number) {
+  return returnRequests.value.find((request) => request.orderItemId === orderItemId)
+}
+
+function isReturnDisabledForItem(orderItemId: number | null) {
+  if (!orderItemId) {
+    return false
+  }
+  const request = findReturnRequest(orderItemId)
+  if (!request) {
+    return false
+  }
+  const normalized = request.status?.toUpperCase() ?? ''
+  return normalized === 'PENDING' || normalized === 'APPROVED'
+}
+
+function returnStatusLabel(status?: string | null) {
+  if (!status) return '—'
+  switch (status.toUpperCase()) {
+    case 'PENDING':
+      return '审核中'
+    case 'APPROVED':
+      return '已通过'
+    case 'REJECTED':
+      return '已拒绝'
+    case 'COMPLETED':
+      return '已完成'
+    default:
+      return status
+  }
+}
+
+function returnStatusForItem(orderItemId: number) {
+  const request = findReturnRequest(orderItemId)
+  if (!request) {
+    return null
+  }
+  return returnStatusLabel(request.status)
+}
+
+async function submitOrderContactUpdate() {
+  if (!activeOrderId.value || !orderDetail.value) {
+    return
+  }
+  const shippingAddress = orderEditForm.shippingAddress.trim()
+  const recipientName = orderEditForm.recipientName.trim()
+  const recipientPhone = orderEditForm.recipientPhone.trim()
+
+  const payload = {
+    shippingAddress: shippingAddress || null,
+    recipientName: recipientName || null,
+    recipientPhone: recipientPhone || null,
+  }
+
+  orderActionError.value = null
+  orderActionSuccess.value = null
+  savingOrderContact.value = true
+  try {
+    await api.put(`/orders/${activeOrderId.value}/contact`, payload)
+    orderActionSuccess.value = '收货信息已更新'
+    if (orderDetail.value) {
+      orderDetail.value.shippingAddress = payload.shippingAddress
+      orderDetail.value.recipientName = payload.recipientName
+      orderDetail.value.recipientPhone = payload.recipientPhone
+    }
+    await loadOrders()
+  } catch (err) {
+    const message = err instanceof Error ? err.message : '更新收货信息失败'
+    orderActionError.value = message
+  } finally {
+    savingOrderContact.value = false
+  }
+}
+
+async function submitReturnRequest() {
+  if (!activeOrderId.value || !orderDetail.value) {
+    return
+  }
+  if (returnForm.orderItemId === null) {
+    orderActionError.value = '请选择需要退货的商品'
+    return
+  }
+  if (isReturnDisabledForItem(returnForm.orderItemId)) {
+    orderActionError.value = '所选商品的退货申请正在处理中'
+    return
+  }
+
+  const reason = returnForm.reason.trim()
+  if (!reason) {
+    orderActionError.value = '请填写退货原因'
+    return
+  }
+
+  submittingReturn.value = true
+  orderActionError.value = null
+  orderActionSuccess.value = null
+  try {
+    const { data } = await api.post<ReturnRequest>(
+      `/returns/order-items/${returnForm.orderItemId}`,
+      { reason }
+    )
+    returnRequests.value = [data, ...returnRequests.value.filter((request) => request.id !== data.id)]
+    orderActionSuccess.value = '退货申请已提交'
+    returnForm.reason = ''
+    const pendingSelection = returnForm.orderItemId
+    if (pendingSelection && isReturnDisabledForItem(pendingSelection) && orderDetail.value) {
+      const nextEligible = orderDetail.value.orderItems.find((item) => !isReturnDisabledForItem(item.id))
+      returnForm.orderItemId = nextEligible ? nextEligible.id : null
+    }
+  } catch (err) {
+    const message = err instanceof Error ? err.message : '提交退货申请失败'
+    orderActionError.value = message
+  } finally {
+    submittingReturn.value = false
+  }
+}
+
 async function loadHomeContent() {
   const { data } = await api.get<HomepageContent>('/content/home')
   homeContent.value = data
@@ -265,6 +518,25 @@ const shortcutLinks = [
   { label: '我的评价', href: '#reviews' },
   { label: '地址管理', href: '#address' },
 ]
+
+const orderModalTitle = computed(() => {
+  switch (orderActionMode.value) {
+    case 'edit':
+      return '修改收货信息'
+    case 'return':
+      return '申请退货'
+    default:
+      return '订单详情'
+  }
+})
+
+const isReturnSubmitDisabled = computed(() => {
+  if (submittingReturn.value) return true
+  if (!orderDetail.value) return true
+  if (returnForm.orderItemId === null) return true
+  if (isReturnDisabledForItem(returnForm.orderItemId)) return true
+  return returnForm.reason.trim().length === 0
+})
 </script>
 
 <template>
@@ -378,6 +650,7 @@ const shortcutLinks = [
                 <th scope="col">数量</th>
                 <th scope="col">状态</th>
                 <th scope="col">下单时间</th>
+                <th scope="col">操作</th>
               </tr>
             </thead>
             <tbody>
@@ -387,6 +660,25 @@ const shortcutLinks = [
                 <td>{{ order.totalQuantity }}</td>
                 <td><span class="status-pill">{{ order.status }}</span></td>
                 <td>{{ formatDateTime(order.orderTime) }}</td>
+                <td>
+                  <div class="order-actions">
+                    <button type="button" @click="openOrderAction(order.id, 'view')">查看</button>
+                    <button
+                      type="button"
+                      @click="openOrderAction(order.id, 'edit')"
+                      :disabled="!canEditOrder(order.status)"
+                    >
+                      更改
+                    </button>
+                    <button
+                      type="button"
+                      @click="openOrderAction(order.id, 'return')"
+                      :disabled="!canReturnOrder(order.status)"
+                    >
+                      退货
+                    </button>
+                  </div>
+                </td>
               </tr>
             </tbody>
           </table>
@@ -423,6 +715,174 @@ const shortcutLinks = [
         </section>
       </div>
     </template>
+
+    <div
+      v-if="showOrderModal"
+      class="order-modal-backdrop"
+      role="dialog"
+      aria-modal="true"
+      @click.self="closeOrderModal"
+    >
+      <div class="order-modal">
+        <header class="modal-header">
+          <h2>{{ orderModalTitle }}</h2>
+          <button type="button" class="modal-close" aria-label="关闭" @click="closeOrderModal">×</button>
+        </header>
+        <div class="modal-body">
+          <p v-if="orderActionSuccess" class="modal-feedback is-success">{{ orderActionSuccess }}</p>
+          <p v-if="orderActionError" class="modal-feedback is-error">{{ orderActionError }}</p>
+          <div v-if="orderActionLoading" class="modal-placeholder">正在加载订单信息…</div>
+          <div v-else-if="!orderDetail" class="modal-placeholder">暂无订单信息</div>
+          <template v-else>
+            <dl class="order-info-grid">
+              <div>
+                <dt>订单编号</dt>
+                <dd>{{ orderDetail.orderNo }}</dd>
+              </div>
+              <div>
+                <dt>订单金额</dt>
+                <dd>{{ formatCurrency(orderDetail.totalAmount) }}</dd>
+              </div>
+              <div>
+                <dt>商品数量</dt>
+                <dd>{{ orderDetail.totalQuantity }}</dd>
+              </div>
+              <div>
+                <dt>订单状态</dt>
+                <dd><span class="status-pill">{{ orderDetail.status }}</span></dd>
+              </div>
+              <div>
+                <dt>下单时间</dt>
+                <dd>{{ formatDateTime(orderDetail.orderTime) }}</dd>
+              </div>
+              <div v-if="orderDetail.paymentTime">
+                <dt>支付时间</dt>
+                <dd>{{ formatDateTime(orderDetail.paymentTime) }}</dd>
+              </div>
+              <div v-if="orderDetail.shippingTime">
+                <dt>发货时间</dt>
+                <dd>{{ formatDateTime(orderDetail.shippingTime) }}</dd>
+              </div>
+              <div v-if="orderDetail.deliveryTime">
+                <dt>收货时间</dt>
+                <dd>{{ formatDateTime(orderDetail.deliveryTime) }}</dd>
+              </div>
+            </dl>
+
+            <section v-if="orderActionMode === 'view'" class="order-detail-section">
+              <h3>收货信息</h3>
+              <ul class="shipping-list">
+                <li>
+                  <span>收货人</span>
+                  <strong>{{ orderDetail.recipientName ?? '—' }}</strong>
+                </li>
+                <li>
+                  <span>联系电话</span>
+                  <strong>{{ orderDetail.recipientPhone ?? '—' }}</strong>
+                </li>
+                <li>
+                  <span>收货地址</span>
+                  <strong>{{ orderDetail.shippingAddress ?? '尚未填写' }}</strong>
+                </li>
+              </ul>
+
+              <h3>商品明细</h3>
+              <ul class="order-item-list">
+                <li v-for="item in orderDetail.orderItems ?? []" :key="item.id">
+                  <div class="item-meta">
+                    <strong>{{ item.product?.name ?? '商品' }}</strong>
+                    <p>数量：{{ item.quantity }}，单价：{{ formatCurrency(item.unitPrice) }}</p>
+                  </div>
+                  <div class="item-actions">
+                    <span>{{ formatCurrency(item.totalPrice) }}</span>
+                    <span v-if="returnStatusForItem(item.id)" class="return-status-pill">
+                      {{ returnStatusForItem(item.id) }}
+                    </span>
+                  </div>
+                </li>
+              </ul>
+            </section>
+
+            <form
+              v-else-if="orderActionMode === 'edit'"
+              class="order-edit-form"
+              @submit.prevent="submitOrderContactUpdate"
+            >
+              <label>
+                <span>收货人</span>
+                <input v-model="orderEditForm.recipientName" type="text" placeholder="请输入收货人姓名" />
+              </label>
+              <label>
+                <span>联系电话</span>
+                <input v-model="orderEditForm.recipientPhone" type="tel" placeholder="用于联系配送" />
+              </label>
+              <label>
+                <span>收货地址</span>
+                <textarea
+                  v-model="orderEditForm.shippingAddress"
+                  rows="3"
+                  placeholder="请输入详细收货地址"
+                ></textarea>
+              </label>
+              <div class="modal-actions">
+                <button type="button" class="ghost" @click="closeOrderModal" :disabled="savingOrderContact">
+                  取消
+                </button>
+                <button type="submit" class="primary" :disabled="savingOrderContact">
+                  {{ savingOrderContact ? '保存中…' : '保存修改' }}
+                </button>
+              </div>
+            </form>
+
+            <form
+              v-else-if="orderActionMode === 'return'"
+              class="order-return-form"
+              @submit.prevent="submitReturnRequest"
+            >
+              <fieldset class="return-items">
+                <legend>选择退货商品</legend>
+                <template v-if="(orderDetail.orderItems?.length ?? 0) > 0">
+                  <label
+                    v-for="item in orderDetail.orderItems ?? []"
+                    :key="item.id"
+                    class="return-item"
+                    :class="{ 'is-disabled': isReturnDisabledForItem(item.id) }"
+                  >
+                    <input
+                      type="radio"
+                      name="return-item"
+                      :checked="returnForm.orderItemId === item.id"
+                      @change="selectReturnItem(item.id)"
+                      :disabled="isReturnDisabledForItem(item.id)"
+                    />
+                    <div>
+                      <strong>{{ item.product?.name ?? '商品' }}</strong>
+                      <p>数量：{{ item.quantity }}，合计：{{ formatCurrency(item.totalPrice) }}</p>
+                    </div>
+                    <span v-if="returnStatusForItem(item.id)" class="return-status-pill">
+                      {{ returnStatusForItem(item.id) }}
+                    </span>
+                  </label>
+                </template>
+                <p v-else class="modal-placeholder">订单暂无可退货的商品。</p>
+              </fieldset>
+              <label>
+                <span>退货原因</span>
+                <textarea v-model="returnForm.reason" rows="3" placeholder="请描述退货原因"></textarea>
+              </label>
+              <div class="modal-actions">
+                <button type="button" class="ghost" @click="closeOrderModal" :disabled="submittingReturn">
+                  取消
+                </button>
+                <button type="submit" class="primary" :disabled="isReturnSubmitDisabled">
+                  {{ submittingReturn ? '提交中…' : '提交申请' }}
+                </button>
+              </div>
+            </form>
+          </template>
+        </div>
+      </div>
+    </div>
   </section>
 </template>
 
@@ -724,6 +1184,32 @@ const shortcutLinks = [
   font-size: 0.85rem;
 }
 
+.order-actions {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.order-actions button {
+  border: none;
+  background: rgba(79, 70, 229, 0.1);
+  color: #4f46e5;
+  font-weight: 600;
+  padding: 0.35rem 0.85rem;
+  border-radius: 0.65rem;
+  cursor: pointer;
+  transition: background-color 0.2s ease, color 0.2s ease, opacity 0.2s ease;
+}
+
+.order-actions button:hover {
+  background: rgba(79, 70, 229, 0.18);
+}
+
+.order-actions button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 .empty {
   color: rgba(17, 24, 39, 0.55);
 }
@@ -802,6 +1288,321 @@ const shortcutLinks = [
 .announcement-list time {
   color: rgba(17, 24, 39, 0.45);
   font-size: 0.85rem;
+}
+
+.order-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(17, 24, 39, 0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.5rem;
+  z-index: 1000;
+}
+
+.order-modal {
+  background: rgba(255, 255, 255, 0.98);
+  border-radius: 24px;
+  width: min(720px, 100%);
+  max-height: 90vh;
+  overflow-y: auto;
+  box-shadow: 0 24px 60px rgba(15, 23, 42, 0.25);
+  display: flex;
+  flex-direction: column;
+}
+
+.modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1.5rem 1.75rem;
+  border-bottom: 1px solid rgba(17, 24, 39, 0.08);
+}
+
+.modal-header h2 {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: rgba(17, 24, 39, 0.85);
+}
+
+.modal-close {
+  border: none;
+  background: none;
+  font-size: 1.6rem;
+  line-height: 1;
+  color: rgba(17, 24, 39, 0.55);
+  cursor: pointer;
+}
+
+.modal-close:hover {
+  color: rgba(17, 24, 39, 0.85);
+}
+
+.modal-body {
+  padding: 1.75rem;
+  display: grid;
+  gap: 1.25rem;
+}
+
+.modal-feedback {
+  margin: 0;
+  padding: 0.7rem 1rem;
+  border-radius: 0.75rem;
+  font-weight: 600;
+}
+
+.modal-feedback.is-success {
+  background: rgba(34, 197, 94, 0.15);
+  color: #166534;
+}
+
+.modal-feedback.is-error {
+  background: rgba(248, 113, 113, 0.18);
+  color: #7f1d1d;
+}
+
+.modal-placeholder {
+  padding: 1.2rem 1rem;
+  background: rgba(79, 70, 229, 0.08);
+  border-radius: 0.9rem;
+  text-align: center;
+  color: rgba(17, 24, 39, 0.7);
+}
+
+.order-info-grid {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+}
+
+.order-info-grid div {
+  display: grid;
+  gap: 0.3rem;
+}
+
+.order-info-grid dt {
+  font-size: 0.85rem;
+  color: rgba(17, 24, 39, 0.55);
+}
+
+.order-info-grid dd {
+  margin: 0;
+  font-weight: 600;
+  color: rgba(17, 24, 39, 0.85);
+}
+
+.order-detail-section h3 {
+  font-size: 1.05rem;
+  font-weight: 700;
+  margin-bottom: 0.75rem;
+  color: rgba(17, 24, 39, 0.85);
+}
+
+.shipping-list {
+  list-style: none;
+  padding: 0;
+  display: grid;
+  gap: 0.65rem;
+  margin-bottom: 1.25rem;
+}
+
+.shipping-list li {
+  display: grid;
+  gap: 0.25rem;
+}
+
+.shipping-list span {
+  color: rgba(17, 24, 39, 0.6);
+  font-size: 0.85rem;
+}
+
+.shipping-list strong {
+  color: rgba(17, 24, 39, 0.85);
+  font-weight: 600;
+}
+
+.order-item-list {
+  list-style: none;
+  padding: 0;
+  display: grid;
+  gap: 1rem;
+}
+
+.order-item-list li {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 1rem;
+  padding: 1rem;
+  border-radius: 1rem;
+  border: 1px solid rgba(79, 70, 229, 0.12);
+  background: rgba(79, 70, 229, 0.04);
+}
+
+.item-meta {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.item-meta strong {
+  font-weight: 700;
+  color: rgba(17, 24, 39, 0.85);
+}
+
+.item-meta p {
+  margin: 0;
+  color: rgba(17, 24, 39, 0.65);
+}
+
+.item-actions {
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+  flex-wrap: wrap;
+  color: rgba(17, 24, 39, 0.78);
+  font-weight: 600;
+}
+
+.return-status-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.2rem 0.6rem;
+  border-radius: 999px;
+  background: rgba(16, 185, 129, 0.15);
+  color: #047857;
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.order-edit-form,
+.order-return-form {
+  display: grid;
+  gap: 1.15rem;
+}
+
+.order-edit-form label,
+.order-return-form label {
+  display: grid;
+  gap: 0.45rem;
+  font-weight: 600;
+  color: rgba(17, 24, 39, 0.72);
+}
+
+.order-edit-form input,
+.order-edit-form textarea,
+.order-return-form textarea {
+  padding: 0.7rem 0.85rem;
+  border-radius: 0.85rem;
+  border: 1px solid rgba(17, 24, 39, 0.12);
+  background: rgba(255, 255, 255, 0.98);
+  font-size: 0.95rem;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.order-edit-form input:focus,
+.order-edit-form textarea:focus,
+.order-return-form textarea:focus {
+  outline: none;
+  border-color: rgba(79, 70, 229, 0.5);
+  box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.18);
+}
+
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.modal-actions .ghost,
+.modal-actions .primary {
+  padding: 0.6rem 1.25rem;
+  border-radius: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 0.2s ease, color 0.2s ease, opacity 0.2s ease;
+}
+
+.modal-actions .ghost {
+  border: 1px solid rgba(17, 24, 39, 0.18);
+  background: rgba(255, 255, 255, 0.85);
+  color: rgba(17, 24, 39, 0.78);
+}
+
+.modal-actions .ghost:hover {
+  background: rgba(17, 24, 39, 0.08);
+}
+
+.modal-actions .primary {
+  border: none;
+  background: linear-gradient(135deg, #6366f1, #8b5cf6);
+  color: #fff;
+  box-shadow: 0 12px 26px rgba(79, 70, 229, 0.22);
+}
+
+.modal-actions .primary:hover {
+  background: linear-gradient(135deg, #4f46e5, #7c3aed);
+}
+
+.modal-actions button:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+.return-items {
+  border: 1px solid rgba(17, 24, 39, 0.08);
+  border-radius: 1rem;
+  padding: 1rem;
+  display: grid;
+  gap: 0.85rem;
+}
+
+.return-items legend {
+  font-weight: 700;
+  color: rgba(17, 24, 39, 0.75);
+  padding: 0 0.25rem;
+}
+
+.return-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.85rem;
+  padding: 0.75rem;
+  border-radius: 0.85rem;
+  background: rgba(79, 70, 229, 0.05);
+  border: 1px solid rgba(79, 70, 229, 0.12);
+}
+
+.return-item input {
+  margin: 0;
+}
+
+.return-item div {
+  flex: 1;
+  display: grid;
+  gap: 0.3rem;
+}
+
+.return-item strong {
+  font-weight: 600;
+  color: rgba(17, 24, 39, 0.85);
+}
+
+.return-item p {
+  margin: 0;
+  color: rgba(17, 24, 39, 0.65);
+}
+
+.return-item.is-disabled {
+  opacity: 0.55;
+}
+
+.return-item.is-disabled input {
+  cursor: not-allowed;
 }
 
 @media (max-width: 900px) {
