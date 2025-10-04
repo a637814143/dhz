@@ -18,6 +18,10 @@ interface OrderSummary {
   orderTime: string
 }
 
+interface WalletBalanceResponse {
+  balance: number | string
+}
+
 interface ConsumerProfile {
   id: number
   username: string
@@ -54,6 +58,17 @@ const profileForm = reactive({
   phone: '',
   address: '',
 })
+
+function normalizeBalance(raw: unknown): number {
+  if (typeof raw === 'number' && Number.isFinite(raw)) {
+    return raw
+  }
+  if (typeof raw === 'string') {
+    const parsed = Number.parseFloat(raw)
+    return Number.isNaN(parsed) ? 0 : parsed
+  }
+  return 0
+}
 
 function resetProfileForm() {
   profileForm.email = ''
@@ -163,8 +178,8 @@ async function loadHomeContent() {
 async function loadWallet() {
   if (!state.user) return
   try {
-    const { data } = await api.get<{ balance: number }>('/wallet')
-    walletBalance.value = data.balance
+    const { data } = await api.get<WalletBalanceResponse>('/wallet')
+    walletBalance.value = normalizeBalance(data.balance)
   } catch (err) {
     console.warn('加载钱包信息失败', err)
     walletBalance.value = null
@@ -188,8 +203,9 @@ onMounted(() => {
 })
 
 function formatCurrency(amount?: number | null) {
-  if (typeof amount !== 'number' || Number.isNaN(amount)) return '¥0.00'
-  return new Intl.NumberFormat('zh-CN', { style: 'currency', currency: 'CNY' }).format(amount)
+  const normalized = normalizeBalance(amount)
+  if (!Number.isFinite(normalized)) return '¥0.00'
+  return new Intl.NumberFormat('zh-CN', { style: 'currency', currency: 'CNY' }).format(normalized)
 }
 
 function formatDateTime(value?: string | null) {
@@ -232,8 +248,8 @@ async function redeemWallet() {
   }
   redeeming.value = true
   try {
-    const { data } = await api.post<{ balance: number }>('/wallet/redeem', { code })
-    walletBalance.value = data.balance
+    const { data } = await api.post<WalletBalanceResponse>('/wallet/redeem', { code })
+    walletBalance.value = normalizeBalance(data.balance)
     redeemCodeInput.value = ''
     redeemMessage.value = '兑换成功，余额已更新'
   } catch (err) {

@@ -4,6 +4,10 @@ import api from '@/services/api'
 import { useAuthState } from '@/services/authState'
 import type { CategoryOption, HomepageContent, PageResponse, ProductSummary } from '@/types'
 
+interface WalletBalanceResponse {
+  balance: number | string
+}
+
 interface SupplierProfile {
   id: number
   username: string
@@ -37,6 +41,17 @@ const savingProduct = ref(false)
 const productFormError = ref<string | null>(null)
 const productFormMessage = ref<string | null>(null)
 const deletingProductId = ref<number | null>(null)
+
+function normalizeBalance(raw: unknown): number {
+  if (typeof raw === 'number' && Number.isFinite(raw)) {
+    return raw
+  }
+  if (typeof raw === 'string') {
+    const parsed = Number.parseFloat(raw)
+    return Number.isNaN(parsed) ? 0 : parsed
+  }
+  return 0
+}
 
 const editingProfile = ref(false)
 const profileSaving = ref(false)
@@ -350,8 +365,8 @@ async function loadCategories() {
 async function loadWallet() {
   if (!state.user) return
   try {
-    const { data } = await api.get<{ balance: number }>('/wallet')
-    walletBalance.value = data.balance
+    const { data } = await api.get<WalletBalanceResponse>('/wallet')
+    walletBalance.value = normalizeBalance(data.balance)
   } catch (err) {
     console.warn('加载钱包失败', err)
     walletBalance.value = null
@@ -379,8 +394,9 @@ const totalSales = computed(() => products.value.reduce((acc, item) => acc + (it
 const onSaleProducts = computed(() => products.value.filter((item) => item.status === 'ON_SALE').length)
 
 function formatCurrency(amount?: number | null) {
-  if (typeof amount !== 'number' || Number.isNaN(amount)) return '¥0.00'
-  return new Intl.NumberFormat('zh-CN', { style: 'currency', currency: 'CNY' }).format(amount)
+  const normalized = normalizeBalance(amount)
+  if (!Number.isFinite(normalized)) return '¥0.00'
+  return new Intl.NumberFormat('zh-CN', { style: 'currency', currency: 'CNY' }).format(normalized)
 }
 
 function productStatus(status?: string | null) {
@@ -512,8 +528,8 @@ async function redeemWallet() {
   }
   redeeming.value = true
   try {
-    const { data } = await api.post<{ balance: number }>('/wallet/redeem', { code })
-    walletBalance.value = data.balance
+    const { data } = await api.post<WalletBalanceResponse>('/wallet/redeem', { code })
+    walletBalance.value = normalizeBalance(data.balance)
     redeemCodeInput.value = ''
     redeemMessage.value = '兑换成功，余额已更新'
   } catch (err) {
@@ -1303,3 +1319,4 @@ onUnmounted(() => {
   }
 }
 </style>
+
