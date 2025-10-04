@@ -187,20 +187,33 @@ public class OrderServiceImpl extends BaseServiceImpl<Order, Long> implements Or
     public void deliverOrder(Long id) {
         Order order = findById(id)
                 .orElseThrow(() -> new RuntimeException("订单不存在"));
-        
+
         if (!"SHIPPING".equals(order.getStatus())) {
             throw new RuntimeException("只有运输中的订单才能确认收货");
         }
-        
+
         order.setStatus("DELIVERED");
         order.setDeliveryTime(new Date());
-        
+
         orderRepository.save(order);
-        
+
         // 订单完成后，可以增加产品销量和消费者积分
         // 这里简化处理，实际项目中可能需要更复杂的逻辑
     }
-    
+
+    @Transactional
+    @Override
+    public Order updateContactInfo(Long id, String shippingAddress, String recipientName, String recipientPhone) {
+        Order order = findById(id)
+                .orElseThrow(() -> new RuntimeException("订单不存在"));
+
+        order.setShippingAddress(shippingAddress);
+        order.setRecipientName(recipientName);
+        order.setRecipientPhone(recipientPhone);
+
+        return orderRepository.save(order);
+    }
+
     @Override
     public Order findOrderDetail(Long id) {
         // 这里可以返回包含订单项和产品详情的完整订单信息

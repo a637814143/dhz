@@ -1,10 +1,12 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 import api from '@/services/api'
 import { useAuthState } from '@/services/authState'
 import type {
   Announcement,
   HomepageContent,
+  OrderDetail,
+  OrderItemDetail,
   PageResponse,
   ProductSummary,
 } from '@/types'
@@ -41,6 +43,34 @@ const redeemCodeInput = ref('')
 const redeeming = ref(false)
 const redeemMessage = ref<string | null>(null)
 const redeemError = ref<string | null>(null)
+
+const activeOrder = ref<OrderSummary | null>(null)
+const orderDetail = ref<OrderDetail | null>(null)
+const orderDetailLoading = ref(false)
+const orderDetailError = ref<string | null>(null)
+
+const showOrderDetailModal = ref(false)
+const showReturnModal = ref(false)
+const showEditModal = ref(false)
+
+const returnSubmitting = ref(false)
+const returnMessage = ref<string | null>(null)
+const returnError = ref<string | null>(null)
+const selectedReturnItemId = ref<number | null>(null)
+const returnForm = reactive({
+  reason: '',
+})
+
+const updateSubmitting = ref(false)
+const updateMessage = ref<string | null>(null)
+const updateError = ref<string | null>(null)
+const orderUpdateForm = reactive({
+  shippingAddress: '',
+  recipientName: '',
+  recipientPhone: '',
+})
+
+const orderItems = computed<OrderItemDetail[]>(() => orderDetail.value?.orderItems ?? [])
 
 async function loadProfile() {
   if (!state.user) return
@@ -128,6 +158,180 @@ async function redeemWallet() {
   }
 }
 
+function syncOrderSummary(detail: OrderDetail) {
+  const index = orders.value.findIndex((item) => item.id === detail.id)
+  if (index !== -1) {
+    orders.value[index] = {
+      ...orders.value[index],
+      status: detail.status,
+      totalAmount: detail.totalAmount,
+      totalQuantity: detail.totalQuantity,
+      orderTime: detail.orderTime,
+    }
+  }
+}
+
+async function fetchOrderDetail(orderId: number) {
+  orderDetailLoading.value = true
+  orderDetailError.value = null
+  try {
+    const { data } = await api.get<OrderDetail>(`/orders/${orderId}`)
+    orderDetail.value = data
+    syncOrderSummary(data)
+    return data
+  } catch (err) {
+    const message = err instanceof Error ? err.message : '加载订单详情失败'
+    orderDetailError.value = message
+    orderDetail.value = null
+    return null
+  } finally {
+    orderDetailLoading.value = false
+  }
+}
+
+async function ensureOrderDetail(order: OrderSummary) {
+  if (orderDetail.value && orderDetail.value.id === order.id) {
+    return orderDetail.value
+  }
+  return fetchOrderDetail(order.id)
+}
+
+function closeOrderDetailModal() {
+  showOrderDetailModal.value = false
+}
+
+function closeReturnModal() {
+  showReturnModal.value = false
+  returnSubmitting.value = false
+  returnMessage.value = null
+  returnError.value = null
+  returnForm.reason = ''
+  selectedReturnItemId.value = null
+}
+
+function closeEditModal() {
+  showEditModal.value = false
+  updateSubmitting.value = false
+  updateMessage.value = null
+  updateError.value = null
+}
+
+function prepareReturnItemSelection(detail: OrderDetail | null) {
+  if (!detail || !detail.orderItems.length) {
+    selectedReturnItemId.value = null
+    return
+  }
+  const existing = detail.orderItems.find((item) => item.id === selectedReturnItemId.value)
+  selectedReturnItemId.value = existing?.id ?? detail.orderItems[0]?.id ?? null
+}
+
+function fillUpdateForm(detail: OrderDetail | null) {
+  orderUpdateForm.shippingAddress = detail?.shippingAddress ?? ''
+  orderUpdateForm.recipientName = detail?.recipientName ?? ''
+  orderUpdateForm.recipientPhone = detail?.recipientPhone ?? ''
+}
+
+async function openOrderDetail(order: OrderSummary) {
+  activeOrder.value = order
+  const detail = await ensureOrderDetail(order)
+  if (!detail) {
+    showOrderDetailModal.value = true
+    return
+  }
+  showOrderDetailModal.value = true
+}
+
+async function openReturnDialog(order: OrderSummary) {
+  activeOrder.value = order
+  returnMessage.value = null
+  returnError.value = null
+  const detail = await ensureOrderDetail(order)
+  if (!detail) {
+    returnError.value = orderDetailError.value ?? '加载订单详情失败'
+    prepareReturnItemSelection(null)
+    showReturnModal.value = true
+    return
+  }
+  prepareReturnItemSelection(detail)
+  showReturnModal.value = true
+}
+
+async function openEditDialog(order: OrderSummary) {
+  activeOrder.value = order
+  updateMessage.value = null
+  updateError.value = null
+  const detail = await ensureOrderDetail(order)
+  if (!detail) {
+    updateError.value = orderDetailError.value ?? '加载订单详情失败'
+    fillUpdateForm(null)
+    showEditModal.value = true
+    return
+  }
+  fillUpdateForm(detail)
+  showEditModal.value = true
+}
+
+async function submitReturnRequest() {
+  if (!selectedReturnItemId.value) {
+    returnError.value = '请选择需要退货的商品'
+    return
+  }
+  const reason = returnForm.reason.trim()
+  if (!reason) {
+    returnError.value = '请填写退货原因'
+    return
+  }
+  returnSubmitting.value = true
+  returnError.value = null
+  returnMessage.value = null
+  try {
+    await api.post(`/returns/order-items/${selectedReturnItemId.value}`, { reason })
+    returnMessage.value = '退货申请已提交，请等待客服处理'
+    returnForm.reason = ''
+  } catch (err) {
+    const message = err instanceof Error ? err.message : '提交退货申请失败'
+    returnError.value = message
+  } finally {
+    returnSubmitting.value = false
+  }
+}
+
+async function submitOrderUpdate() {
+  if (!orderDetail.value) return
+  updateMessage.value = null
+  updateError.value = null
+  const payload = {
+    shippingAddress: orderUpdateForm.shippingAddress.trim(),
+    recipientName: orderUpdateForm.recipientName.trim(),
+    recipientPhone: orderUpdateForm.recipientPhone.trim(),
+  }
+  if (!payload.recipientName) {
+    updateError.value = '请填写收货人姓名'
+    return
+  }
+  if (!payload.recipientPhone) {
+    updateError.value = '请填写联系电话'
+    return
+  }
+  if (!payload.shippingAddress) {
+    updateError.value = '请填写收货地址'
+    return
+  }
+  updateSubmitting.value = true
+  try {
+    const { data } = await api.put<OrderDetail>(`/orders/${orderDetail.value.id}/contact`, payload)
+    orderDetail.value = data
+    syncOrderSummary(data)
+    fillUpdateForm(data)
+    updateMessage.value = '订单联系信息已更新'
+  } catch (err) {
+    const message = err instanceof Error ? err.message : '更新订单信息失败'
+    updateError.value = message
+  } finally {
+    updateSubmitting.value = false
+  }
+}
+
 const shortcutLinks = [
   { label: '快速下单', href: '/?quick=true' },
   { label: '我的评价', href: '#reviews' },
@@ -209,6 +413,7 @@ const shortcutLinks = [
                 <th scope="col">数量</th>
                 <th scope="col">状态</th>
                 <th scope="col">下单时间</th>
+                <th scope="col" class="col-actions">操作</th>
               </tr>
             </thead>
             <tbody>
@@ -218,6 +423,17 @@ const shortcutLinks = [
                 <td>{{ order.totalQuantity }}</td>
                 <td><span class="status-pill">{{ order.status }}</span></td>
                 <td>{{ formatDateTime(order.orderTime) }}</td>
+                <td class="actions-cell">
+                  <button type="button" class="link-button" @click="openOrderDetail(order)">
+                    查看订单
+                  </button>
+                  <button type="button" class="link-button" @click="openReturnDialog(order)">
+                    申请退货
+                  </button>
+                  <button type="button" class="link-button" @click="openEditDialog(order)">
+                    更改信息
+                  </button>
+                </td>
               </tr>
             </tbody>
           </table>
@@ -254,6 +470,185 @@ const shortcutLinks = [
         </section>
       </div>
     </template>
+
+    <div v-if="showOrderDetailModal" class="modal-backdrop" @click.self="closeOrderDetailModal">
+      <section
+        class="modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="order-detail-title"
+      >
+        <header class="modal-header">
+          <h3 id="order-detail-title">订单详情</h3>
+          <button type="button" class="icon-button" @click="closeOrderDetailModal" aria-label="关闭">
+            ×
+          </button>
+        </header>
+        <div class="modal-body">
+          <p v-if="orderDetailLoading" class="modal-status">正在加载订单详情…</p>
+          <p v-else-if="orderDetailError" class="modal-error">{{ orderDetailError }}</p>
+          <template v-else-if="orderDetail">
+            <dl class="order-meta">
+              <div>
+                <dt>订单编号</dt>
+                <dd>{{ orderDetail.orderNo }}</dd>
+              </div>
+              <div>
+                <dt>订单状态</dt>
+                <dd><span class="status-pill">{{ orderDetail.status }}</span></dd>
+              </div>
+              <div>
+                <dt>下单时间</dt>
+                <dd>{{ formatDateTime(orderDetail.orderTime) }}</dd>
+              </div>
+              <div>
+                <dt>支付时间</dt>
+                <dd>{{ formatDateTime(orderDetail.paymentTime) }}</dd>
+              </div>
+              <div>
+                <dt>发货时间</dt>
+                <dd>{{ formatDateTime(orderDetail.shippingTime) }}</dd>
+              </div>
+              <div>
+                <dt>收货时间</dt>
+                <dd>{{ formatDateTime(orderDetail.deliveryTime) }}</dd>
+              </div>
+              <div>
+                <dt>收货人</dt>
+                <dd>{{ orderDetail.recipientName ?? '—' }}</dd>
+              </div>
+              <div>
+                <dt>联系电话</dt>
+                <dd>{{ orderDetail.recipientPhone ?? '—' }}</dd>
+              </div>
+              <div class="address-row">
+                <dt>收货地址</dt>
+                <dd>{{ orderDetail.shippingAddress ?? '—' }}</dd>
+              </div>
+            </dl>
+            <div class="order-items">
+              <h4>商品列表</h4>
+              <ul>
+                <li v-for="item in orderDetail.orderItems" :key="item.id">
+                  <div class="item-info">
+                    <strong>{{ item.product.name }}</strong>
+                    <span>数量：{{ item.quantity }}</span>
+                  </div>
+                  <div class="item-prices">
+                    <span>单价：{{ formatCurrency(item.unitPrice) }}</span>
+                    <span>小计：{{ formatCurrency(item.totalPrice) }}</span>
+                  </div>
+                </li>
+              </ul>
+              <footer class="order-summary">
+                共 {{ orderDetail.totalQuantity }} 件商品，合计
+                <strong>{{ formatCurrency(orderDetail.totalAmount) }}</strong>
+              </footer>
+            </div>
+          </template>
+          <p v-else class="modal-status">暂无可显示的订单信息</p>
+        </div>
+        <footer class="modal-actions">
+          <button type="button" class="ghost-button" @click="closeOrderDetailModal">关闭</button>
+        </footer>
+      </section>
+    </div>
+
+    <div v-if="showReturnModal" class="modal-backdrop" @click.self="closeReturnModal">
+      <section class="modal" role="dialog" aria-modal="true" aria-labelledby="return-title">
+        <header class="modal-header">
+          <h3 id="return-title">申请退货</h3>
+          <button type="button" class="icon-button" @click="closeReturnModal" aria-label="关闭">
+            ×
+          </button>
+        </header>
+        <form class="modal-body" @submit.prevent="submitReturnRequest">
+          <label class="field">
+            <span>选择退货商品</span>
+            <select
+              v-model.number="selectedReturnItemId"
+              :disabled="returnSubmitting || !orderItems.length"
+            >
+              <option v-if="!orderItems.length" disabled value="">
+                当前订单暂无可退货的商品
+              </option>
+              <option v-for="item in orderItems" :key="item.id" :value="item.id">
+                {{ item.product.name }}（数量：{{ item.quantity }}）
+              </option>
+            </select>
+          </label>
+          <label class="field">
+            <span>退货原因</span>
+            <textarea
+              v-model="returnForm.reason"
+              rows="4"
+              placeholder="请简要说明退货原因"
+              :disabled="returnSubmitting"
+            ></textarea>
+          </label>
+          <p v-if="returnMessage" class="modal-success">{{ returnMessage }}</p>
+          <p v-if="returnError" class="modal-error">{{ returnError }}</p>
+          <footer class="modal-actions">
+            <button type="submit" class="primary-button" :disabled="returnSubmitting">
+              {{ returnSubmitting ? '提交中…' : '提交申请' }}
+            </button>
+            <button type="button" class="ghost-button" @click="closeReturnModal" :disabled="returnSubmitting">
+              取消
+            </button>
+          </footer>
+        </form>
+      </section>
+    </div>
+
+    <div v-if="showEditModal" class="modal-backdrop" @click.self="closeEditModal">
+      <section class="modal" role="dialog" aria-modal="true" aria-labelledby="edit-title">
+        <header class="modal-header">
+          <h3 id="edit-title">更改联系信息</h3>
+          <button type="button" class="icon-button" @click="closeEditModal" aria-label="关闭">
+            ×
+          </button>
+        </header>
+        <form class="modal-body" @submit.prevent="submitOrderUpdate">
+          <label class="field">
+            <span>收货人姓名</span>
+            <input
+              v-model="orderUpdateForm.recipientName"
+              type="text"
+              placeholder="请输入收货人姓名"
+              :disabled="updateSubmitting"
+            />
+          </label>
+          <label class="field">
+            <span>联系电话</span>
+            <input
+              v-model="orderUpdateForm.recipientPhone"
+              type="tel"
+              placeholder="请输入联系电话"
+              :disabled="updateSubmitting"
+            />
+          </label>
+          <label class="field">
+            <span>收货地址</span>
+            <textarea
+              v-model="orderUpdateForm.shippingAddress"
+              rows="3"
+              placeholder="请输入详细收货地址"
+              :disabled="updateSubmitting"
+            ></textarea>
+          </label>
+          <p v-if="updateMessage" class="modal-success">{{ updateMessage }}</p>
+          <p v-if="updateError" class="modal-error">{{ updateError }}</p>
+          <footer class="modal-actions">
+            <button type="submit" class="primary-button" :disabled="updateSubmitting">
+              {{ updateSubmitting ? '保存中…' : '保存信息' }}
+            </button>
+            <button type="button" class="ghost-button" @click="closeEditModal" :disabled="updateSubmitting">
+              取消
+            </button>
+          </footer>
+        </form>
+      </section>
+    </div>
   </section>
 </template>
 
@@ -423,6 +818,39 @@ const shortcutLinks = [
   background: rgba(79, 70, 229, 0.06);
 }
 
+.orders-table .col-actions {
+  text-align: right;
+}
+
+.actions-cell {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  justify-content: flex-end;
+}
+
+.link-button {
+  padding: 0.35rem 0.75rem;
+  border-radius: 999px;
+  border: 1px solid rgba(79, 70, 229, 0.25);
+  background: rgba(79, 70, 229, 0.08);
+  color: #4338ca;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s ease, transform 0.2s ease;
+}
+
+.link-button:hover {
+  background: rgba(79, 70, 229, 0.18);
+  transform: translateY(-1px);
+}
+
+.link-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 .status-pill {
   display: inline-flex;
   align-items: center;
@@ -437,6 +865,228 @@ const shortcutLinks = [
 
 .empty {
   color: rgba(17, 24, 39, 0.55);
+}
+
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.45);
+  display: grid;
+  place-items: center;
+  padding: 1.5rem;
+  z-index: 40;
+}
+
+.modal {
+  width: min(640px, 100%);
+  background: #fff;
+  border-radius: 20px;
+  box-shadow: 0 30px 60px rgba(15, 23, 42, 0.25);
+  display: flex;
+  flex-direction: column;
+  max-height: 90vh;
+  overflow: hidden;
+}
+
+.modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1.25rem 1.5rem 1rem;
+  border-bottom: 1px solid rgba(17, 24, 39, 0.08);
+}
+
+.modal-body {
+  padding: 1.5rem;
+  display: grid;
+  gap: 1rem;
+  overflow-y: auto;
+}
+
+.modal-actions {
+  padding: 1rem 1.5rem 1.5rem;
+  display: flex;
+  gap: 0.75rem;
+  justify-content: flex-end;
+}
+
+.icon-button {
+  border: none;
+  background: transparent;
+  font-size: 1.5rem;
+  line-height: 1;
+  cursor: pointer;
+  color: rgba(15, 23, 42, 0.55);
+  transition: color 0.2s ease;
+}
+
+.icon-button:hover {
+  color: rgba(79, 70, 229, 0.9);
+}
+
+.primary-button {
+  padding: 0.6rem 1.4rem;
+  border-radius: 999px;
+  border: none;
+  background: linear-gradient(135deg, #6366f1, #ec4899);
+  color: #fff;
+  font-weight: 600;
+  cursor: pointer;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.primary-button:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 15px 25px rgba(99, 102, 241, 0.35);
+}
+
+.primary-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+.ghost-button {
+  padding: 0.55rem 1.3rem;
+  border-radius: 999px;
+  border: 1px solid rgba(79, 70, 229, 0.35);
+  background: transparent;
+  color: #4338ca;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s ease;
+}
+
+.ghost-button:hover {
+  background: rgba(79, 70, 229, 0.1);
+}
+
+.ghost-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.modal-status {
+  color: rgba(17, 24, 39, 0.6);
+  text-align: center;
+}
+
+.modal-error {
+  color: #b91c1c;
+}
+
+.modal-success {
+  color: #15803d;
+}
+
+.order-meta {
+  display: grid;
+  gap: 0.8rem;
+}
+
+.order-meta div {
+  display: grid;
+  gap: 0.25rem;
+  grid-template-columns: 110px 1fr;
+}
+
+.order-meta dt {
+  font-weight: 600;
+  color: rgba(17, 24, 39, 0.6);
+}
+
+.order-meta dd {
+  margin: 0;
+  color: rgba(17, 24, 39, 0.85);
+}
+
+.order-meta .address-row {
+  grid-template-columns: 110px 1fr;
+}
+
+.order-items {
+  display: grid;
+  gap: 0.75rem;
+  border-top: 1px solid rgba(17, 24, 39, 0.08);
+  padding-top: 1rem;
+}
+
+.order-items h4 {
+  margin: 0;
+  font-weight: 700;
+}
+
+.order-items ul {
+  list-style: none;
+  padding: 0;
+  display: grid;
+  gap: 0.75rem;
+}
+
+.order-items li {
+  padding: 0.75rem 0.9rem;
+  border-radius: 14px;
+  background: rgba(79, 70, 229, 0.08);
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.item-info {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.item-info strong {
+  font-weight: 700;
+}
+
+.item-prices {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  color: rgba(17, 24, 39, 0.68);
+  font-size: 0.9rem;
+}
+
+.order-summary {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.35rem;
+  color: rgba(17, 24, 39, 0.68);
+  font-weight: 600;
+}
+
+.field {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.field span {
+  font-weight: 600;
+  color: rgba(17, 24, 39, 0.65);
+}
+
+.field input,
+.field textarea,
+.field select {
+  border: 1px solid rgba(17, 24, 39, 0.12);
+  border-radius: 0.75rem;
+  padding: 0.6rem 0.75rem;
+  font-size: 0.95rem;
+  resize: vertical;
+}
+
+.field select:disabled,
+.field input:disabled,
+.field textarea:disabled {
+  background: rgba(148, 163, 184, 0.15);
+  cursor: not-allowed;
+}
+
+.field textarea {
+  min-height: 120px;
 }
 
 .product-grid {
