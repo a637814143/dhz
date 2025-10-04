@@ -177,7 +177,7 @@ async function fetchOrderDetail(orderId: number) {
   orderDetailLoading.value = true
   orderDetailError.value = null
   try {
-    const { data } = await api.get<OrderDetail>(`/orders/${orderId}`)
+    const { data } = await api.get<OrderDetail>(`/orders/${orderId}/detail`)
     orderDetail.value = data
     syncOrderSummary(data)
     return data
