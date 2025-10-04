@@ -1,7 +1,6 @@
 package com.example.silkmall.dto;
 
 import jakarta.validation.constraints.Email;
-import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 
 public class ConsumerDTO {
@@ -14,13 +13,7 @@ public class ConsumerDTO {
     private String email;
     private String phone;
     private String address;
-    
-    @NotBlank(message = "真实姓名不能为空")
-    private String realName;
-    
-    @NotBlank(message = "身份证号不能为空")
-    private String idCard;
-    
+
     private String avatar;
     private Integer points;
     private Integer membershipLevel;
@@ -64,22 +57,6 @@ public class ConsumerDTO {
     
     public void setAddress(String address) {
         this.address = address;
-    }
-    
-    public String getRealName() {
-        return realName;
-    }
-    
-    public void setRealName(String realName) {
-        this.realName = realName;
-    }
-    
-    public String getIdCard() {
-        return idCard;
-    }
-    
-    public void setIdCard(String idCard) {
-        this.idCard = idCard;
     }
     
     public String getAvatar() {

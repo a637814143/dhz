@@ -20,12 +20,6 @@ public class ConsumerCreateRequest {
 
     private String address;
 
-    @NotBlank(message = "真实姓名不能为空")
-    private String realName;
-
-    @NotBlank(message = "身份证号不能为空")
-    private String idCard;
-
     private String avatar;
 
     private Integer points;
@@ -72,22 +66,6 @@ public class ConsumerCreateRequest {
 
     public void setAddress(String address) {
         this.address = address;
-    }
-
-    public String getRealName() {
-        return realName;
-    }
-
-    public void setRealName(String realName) {
-        this.realName = realName;
-    }
-
-    public String getIdCard() {
-        return idCard;
-    }
-
-    public void setIdCard(String idCard) {
-        this.idCard = idCard;
     }
 
     public String getAvatar() {

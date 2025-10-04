@@ -76,8 +76,7 @@ public class ConsumerServiceImpl extends UserServiceImpl<Consumer> implements Co
                 predicates.add(criteriaBuilder.or(
                         criteriaBuilder.like(criteriaBuilder.lower(root.get("username")), pattern),
                         criteriaBuilder.like(criteriaBuilder.lower(root.get("email")), pattern),
-                        criteriaBuilder.like(criteriaBuilder.lower(root.get("phone")), pattern),
-                        criteriaBuilder.like(criteriaBuilder.lower(root.get("realName")), pattern)
+                        criteriaBuilder.like(criteriaBuilder.lower(root.get("phone")), pattern)
                 ));
             }
 

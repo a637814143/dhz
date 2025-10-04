@@ -8,8 +8,6 @@ interface ConsumerRecord {
   email: string | null
   phone: string | null
   address: string | null
-  realName: string | null
-  idCard: string | null
   avatar: string | null
   points: number | null
   membershipLevel: number | null
@@ -49,8 +47,6 @@ const createForm = reactive({
   email: '',
   phone: '',
   address: '',
-  realName: '',
-  idCard: '',
   avatar: '',
   points: 0,
   membershipLevel: 1,
@@ -63,8 +59,6 @@ const editForm = reactive({
   email: '',
   phone: '',
   address: '',
-  realName: '',
-  idCard: '',
   avatar: '',
   points: 0,
   membershipLevel: 1,
@@ -132,8 +126,6 @@ function resetCreateForm() {
   createForm.email = ''
   createForm.phone = ''
   createForm.address = ''
-  createForm.realName = ''
-  createForm.idCard = ''
   createForm.avatar = ''
   createForm.points = 0
   createForm.membershipLevel = 1
@@ -146,8 +138,6 @@ function openEditDialog(record: ConsumerRecord) {
   editForm.email = record.email ?? ''
   editForm.phone = record.phone ?? ''
   editForm.address = record.address ?? ''
-  editForm.realName = record.realName ?? ''
-  editForm.idCard = record.idCard ?? ''
   editForm.avatar = record.avatar ?? ''
   editForm.points = record.points ?? 0
   editForm.membershipLevel = record.membershipLevel ?? 1
@@ -171,8 +161,6 @@ async function submitCreate() {
       email: createForm.email.trim() || null,
       phone: createForm.phone.trim() || null,
       address: createForm.address.trim() || null,
-      realName: createForm.realName.trim(),
-      idCard: createForm.idCard.trim(),
       avatar: createForm.avatar.trim() || null,
       points: Number.isFinite(createForm.points) ? createForm.points : 0,
       membershipLevel: Number.isFinite(createForm.membershipLevel) ? createForm.membershipLevel : 1,
@@ -197,8 +185,6 @@ async function submitEdit() {
       email: editForm.email.trim() || null,
       phone: editForm.phone.trim() || null,
       address: editForm.address.trim() || null,
-      realName: editForm.realName.trim(),
-      idCard: editForm.idCard.trim(),
       avatar: editForm.avatar.trim() || null,
       points: Number.isFinite(editForm.points) ? editForm.points : 0,
       membershipLevel: Number.isFinite(editForm.membershipLevel) ? editForm.membershipLevel : 1,
@@ -351,7 +337,6 @@ function formatPoints(points: number | null) {
               <td>
                 <div class="cell-main">
                   <span>{{ record.phone ?? '—' }}</span>
-                  <span v-if="record.realName" class="sub">{{ record.realName }}</span>
                 </div>
               </td>
               <td>{{ formatPoints(record.points) }}</td>
@@ -432,16 +417,6 @@ function formatPoints(points: number | null) {
             </label>
             <div class="grid">
               <label>
-                <span>真实姓名</span>
-                <input v-model="createForm.realName" type="text" placeholder="请输入真实姓名" required />
-              </label>
-              <label>
-                <span>身份证号</span>
-                <input v-model="createForm.idCard" type="text" placeholder="请输入身份证号码" required />
-              </label>
-            </div>
-            <div class="grid">
-              <label>
                 <span>积分</span>
                 <input v-model.number="createForm.points" type="number" min="0" />
               </label>
@@ -510,16 +485,6 @@ function formatPoints(points: number | null) {
               <span>收货地址</span>
               <input v-model="editForm.address" type="text" />
             </label>
-            <div class="grid">
-              <label>
-                <span>真实姓名</span>
-                <input v-model="editForm.realName" type="text" required />
-              </label>
-              <label>
-                <span>身份证号</span>
-                <input v-model="editForm.idCard" type="text" required />
-              </label>
-            </div>
             <div class="grid">
               <label>
                 <span>积分</span>

@@ -61,8 +61,6 @@ public class ConsumerController extends BaseController {
         consumer.setEmail(normalize(request.getEmail()));
         consumer.setPhone(normalize(request.getPhone()));
         consumer.setAddress(normalize(request.getAddress()));
-        consumer.setRealName(normalize(request.getRealName()));
-        consumer.setIdCard(normalize(request.getIdCard()));
         consumer.setAvatar(normalize(request.getAvatar()));
         consumer.setPoints(request.getPoints() != null ? request.getPoints() : 0);
         consumer.setMembershipLevel(request.getMembershipLevel() != null ? request.getMembershipLevel() : 1);
@@ -126,8 +124,6 @@ public class ConsumerController extends BaseController {
         dto.setEmail(consumer.getEmail());
         dto.setPhone(consumer.getPhone());
         dto.setAddress(consumer.getAddress());
-        dto.setRealName(consumer.getRealName());
-        dto.setIdCard(consumer.getIdCard());
         dto.setAvatar(consumer.getAvatar());
         dto.setPoints(consumer.getPoints());
         dto.setMembershipLevel(consumer.getMembershipLevel());
@@ -140,8 +136,6 @@ public class ConsumerController extends BaseController {
         consumer.setEmail(normalize(dto.getEmail()));
         consumer.setPhone(normalize(dto.getPhone()));
         consumer.setAddress(normalize(dto.getAddress()));
-        consumer.setRealName(normalize(dto.getRealName()));
-        consumer.setIdCard(normalize(dto.getIdCard()));
         consumer.setAvatar(normalize(dto.getAvatar()));
         if (dto.getPoints() != null) {
             consumer.setPoints(dto.getPoints());

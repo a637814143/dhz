@@ -24,8 +24,6 @@ interface ConsumerProfile {
   email?: string | null
   phone?: string | null
   address?: string | null
-  realName?: string | null
-  idCard?: string | null
   avatar?: string | null
   points?: number | null
   membershipLevel?: number | string | null
@@ -55,16 +53,12 @@ const profileForm = reactive({
   email: '',
   phone: '',
   address: '',
-  realName: '',
-  idCard: '',
 })
 
 function resetProfileForm() {
   profileForm.email = ''
   profileForm.phone = ''
   profileForm.address = ''
-  profileForm.realName = ''
-  profileForm.idCard = ''
   profileFormError.value = null
 }
 
@@ -72,8 +66,6 @@ function populateProfileForm(source: ConsumerProfile) {
   profileForm.email = source.email ?? ''
   profileForm.phone = source.phone ?? ''
   profileForm.address = source.address ?? ''
-  profileForm.realName = source.realName ?? ''
-  profileForm.idCard = source.idCard ?? ''
   profileFormError.value = null
 }
 
@@ -109,18 +101,6 @@ async function saveProfile() {
   const email = profileForm.email.trim()
   const phone = profileForm.phone.trim()
   const address = profileForm.address.trim()
-  const realName = profileForm.realName.trim()
-  const idCard = profileForm.idCard.trim()
-
-  if (!realName) {
-    profileFormError.value = '请填写真实姓名'
-    return
-  }
-
-  if (!idCard) {
-    profileFormError.value = '请填写身份证号'
-    return
-  }
 
   profileSaving.value = true
   profileFormError.value = null
@@ -131,8 +111,6 @@ async function saveProfile() {
     email: email || null,
     phone: phone || null,
     address: address || null,
-    realName,
-    idCard,
     avatar: profile.value.avatar ?? null,
     points: profile.value.points ?? undefined,
     membershipLevel: profile.value.membershipLevel ?? undefined,
@@ -314,16 +292,6 @@ const shortcutLinks = [
               <span>收货地址</span>
               <textarea v-model="profileForm.address" rows="3" placeholder="请输入常用收货地址"></textarea>
             </label>
-            <div class="grid">
-              <label>
-                <span>真实姓名</span>
-                <input v-model="profileForm.realName" type="text" placeholder="用于开票及售后" />
-              </label>
-              <label>
-                <span>身份证号</span>
-                <input v-model="profileForm.idCard" type="text" placeholder="用于实名认证" />
-              </label>
-            </div>
             <p v-if="profileFormError" class="form-feedback is-error">{{ profileFormError }}</p>
             <div class="profile-form-actions">
               <button type="button" class="ghost" @click="cancelProfileEdit" :disabled="profileSaving">
@@ -348,14 +316,6 @@ const shortcutLinks = [
               <li>
                 <span>收货地址</span>
                 <strong>{{ profile?.address ?? '尚未填写' }}</strong>
-              </li>
-              <li>
-                <span>真实姓名</span>
-                <strong>{{ profile?.realName ?? '—' }}</strong>
-              </li>
-              <li>
-                <span>身份证号</span>
-                <strong>{{ profile?.idCard ?? '—' }}</strong>
               </li>
               <li>
                 <span>会员等级</span>
