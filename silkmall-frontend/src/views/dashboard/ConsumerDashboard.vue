@@ -71,6 +71,8 @@ const orderUpdateForm = reactive({
 })
 
 const orderItems = computed<OrderItemDetail[]>(() => orderDetail.value?.orderItems ?? [])
+const hasRecommendations = computed(() => (homeContent.value?.recommendations?.length ?? 0) > 0)
+const hasAnnouncements = computed(() => announcements.value.length > 0)
 
 async function loadProfile() {
   if (!state.user) return
@@ -355,34 +357,38 @@ const shortcutLinks = [
     <div v-else-if="error" class="placeholder is-error">{{ error }}</div>
     <template v-else>
       <div class="grid">
-        <section class="panel profile" aria-labelledby="profile-title">
+        <section class="panel profile full-row table-panel" aria-labelledby="profile-title">
           <div class="panel-title" id="profile-title">账户信息</div>
-          <ul class="profile-list">
-            <li>
-              <span>邮箱</span>
-              <strong>{{ profile?.email ?? '—' }}</strong>
-            </li>
-            <li>
-              <span>联系电话</span>
-              <strong>{{ profile?.phone ?? '—' }}</strong>
-            </li>
-            <li>
-              <span>收货地址</span>
-              <strong>{{ profile?.address ?? '尚未填写' }}</strong>
-            </li>
-            <li>
-              <span>会员等级</span>
-              <strong>{{ membershipBadge(profile?.membershipLevel) }}</strong>
-            </li>
-            <li>
-              <span>积分</span>
-              <strong>{{ profile?.points ?? 0 }}</strong>
-            </li>
-            <li>
-              <span>钱包余额</span>
-              <strong>{{ formatCurrency(walletBalance ?? 0) }}</strong>
-            </li>
-          </ul>
+          <div class="table-container">
+            <table class="dashboard-table profile-table">
+              <tbody>
+                <tr>
+                  <th scope="row">邮箱</th>
+                  <td>{{ profile?.email ?? '—' }}</td>
+                </tr>
+                <tr>
+                  <th scope="row">联系电话</th>
+                  <td>{{ profile?.phone ?? '—' }}</td>
+                </tr>
+                <tr>
+                  <th scope="row">收货地址</th>
+                  <td>{{ profile?.address ?? '尚未填写' }}</td>
+                </tr>
+                <tr>
+                  <th scope="row">会员等级</th>
+                  <td>{{ membershipBadge(profile?.membershipLevel) }}</td>
+                </tr>
+                <tr>
+                  <th scope="row">积分</th>
+                  <td>{{ profile?.points ?? 0 }}</td>
+                </tr>
+                <tr>
+                  <th scope="row">钱包余额</th>
+                  <td>{{ formatCurrency(walletBalance ?? 0) }}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
           <div class="redeem-box">
             <label>
               <span>兑换码</span>
@@ -403,70 +409,99 @@ const shortcutLinks = [
           </div>
         </section>
 
-        <section class="panel orders" aria-labelledby="orders-title">
+        <section class="panel orders full-row table-panel" aria-labelledby="orders-title">
           <div class="panel-title" id="orders-title">最近订单</div>
-          <table v-if="orders.length" class="orders-table">
-            <thead>
-              <tr>
-                <th scope="col" class="col-order-no">订单编号</th>
-                <th scope="col">金额</th>
-                <th scope="col">数量</th>
-                <th scope="col">状态</th>
-                <th scope="col">下单时间</th>
-                <th scope="col" class="col-actions">操作</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr v-for="order in orders" :key="order.id">
-                <td class="col-order-no">{{ order.orderNo }}</td>
-                <td>{{ formatCurrency(order.totalAmount) }}</td>
-                <td>{{ order.totalQuantity }}</td>
-                <td><span class="status-pill">{{ order.status }}</span></td>
-                <td>{{ formatDateTime(order.orderTime) }}</td>
-                <td class="actions-cell">
-                  <button type="button" class="link-button" @click="openOrderDetail(order)">
-                    查看订单
-                  </button>
-                  <button type="button" class="link-button" @click="openReturnDialog(order)">
-                    申请退货
-                  </button>
-                  <button type="button" class="link-button" @click="openEditDialog(order)">
-                    更改信息
-                  </button>
-                </td>
-              </tr>
-            </tbody>
-          </table>
+          <div v-if="orders.length" class="table-container">
+            <table class="dashboard-table orders-table">
+              <thead>
+                <tr>
+                  <th scope="col" class="col-order-no">订单编号</th>
+                  <th scope="col">金额</th>
+                  <th scope="col">数量</th>
+                  <th scope="col">状态</th>
+                  <th scope="col">下单时间</th>
+                  <th scope="col" class="col-actions">操作</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="order in orders" :key="order.id">
+                  <td class="col-order-no">{{ order.orderNo }}</td>
+                  <td>{{ formatCurrency(order.totalAmount) }}</td>
+                  <td>{{ order.totalQuantity }}</td>
+                  <td><span class="status-pill">{{ order.status }}</span></td>
+                  <td>{{ formatDateTime(order.orderTime) }}</td>
+                  <td class="actions-cell">
+                    <button type="button" class="link-button" @click="openOrderDetail(order)">
+                      查看订单
+                    </button>
+                    <button type="button" class="link-button" @click="openReturnDialog(order)">
+                      申请退货
+                    </button>
+                    <button type="button" class="link-button" @click="openEditDialog(order)">
+                      更改信息
+                    </button>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
           <p v-else class="empty">暂无订单记录，前往首页挑选心仪商品吧。</p>
         </section>
 
-        <section class="panel recommendations" aria-labelledby="recommend-title">
+        <section class="panel recommendations full-row table-panel" aria-labelledby="recommend-title">
           <div class="panel-title" id="recommend-title">为您推荐</div>
-          <div class="product-grid">
-            <article v-for="item in homeContent?.recommendations ?? []" :key="item.id" class="product-card">
-              <div class="product-meta">
-                <h3>{{ item.name }}</h3>
-                <p>{{ item.description ?? '优质蚕丝，严选供应链品质保障。' }}</p>
-              </div>
-              <footer>
-                <span class="price">{{ formatCurrency(item.price) }}</span>
-                <router-link :to="`/product/${item.id}`">查看详情</router-link>
-              </footer>
-            </article>
+          <div v-if="hasRecommendations" class="table-container">
+            <table class="dashboard-table recommend-table">
+              <thead>
+                <tr>
+                  <th scope="col">商品信息</th>
+                  <th scope="col" class="col-price">价格</th>
+                  <th scope="col" class="col-actions">操作</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="item in homeContent?.recommendations ?? []" :key="item.id">
+                  <td>
+                    <div class="product-info">
+                      <strong>{{ item.name }}</strong>
+                      <p>{{ item.description ?? '优质蚕丝，严选供应链品质保障。' }}</p>
+                    </div>
+                  </td>
+                  <td class="col-price">{{ formatCurrency(item.price) }}</td>
+                  <td class="actions-cell">
+                    <router-link class="link-button" :to="`/product/${item.id}`">查看详情</router-link>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
           </div>
+          <p v-else class="empty">暂无推荐商品，稍后再来看看吧。</p>
         </section>
 
-        <section class="panel announcements" aria-labelledby="announcement-title">
+        <section class="panel announcements full-row table-panel" aria-labelledby="announcement-title">
           <div class="panel-title" id="announcement-title">公告与资讯</div>
-          <ul class="announcement-list">
-            <li v-for="item in announcements" :key="item.id">
-              <div>
-                <strong>{{ item.title }}</strong>
-                <p>{{ item.content }}</p>
-              </div>
-              <time>{{ formatDateTime(item.publishedAt) }}</time>
-            </li>
-          </ul>
+          <div v-if="hasAnnouncements" class="table-container">
+            <table class="dashboard-table announcement-table">
+              <thead>
+                <tr>
+                  <th scope="col">公告内容</th>
+                  <th scope="col" class="col-time">发布时间</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="item in announcements" :key="item.id">
+                  <td>
+                    <div class="announcement-info">
+                      <strong>{{ item.title }}</strong>
+                      <p>{{ item.content }}</p>
+                    </div>
+                  </td>
+                  <td class="col-time">{{ formatDateTime(item.publishedAt) }}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <p v-else class="empty">暂无公告，敬请期待更多平台动态。</p>
         </section>
       </div>
     </template>
@@ -710,12 +745,8 @@ const shortcutLinks = [
 .grid {
   display: grid;
   gap: 2rem;
-  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(420px, 1fr));
   align-items: stretch;
-}
-
-.panel.orders {
-  grid-column: 1 / -1;
 }
 
 .panel {
@@ -728,36 +759,75 @@ const shortcutLinks = [
   box-shadow: 0 20px 40px rgba(31, 41, 55, 0.08);
 }
 
+.full-row {
+  grid-column: 1 / -1;
+}
+
+.table-panel {
+  gap: 1.75rem;
+}
+
 .panel-title {
   font-weight: 700;
   font-size: 1.1rem;
   color: rgba(17, 24, 39, 0.78);
 }
 
-.profile-list {
-  list-style: none;
-  display: grid;
-  gap: 0.85rem;
-  padding: 0;
+.table-container {
+  border-radius: 18px;
+  border: 1px solid rgba(79, 70, 229, 0.12);
+  overflow: hidden;
+  overflow-x: auto;
+  background: rgba(248, 250, 252, 0.68);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.4);
 }
 
-.profile-list li {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 1rem;
+.dashboard-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.95rem;
+  min-width: 100%;
+}
+
+.dashboard-table th,
+.dashboard-table td {
+  padding: 0.85rem 1rem;
+  text-align: left;
+}
+
+.dashboard-table thead {
+  background: rgba(79, 70, 229, 0.08);
+  color: rgba(17, 24, 39, 0.62);
+}
+
+.dashboard-table tbody tr {
+  background: rgba(255, 255, 255, 0.92);
+}
+
+.dashboard-table tbody tr:nth-child(odd) {
+  background: rgba(79, 70, 229, 0.06);
+}
+
+.dashboard-table tbody tr + tr {
+  border-top: 1px solid rgba(79, 70, 229, 0.08);
+}
+
+.profile-table th {
+  width: 160px;
+  font-weight: 600;
   color: rgba(17, 24, 39, 0.6);
 }
 
-.profile-list strong {
+.profile-table td {
   color: rgba(17, 24, 39, 0.85);
 }
 
 .redeem-box {
   display: grid;
-  gap: 0.75rem;
-  padding-top: 1rem;
-  border-top: 1px solid rgba(17, 24, 39, 0.08);
+  gap: 0.85rem;
+  padding: 1.2rem 1.3rem;
+  border-radius: 16px;
+  background: linear-gradient(135deg, rgba(79, 70, 229, 0.12), rgba(99, 102, 241, 0.08));
 }
 
 .redeem-box label {
@@ -803,12 +873,6 @@ const shortcutLinks = [
   color: #b91c1c;
 }
 
-.orders-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 0.95rem;
-}
-
 .orders-table .col-order-no {
   max-width: 22rem;
   font-size: 0.96rem;
@@ -817,21 +881,7 @@ const shortcutLinks = [
   word-break: break-word;
 }
 
-.orders-table th,
-.orders-table td {
-  padding: 0.75rem 0.6rem;
-  text-align: left;
-}
-
-.orders-table thead {
-  color: rgba(17, 24, 39, 0.55);
-}
-
-.orders-table tbody tr:nth-child(odd) {
-  background: rgba(79, 70, 229, 0.06);
-}
-
-.orders-table .col-actions {
+.dashboard-table .col-actions {
   text-align: right;
 }
 
@@ -843,6 +893,8 @@ const shortcutLinks = [
 }
 
 .link-button {
+  display: inline-flex;
+  align-items: center;
   padding: 0.35rem 0.75rem;
   border-radius: 999px;
   border: 1px solid rgba(79, 70, 229, 0.25);
@@ -862,6 +914,50 @@ const shortcutLinks = [
 .link-button:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+.recommend-table .product-info {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.recommend-table .product-info strong {
+  font-weight: 700;
+  color: rgba(17, 24, 39, 0.85);
+}
+
+.recommend-table .product-info p {
+  color: rgba(17, 24, 39, 0.6);
+  font-size: 0.9rem;
+  line-height: 1.55;
+}
+
+.recommend-table .col-price {
+  font-weight: 600;
+  color: #16a34a;
+  white-space: nowrap;
+  text-align: right;
+}
+
+.announcement-table .announcement-info {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.announcement-table .announcement-info strong {
+  font-weight: 700;
+  color: rgba(17, 24, 39, 0.78);
+}
+
+.announcement-table .announcement-info p {
+  color: rgba(17, 24, 39, 0.6);
+  line-height: 1.5;
+}
+
+.announcement-table .col-time {
+  white-space: nowrap;
+  color: rgba(17, 24, 39, 0.55);
+  text-align: right;
 }
 
 .status-pill {
@@ -1100,84 +1196,6 @@ const shortcutLinks = [
 
 .field textarea {
   min-height: 120px;
-}
-
-.product-grid {
-  display: grid;
-  gap: 1.6rem;
-  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-}
-
-.product-card {
-  border-radius: 16px;
-  border: 1px solid rgba(79, 70, 229, 0.15);
-  padding: 1.35rem;
-  display: grid;
-  gap: 1rem;
-  background: rgba(255, 255, 255, 0.95);
-  transition: transform 0.2s ease, box-shadow 0.2s ease;
-}
-
-.product-card:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 14px 30px rgba(79, 70, 229, 0.18);
-}
-
-.product-card h3 {
-  font-size: 1.1rem;
-  font-weight: 700;
-  color: rgba(17, 24, 39, 0.85);
-}
-
-.product-card p {
-  color: rgba(17, 24, 39, 0.58);
-  font-size: 0.95rem;
-  line-height: 1.6;
-}
-
-.product-card footer {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  font-weight: 600;
-}
-
-.product-card .price {
-  color: #16a34a;
-}
-
-.product-card a {
-  color: #4f46e5;
-  text-decoration: none;
-}
-
-.announcement-list {
-  list-style: none;
-  padding: 0;
-  display: grid;
-  gap: 1.1rem;
-}
-
-.announcement-list li {
-  display: flex;
-  justify-content: space-between;
-  gap: 1rem;
-  align-items: flex-start;
-}
-
-.announcement-list strong {
-  display: block;
-  font-weight: 700;
-  margin-bottom: 0.25rem;
-}
-
-.announcement-list p {
-  color: rgba(17, 24, 39, 0.6);
-}
-
-.announcement-list time {
-  color: rgba(17, 24, 39, 0.45);
-  font-size: 0.85rem;
 }
 
 @media (max-width: 900px) {
