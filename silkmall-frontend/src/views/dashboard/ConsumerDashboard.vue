@@ -710,7 +710,12 @@ const shortcutLinks = [
 .grid {
   display: grid;
   gap: 2rem;
-  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  align-items: stretch;
+}
+
+.panel.orders {
+  grid-column: 1 / -1;
 }
 
 .panel {
@@ -801,20 +806,20 @@ const shortcutLinks = [
 .orders-table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 0.88rem;
+  font-size: 0.95rem;
 }
 
 .orders-table .col-order-no {
-  max-width: 14rem;
-  font-size: 0.85rem;
-  line-height: 1.35;
+  max-width: 22rem;
+  font-size: 0.96rem;
+  line-height: 1.45;
   overflow-wrap: anywhere;
   word-break: break-word;
 }
 
 .orders-table th,
 .orders-table td {
-  padding: 0.6rem 0.35rem;
+  padding: 0.75rem 0.6rem;
   text-align: left;
 }
 
@@ -1099,15 +1104,16 @@ const shortcutLinks = [
 
 .product-grid {
   display: grid;
-  gap: 1.2rem;
+  gap: 1.6rem;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
 }
 
 .product-card {
   border-radius: 16px;
   border: 1px solid rgba(79, 70, 229, 0.15);
-  padding: 1rem;
+  padding: 1.35rem;
   display: grid;
-  gap: 0.85rem;
+  gap: 1rem;
   background: rgba(255, 255, 255, 0.95);
   transition: transform 0.2s ease, box-shadow 0.2s ease;
 }
@@ -1118,14 +1124,15 @@ const shortcutLinks = [
 }
 
 .product-card h3 {
-  font-size: 0.98rem;
+  font-size: 1.1rem;
   font-weight: 700;
   color: rgba(17, 24, 39, 0.85);
 }
 
 .product-card p {
   color: rgba(17, 24, 39, 0.58);
-  font-size: 0.86rem;
+  font-size: 0.95rem;
+  line-height: 1.6;
 }
 
 .product-card footer {
