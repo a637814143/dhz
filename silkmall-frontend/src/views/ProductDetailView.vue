@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter, RouterLink } from 'vue-router'
 import api from '@/services/api'
-import type { ProductDetail } from '@/types'
+import PurchaseDialog from '@/components/PurchaseDialog.vue'
+import type { ProductDetail, ProductSummary, PurchaseOrderResult } from '@/types'
 
 const route = useRoute()
 const router = useRouter()
@@ -10,6 +11,9 @@ const product = ref<ProductDetail | null>(null)
 const loading = ref(false)
 const error = ref<string | null>(null)
 const activeImageIndex = ref(0)
+const purchaseOpen = ref(false)
+const purchaseSuccessMessage = ref<string | null>(null)
+const purchaseMessageTimer = ref<number | null>(null)
 
 const statusLabel = computed(() => {
   const labelMap: Record<string, string> = {
@@ -56,6 +60,22 @@ const activeImage = computed(() => galleryImages.value[activeImageIndex.value] ?
 const hasGallery = computed(() => galleryImages.value.length > 0)
 
 const fallbackLetter = computed(() => product.value?.name?.charAt(0)?.toUpperCase() ?? '丝')
+
+const isPurchasable = computed(() => {
+  if (!product.value) {
+    return false
+  }
+  return product.value.status === 'ON_SALE' && product.value.stock > 1
+})
+
+const purchaseButtonText = computed(() => {
+  if (!product.value) {
+    return '立即购买'
+  }
+  return isPurchasable.value ? '立即购买' : '暂不可购'
+})
+
+const purchaseTarget = computed<ProductSummary | null>(() => (product.value ? (product.value as ProductSummary) : null))
 
 const createdAtText = computed(() => {
   if (!product.value?.createdAt) {
@@ -135,6 +155,39 @@ function goBack() {
   router.back()
 }
 
+function openPurchaseDialog() {
+  if (!isPurchasable.value) {
+    return
+  }
+  purchaseOpen.value = true
+}
+
+function closePurchaseDialog() {
+  purchaseOpen.value = false
+}
+
+function clearPurchaseMessageTimer() {
+  if (purchaseMessageTimer.value) {
+    clearTimeout(purchaseMessageTimer.value)
+    purchaseMessageTimer.value = null
+  }
+}
+
+async function handlePurchaseSuccess(order: PurchaseOrderResult) {
+  const orderNo = order.orderNo ? `（订单号：${order.orderNo}）` : ''
+  const lookup = order.consumerLookupId ? `（查询编号：${order.consumerLookupId}）` : ''
+  purchaseSuccessMessage.value = `下单成功！${orderNo}${lookup}`.trim()
+  clearPurchaseMessageTimer()
+  purchaseMessageTimer.value = window.setTimeout(() => {
+    purchaseSuccessMessage.value = null
+    purchaseMessageTimer.value = null
+  }, 6000)
+
+  if (route.params.id) {
+    await loadProduct(route.params.id)
+  }
+}
+
 onMounted(() => {
   loadProduct(route.params.id)
 })
@@ -147,6 +200,19 @@ watch(
     }
   }
 )
+
+watch(
+  () => product.value,
+  (value) => {
+    if (!value) {
+      purchaseOpen.value = false
+    }
+  }
+)
+
+onBeforeUnmount(() => {
+  clearPurchaseMessageTimer()
+})
 </script>
 
 <template>
@@ -175,6 +241,10 @@ watch(
           <button type="button" class="back" @click="goBack">返回上一页</button>
           <span class="status" :class="statusClass">{{ statusLabel }}</span>
         </header>
+
+        <transition name="fade">
+          <p v-if="purchaseSuccessMessage" class="success-message" role="status">{{ purchaseSuccessMessage }}</p>
+        </transition>
 
         <div class="detail-body">
           <div class="gallery" aria-label="商品图片预览">
@@ -245,12 +315,27 @@ watch(
             </div>
 
             <div class="cta">
-              <RouterLink class="purchase" to="/">返回产品中心</RouterLink>
+              <button
+                type="button"
+                class="purchase"
+                :disabled="!isPurchasable"
+                @click="openPurchaseDialog"
+              >
+                {{ purchaseButtonText }}
+              </button>
+              <RouterLink class="back-link" to="/">返回产品中心</RouterLink>
             </div>
           </div>
         </div>
       </article>
     </div>
+
+    <PurchaseDialog
+      :open="purchaseOpen"
+      :product="purchaseTarget"
+      @close="closePurchaseDialog"
+      @success="handlePurchaseSuccess"
+    />
   </section>
 </template>
 
@@ -504,6 +589,10 @@ watch(
 
 .cta {
   margin-top: 1rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  align-items: center;
 }
 
 .cta .purchase {
@@ -517,12 +606,49 @@ watch(
   color: #fff;
   font-weight: 600;
   text-decoration: none;
+  border: none;
+  cursor: pointer;
   transition: transform 0.2s ease, box-shadow 0.2s ease;
 }
 
 .cta .purchase:hover {
   transform: translateY(-2px);
   box-shadow: 0 18px 36px rgba(242, 177, 66, 0.28);
+}
+
+.cta .purchase:disabled {
+  background: rgba(156, 163, 175, 0.45);
+  box-shadow: none;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.cta .back-link {
+  color: #6f9aa9;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.cta .back-link:hover {
+  text-decoration: underline;
+}
+
+.success-message {
+  padding: 0.85rem 1.25rem;
+  border-radius: 0.9rem;
+  background: rgba(34, 197, 94, 0.12);
+  color: #15803d;
+  font-weight: 600;
+}
+
+.fade-enter-active,
+.fade-leave-active {
+  transition: opacity 0.2s ease;
+}
+
+.fade-enter-from,
+.fade-leave-to {
+  opacity: 0;
 }
 
 @media (max-width: 960px) {
@@ -561,6 +687,11 @@ watch(
   .status {
     background: rgba(148, 163, 184, 0.25);
     color: #e2e8f0;
+  }
+
+  .success-message {
+    background: rgba(34, 197, 94, 0.25);
+    color: #bbf7d0;
   }
 
   .info h1,
