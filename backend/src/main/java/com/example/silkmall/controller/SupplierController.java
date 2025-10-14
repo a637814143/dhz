@@ -1,13 +1,16 @@
 package com.example.silkmall.controller;
 
+import com.example.silkmall.dto.SupplierProfileDTO;
+import com.example.silkmall.dto.SupplierProfileUpdateDTO;
 import com.example.silkmall.entity.Supplier;
 import com.example.silkmall.service.SupplierService;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
+
+import jakarta.validation.Valid;
 
 import java.util.List;
 import java.util.Optional;
@@ -27,7 +30,7 @@ public class SupplierController extends BaseController {
     public ResponseEntity<?> getSupplierById(@PathVariable Long id) {
         Optional<Supplier> supplier = supplierService.findById(id);
         if (supplier.isPresent()) {
-            return success(supplier.get());
+            return success(toProfileDto(supplier.get()));
         } else {
             return notFound("供应商不存在");
         }
@@ -45,6 +48,18 @@ public class SupplierController extends BaseController {
     public ResponseEntity<Void> deleteSupplier(@PathVariable Long id) {
         supplierService.deleteById(id);
         return success();
+    }
+
+    @PatchMapping("/{id}/profile")
+    @PreAuthorize("hasRole('ADMIN') or (hasRole('SUPPLIER') and #id == principal.id)")
+    public ResponseEntity<SupplierProfileDTO> updateProfile(@PathVariable Long id,
+                                                            @Valid @RequestBody SupplierProfileUpdateDTO request) {
+        Supplier supplier = supplierService.findById(id)
+                .orElseThrow(() -> new RuntimeException("供应商不存在"));
+
+        applyProfileUpdate(request, supplier);
+        Supplier saved = supplierService.save(supplier);
+        return success(toProfileDto(saved));
     }
     
     @PostMapping("/register")
@@ -81,5 +96,49 @@ public class SupplierController extends BaseController {
     public ResponseEntity<Void> updateSupplierLevel(@PathVariable Long id, @RequestParam String level) {
         supplierService.updateSupplierLevel(id, level);
         return success();
+    }
+
+    private SupplierProfileDTO toProfileDto(Supplier supplier) {
+        SupplierProfileDTO dto = new SupplierProfileDTO();
+        dto.setId(supplier.getId());
+        dto.setUsername(supplier.getUsername());
+        dto.setCompanyName(supplier.getCompanyName());
+        dto.setContactPerson(supplier.getContactPerson());
+        dto.setEmail(supplier.getEmail());
+        dto.setPhone(supplier.getPhone());
+        dto.setAddress(supplier.getAddress());
+        dto.setBusinessLicense(supplier.getBusinessLicense());
+        dto.setSupplierLevel(supplier.getSupplierLevel());
+        dto.setStatus(supplier.getStatus());
+        return dto;
+    }
+
+    private void applyProfileUpdate(SupplierProfileUpdateDTO dto, Supplier supplier) {
+        if (dto.getCompanyName() != null) {
+            supplier.setCompanyName(normalize(dto.getCompanyName()));
+        }
+        if (dto.getContactPerson() != null) {
+            supplier.setContactPerson(normalize(dto.getContactPerson()));
+        }
+        if (dto.getEmail() != null) {
+            supplier.setEmail(normalize(dto.getEmail()));
+        }
+        if (dto.getPhone() != null) {
+            supplier.setPhone(normalize(dto.getPhone()));
+        }
+        if (dto.getAddress() != null) {
+            supplier.setAddress(normalize(dto.getAddress()));
+        }
+        if (dto.getBusinessLicense() != null) {
+            supplier.setBusinessLicense(normalize(dto.getBusinessLicense()));
+        }
+    }
+
+    private String normalize(String value) {
+        if (value == null) {
+            return null;
+        }
+        String trimmed = value.trim();
+        return trimmed.isEmpty() ? null : trimmed;
     }
 }

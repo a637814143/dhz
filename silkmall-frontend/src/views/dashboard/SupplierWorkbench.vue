@@ -2,14 +2,23 @@
 import { computed, onMounted, reactive, ref } from 'vue'
 import api from '@/services/api'
 import { useAuthState } from '@/services/authState'
-import type { CategoryOption, HomepageContent, PageResponse, ProductSummary } from '@/types'
+import type {
+  CategoryOption,
+  HomepageContent,
+  PageResponse,
+  ProductDetail,
+  ProductSummary,
+} from '@/types'
 
 interface SupplierProfile {
   id: number
   username: string
   companyName?: string | null
+  contactPerson?: string | null
   email?: string | null
   phone?: string | null
+  address?: string | null
+  businessLicense?: string | null
   supplierLevel?: string | null
   status?: string | null
 }
@@ -28,11 +37,29 @@ const redeeming = ref(false)
 const redeemMessage = ref<string | null>(null)
 const redeemError = ref<string | null>(null)
 
+const showProfileDialog = ref(false)
+const profileSaving = ref(false)
+const profileMessage = ref<string | null>(null)
+const profileError = ref<string | null>(null)
+const profileForm = reactive({
+  companyName: '',
+  contactPerson: '',
+  email: '',
+  phone: '',
+  address: '',
+  businessLicense: '',
+})
+
 const productDialogOpen = ref(false)
 const savingProduct = ref(false)
 const productFormError = ref<string | null>(null)
 const productFormMessage = ref<string | null>(null)
 const deletingProductId = ref<number | null>(null)
+const togglingProductId = ref<number | null>(null)
+const detailDialogOpen = ref(false)
+const detailLoading = ref(false)
+const detailError = ref<string | null>(null)
+const productDetail = ref<ProductDetail | null>(null)
 
 const productForm = reactive({
   id: null as number | null,
@@ -54,12 +81,13 @@ async function loadProfile() {
   if (!state.user) return
   const { data } = await api.get<SupplierProfile>(`/suppliers/${state.user.id}`)
   profile.value = data
+  fillProfileForm(data)
 }
 
 async function loadProducts() {
   if (!state.user) return
   const { data } = await api.get<PageResponse<ProductSummary>>(`/products/supplier/${state.user.id}`, {
-    params: { page: 0, size: 6 },
+    params: { page: 0, size: 50, sort: 'createdAt,desc' },
   })
   products.value = data.content ?? []
 }
@@ -67,6 +95,70 @@ async function loadProducts() {
 async function loadHomeContent() {
   const { data } = await api.get<HomepageContent>('/content/home')
   homeContent.value = data
+}
+
+function normaliseInput(value: string) {
+  const trimmed = value.trim()
+  return trimmed.length > 0 ? trimmed : ''
+}
+
+function toNullable(value: string) {
+  const trimmed = normaliseInput(value)
+  return trimmed.length > 0 ? trimmed : null
+}
+
+function fillProfileForm(source: SupplierProfile | null) {
+  profileForm.companyName = source?.companyName ?? ''
+  profileForm.contactPerson = source?.contactPerson ?? ''
+  profileForm.email = source?.email ?? ''
+  profileForm.phone = source?.phone ?? ''
+  profileForm.address = source?.address ?? ''
+  profileForm.businessLicense = source?.businessLicense ?? ''
+}
+
+function openProfileEditor() {
+  profileMessage.value = null
+  profileError.value = null
+  fillProfileForm(profile.value)
+  showProfileDialog.value = true
+}
+
+function closeProfileEditor() {
+  showProfileDialog.value = false
+  profileSaving.value = false
+  profileMessage.value = null
+  profileError.value = null
+}
+
+async function submitProfileUpdate() {
+  if (!state.user) return
+  profileSaving.value = true
+  profileMessage.value = null
+  profileError.value = null
+
+  const payload = {
+    companyName: toNullable(profileForm.companyName),
+    contactPerson: toNullable(profileForm.contactPerson),
+    email: toNullable(profileForm.email),
+    phone: toNullable(profileForm.phone),
+    address: toNullable(profileForm.address),
+    businessLicense: toNullable(profileForm.businessLicense),
+  }
+
+  try {
+    const { data } = await api.patch<SupplierProfile>(`/suppliers/${state.user.id}/profile`, payload)
+    profile.value = data
+    fillProfileForm(data)
+    profileMessage.value = '资料已更新'
+    if (state.user) {
+      state.user.email = data.email ?? state.user.email ?? null
+      state.user.phone = data.phone ?? state.user.phone ?? null
+    }
+  } catch (err) {
+    profileError.value = err instanceof Error ? err.message : '更新资料失败'
+  } finally {
+    profileSaving.value = false
+  }
 }
 
 function toCategoryOption(raw: unknown, fallbackName?: string): CategoryOption | null {
@@ -316,8 +408,12 @@ async function saveProduct() {
       await api.put(`/products/${productForm.id}`, payload)
       productFormMessage.value = '商品信息已更新'
     } else {
-      await api.post('/products', payload)
+      const { data } = await api.post<ProductSummary>('/products', payload)
       productFormMessage.value = '商品已创建并保存'
+      if (data && typeof data === 'object') {
+        const created = data as ProductSummary
+        products.value = [created, ...products.value]
+      }
     }
     await loadProducts()
     productDialogOpen.value = false
@@ -342,6 +438,43 @@ async function deleteProduct(productId: number) {
   } finally {
     deletingProductId.value = null
   }
+}
+
+async function toggleProductStatus(product: ProductSummary, target: 'ON_SALE' | 'OFF_SALE') {
+  if (togglingProductId.value) return
+  togglingProductId.value = product.id
+  try {
+    const endpoint = target === 'ON_SALE' ? 'on-sale' : 'off-sale'
+    await api.put(`/products/${product.id}/${endpoint}`)
+    await loadProducts()
+  } catch (err) {
+    const message = err instanceof Error ? err.message : '更新商品状态失败'
+    window.alert(message)
+  } finally {
+    togglingProductId.value = null
+  }
+}
+
+async function viewProductDetail(productId: number) {
+  detailDialogOpen.value = true
+  detailLoading.value = true
+  detailError.value = null
+  productDetail.value = null
+  try {
+    const { data } = await api.get<ProductDetail>(`/products/${productId}`)
+    productDetail.value = data
+  } catch (err) {
+    detailError.value = err instanceof Error ? err.message : '加载商品详情失败'
+  } finally {
+    detailLoading.value = false
+  }
+}
+
+function closeDetailDialog() {
+  detailDialogOpen.value = false
+  detailLoading.value = false
+  detailError.value = null
+  productDetail.value = null
 }
 
 async function redeemWallet() {
@@ -441,11 +574,17 @@ const statusOptions = [
         <div class="panel-title" id="supplier-info">基础信息</div>
         <ul>
           <li><span>企业名称</span><strong>{{ profile?.companyName ?? '—' }}</strong></li>
+          <li><span>联系人</span><strong>{{ profile?.contactPerson ?? '—' }}</strong></li>
           <li><span>联系人邮箱</span><strong>{{ profile?.email ?? '—' }}</strong></li>
           <li><span>联系电话</span><strong>{{ profile?.phone ?? '—' }}</strong></li>
+          <li><span>联系地址</span><strong>{{ profile?.address ?? '尚未填写' }}</strong></li>
+          <li><span>营业执照</span><strong>{{ profile?.businessLicense ?? '—' }}</strong></li>
           <li><span>等级</span><strong>{{ profile?.supplierLevel ?? '未评级' }}</strong></li>
           <li><span>审核状态</span><strong>{{ profile?.status ?? '待审核' }}</strong></li>
         </ul>
+        <div class="profile-actions">
+          <button type="button" class="link-button" @click="openProfileEditor">编辑基础信息</button>
+        </div>
         <div class="redeem-box">
           <label>
             <span>兑换码</span>
@@ -491,6 +630,15 @@ const statusOptions = [
                 <td>{{ item.sales }}</td>
                 <td><span class="status-pill">{{ productStatus(item.status) }}</span></td>
                 <td class="actions">
+                  <button type="button" class="link-button" @click="viewProductDetail(item.id)">查看</button>
+                  <button
+                    type="button"
+                    class="link-button"
+                    @click="toggleProductStatus(item, item.status === 'ON_SALE' ? 'OFF_SALE' : 'ON_SALE')"
+                    :disabled="togglingProductId === item.id"
+                  >
+                    {{ item.status === 'ON_SALE' ? '下架' : '上架' }}
+                  </button>
                   <button type="button" class="link-button" @click="openProductForm(item)">编辑</button>
                   <button
                     type="button"
@@ -593,6 +741,94 @@ const statusOptions = [
         </ul>
       </section>
     </template>
+
+    <div v-if="detailDialogOpen" class="modal-backdrop" @click.self="closeDetailDialog">
+      <section class="modal" role="dialog" aria-modal="true" aria-labelledby="product-detail-title">
+        <header class="modal-header">
+          <h3 id="product-detail-title">商品详情</h3>
+          <button type="button" class="icon-button" @click="closeDetailDialog" aria-label="关闭">×</button>
+        </header>
+        <div class="modal-body product-detail">
+          <p v-if="detailLoading" class="loading">正在加载详情…</p>
+          <p v-else-if="detailError" class="error">{{ detailError }}</p>
+          <template v-else-if="productDetail">
+            <div class="detail-header">
+              <div>
+                <h4>{{ productDetail.name }}</h4>
+                <p class="status">当前状态：{{ productStatus(productDetail.status) }}</p>
+              </div>
+              <div class="price">{{ formatCurrency(productDetail.price) }}</div>
+            </div>
+            <ul class="detail-grid">
+              <li><span>库存</span><strong>{{ productDetail.stock }}</strong></li>
+              <li><span>销量</span><strong>{{ productDetail.sales }}</strong></li>
+              <li>
+                <span>所属分类</span>
+                <strong>{{ productDetail.categoryName ?? productDetail.category?.name ?? '未分类' }}</strong>
+              </li>
+              <li><span>创建时间</span><strong>{{ productDetail.createdAt }}</strong></li>
+              <li v-if="productDetail.updatedAt"><span>更新时间</span><strong>{{ productDetail.updatedAt }}</strong></li>
+            </ul>
+            <figure v-if="productDetail.mainImage" class="detail-image">
+              <img :src="productDetail.mainImage" :alt="productDetail.name" />
+            </figure>
+            <section class="detail-description">
+              <h5>商品描述</h5>
+              <p>{{ productDetail.description || '暂无描述' }}</p>
+            </section>
+          </template>
+        </div>
+      </section>
+    </div>
+
+    <div v-if="showProfileDialog" class="modal-backdrop" @click.self="closeProfileEditor">
+      <section class="modal" role="dialog" aria-modal="true" aria-labelledby="supplier-profile-title">
+        <header class="modal-header">
+          <h3 id="supplier-profile-title">完善供应商资料</h3>
+          <button type="button" class="icon-button" @click="closeProfileEditor" aria-label="关闭">×</button>
+        </header>
+        <form class="modal-body profile-edit-form" @submit.prevent="submitProfileUpdate">
+          <div class="form-grid">
+            <label>
+              <span>企业名称</span>
+              <input v-model="profileForm.companyName" type="text" placeholder="企业名称" />
+            </label>
+            <label>
+              <span>联系人</span>
+              <input v-model="profileForm.contactPerson" type="text" placeholder="主要联系人" />
+            </label>
+          </div>
+          <div class="form-grid">
+            <label>
+              <span>联系邮箱</span>
+              <input v-model="profileForm.email" type="email" placeholder="例如：supplier@example.com" />
+            </label>
+            <label>
+              <span>联系电话</span>
+              <input v-model="profileForm.phone" type="tel" placeholder="便于沟通与发货" />
+            </label>
+          </div>
+          <label>
+            <span>联系地址</span>
+            <textarea v-model="profileForm.address" rows="2" placeholder="请填写详细的发货地址"></textarea>
+          </label>
+          <label>
+            <span>营业执照编号</span>
+            <input v-model="profileForm.businessLicense" type="text" placeholder="选填" />
+          </label>
+          <p v-if="profileMessage" class="form-success">{{ profileMessage }}</p>
+          <p v-if="profileError" class="form-error">{{ profileError }}</p>
+          <footer class="modal-footer">
+            <button type="submit" class="primary-button" :disabled="profileSaving">
+              {{ profileSaving ? '保存中…' : '保存资料' }}
+            </button>
+            <button type="button" class="ghost-button" @click="closeProfileEditor" :disabled="profileSaving">
+              取消
+            </button>
+          </footer>
+        </form>
+      </section>
+    </div>
   </section>
 </template>
 
@@ -713,6 +949,15 @@ const statusOptions = [
   color: rgba(15, 23, 42, 0.85);
 }
 
+.profile-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.profile-actions .link-button {
+  font-size: 0.9rem;
+}
+
 .redeem-box {
   display: grid;
   gap: 0.75rem;
@@ -807,6 +1052,11 @@ const statusOptions = [
   padding: 0;
 }
 
+.link-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
 .link-button.danger {
   color: #b91c1c;
 }
@@ -876,6 +1126,87 @@ const statusOptions = [
 
 .product-form .success {
   color: #15803d;
+}
+
+.product-detail {
+  display: grid;
+  gap: 1.2rem;
+}
+
+.product-detail .loading {
+  text-align: center;
+  color: rgba(15, 23, 42, 0.6);
+}
+
+.product-detail .detail-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 1rem;
+}
+
+.product-detail .detail-header h4 {
+  margin: 0 0 0.25rem;
+}
+
+.product-detail .detail-header .status {
+  margin: 0;
+  color: rgba(15, 23, 42, 0.6);
+}
+
+.product-detail .detail-header .price {
+  font-size: 1.4rem;
+  font-weight: 700;
+  color: #0ea5e9;
+}
+
+.product-detail .detail-grid {
+  list-style: none;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 0.75rem;
+}
+
+.product-detail .detail-grid li {
+  background: rgba(14, 165, 233, 0.08);
+  border-radius: 12px;
+  padding: 0.75rem;
+  display: grid;
+  gap: 0.35rem;
+}
+
+.product-detail .detail-grid span {
+  font-size: 0.85rem;
+  color: rgba(15, 23, 42, 0.6);
+}
+
+.product-detail .detail-grid strong {
+  font-size: 1rem;
+  color: rgba(15, 23, 42, 0.85);
+}
+
+.product-detail .detail-image {
+  margin: 0;
+  border-radius: 16px;
+  overflow: hidden;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+}
+
+.product-detail .detail-image img {
+  width: 100%;
+  display: block;
+}
+
+.product-detail .detail-description h5 {
+  margin: 0 0 0.5rem;
+  font-size: 1rem;
+}
+
+.product-detail .detail-description p {
+  margin: 0;
+  color: rgba(15, 23, 42, 0.75);
+  line-height: 1.6;
 }
 
 .category-create {
@@ -958,6 +1289,153 @@ const statusOptions = [
 .badge {
   font-weight: 700;
   color: #0284c7;
+}
+
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.45);
+  display: grid;
+  place-items: center;
+  padding: 1.5rem;
+  z-index: 40;
+}
+
+.modal {
+  width: min(640px, 100%);
+  background: #fff;
+  border-radius: 20px;
+  box-shadow: 0 30px 60px rgba(15, 23, 42, 0.25);
+  display: flex;
+  flex-direction: column;
+  max-height: 90vh;
+  overflow: hidden;
+}
+
+.modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1.25rem 1.5rem 1rem;
+  border-bottom: 1px solid rgba(15, 23, 42, 0.08);
+}
+
+.modal-body {
+  padding: 1.5rem;
+  display: grid;
+  gap: 1rem;
+  overflow-y: auto;
+}
+
+.modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.75rem;
+  margin-top: 0.5rem;
+}
+
+.icon-button {
+  border: none;
+  background: transparent;
+  font-size: 1.5rem;
+  line-height: 1;
+  cursor: pointer;
+  color: rgba(15, 23, 42, 0.55);
+  transition: color 0.2s ease;
+}
+
+.icon-button:hover {
+  color: rgba(37, 99, 235, 0.85);
+}
+
+.primary-button {
+  padding: 0.6rem 1.4rem;
+  border-radius: 999px;
+  border: none;
+  background: linear-gradient(135deg, #2563eb, #38bdf8);
+  color: #fff;
+  font-weight: 600;
+  cursor: pointer;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.primary-button:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 15px 25px rgba(37, 99, 235, 0.35);
+}
+
+.primary-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+.ghost-button {
+  padding: 0.55rem 1.3rem;
+  border-radius: 999px;
+  border: 1px solid rgba(37, 99, 235, 0.35);
+  background: transparent;
+  color: #1d4ed8;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s ease;
+}
+
+.ghost-button:hover {
+  background: rgba(37, 99, 235, 0.12);
+}
+
+.ghost-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.profile-edit-form {
+  gap: 1.1rem;
+}
+
+.profile-edit-form .form-grid {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+
+.profile-edit-form label {
+  display: grid;
+  gap: 0.4rem;
+}
+
+.profile-edit-form span {
+  font-weight: 600;
+  color: rgba(15, 23, 42, 0.75);
+}
+
+.profile-edit-form input,
+.profile-edit-form textarea {
+  border-radius: 12px;
+  border: 1px solid rgba(15, 23, 42, 0.15);
+  padding: 0.75rem 0.85rem;
+  font-size: 0.95rem;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.profile-edit-form input:focus,
+.profile-edit-form textarea:focus {
+  outline: none;
+  border-color: rgba(37, 99, 235, 0.6);
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.18);
+}
+
+.profile-edit-form textarea {
+  resize: vertical;
+}
+
+.form-success {
+  color: #15803d;
+}
+
+.form-error {
+  color: #b91c1c;
 }
 
 @media (max-width: 900px) {

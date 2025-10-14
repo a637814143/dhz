@@ -33,9 +33,17 @@ const statusClass = computed(() => {
 
 const formattedPrice = computed(() => {
   if (!product.value) {
-    return '--'
+    return '—'
   }
-  return new Intl.NumberFormat('zh-CN', { style: 'currency', currency: 'CNY' }).format(product.value.price)
+  const raw = product.value.price as number | string | null | undefined
+  if (raw === null || raw === undefined) {
+    return '—'
+  }
+  const numeric = typeof raw === 'number' ? raw : Number(raw)
+  if (!Number.isFinite(numeric)) {
+    return '—'
+  }
+  return new Intl.NumberFormat('zh-CN', { style: 'currency', currency: 'CNY' }).format(numeric)
 })
 
 const galleryImages = computed(() => {
@@ -302,11 +310,11 @@ onBeforeUnmount(() => {
             <div class="stats">
               <div>
                 <span class="label">库存</span>
-                <span class="value">{{ product.stock }}</span>
+                <span class="value">{{ product.stock ?? 0 }}</span>
               </div>
               <div>
                 <span class="label">累计销量</span>
-                <span class="value">{{ product.sales }}</span>
+                <span class="value">{{ product.sales ?? 0 }}</span>
               </div>
               <div>
                 <span class="label">状态</span>
