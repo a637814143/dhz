@@ -89,6 +89,56 @@ public class SupplierServiceImpl extends UserServiceImpl<Supplier> implements Su
 
         return super.register(supplier);
     }
+
+    @Override
+    public Supplier update(Supplier supplier) {
+        if (supplier.getId() == null) {
+            throw new RuntimeException("供应商不存在");
+        }
+
+        Supplier existing = findById(supplier.getId())
+                .orElseThrow(() -> new RuntimeException("供应商不存在"));
+
+        if (supplier.getUsername() != null) {
+            existing.setUsername(supplier.getUsername());
+        }
+        if (supplier.getEmail() != null) {
+            existing.setEmail(supplier.getEmail());
+        }
+        if (supplier.getPhone() != null) {
+            existing.setPhone(supplier.getPhone());
+        }
+        if (supplier.getAddress() != null) {
+            existing.setAddress(supplier.getAddress());
+        }
+        if (supplier.getCompanyName() != null) {
+            existing.setCompanyName(supplier.getCompanyName());
+        }
+        if (supplier.getBusinessLicense() != null) {
+            existing.setBusinessLicense(supplier.getBusinessLicense());
+        }
+        if (supplier.getContactPerson() != null) {
+            existing.setContactPerson(supplier.getContactPerson());
+        }
+        if (supplier.getJoinDate() != null) {
+            existing.setJoinDate(supplier.getJoinDate());
+        }
+        if (supplier.getSupplierLevel() != null) {
+            existing.setSupplierLevel(supplier.getSupplierLevel());
+        }
+        if (supplier.getStatus() != null) {
+            existing.setStatus(supplier.getStatus());
+        }
+        existing.setEnabled(supplier.isEnabled());
+        if (supplier.getWalletBalance() != null) {
+            existing.setWalletBalance(supplier.getWalletBalance());
+        }
+        if (supplier.getPassword() != null && !supplier.getPassword().isBlank()) {
+            existing.setPassword(supplier.getPassword());
+        }
+
+        return super.update(existing);
+    }
     private Specification<Supplier> buildSpecification(String keyword, String status, String level, Boolean enabled) {
         Specification<Supplier> specification = Specification.where(null);
 
