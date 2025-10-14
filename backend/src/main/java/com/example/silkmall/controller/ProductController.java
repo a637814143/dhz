@@ -3,8 +3,10 @@ package com.example.silkmall.controller;
 import com.example.silkmall.dto.ProductOverviewDTO;
 import com.example.silkmall.dto.ProductSummaryDTO;
 import com.example.silkmall.entity.Product;
+import com.example.silkmall.entity.Supplier;
 import com.example.silkmall.security.CustomUserDetails;
 import com.example.silkmall.service.ProductService;
+import com.example.silkmall.service.SupplierService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
@@ -27,10 +29,12 @@ import java.util.Set;
 @RequestMapping("/api/products")
 public class ProductController extends BaseController {
     private final ProductService productService;
-    
+    private final SupplierService supplierService;
+
     @Autowired
-    public ProductController(ProductService productService) {
+    public ProductController(ProductService productService, SupplierService supplierService) {
         this.productService = productService;
+        this.supplierService = supplierService;
     }
     
     @GetMapping("/{id}")
@@ -50,6 +54,12 @@ public class ProductController extends BaseController {
         if (!canManageProduct(currentUser, product)) {
             return redirectForUser(currentUser);
         }
+        try {
+            applySupplier(product, product, currentUser);
+        } catch (IllegalArgumentException ex) {
+            return badRequest(ex.getMessage());
+        }
+
         return created(productService.save(product));
     }
 
@@ -64,8 +74,17 @@ public class ProductController extends BaseController {
         if (!canManageProduct(currentUser, existing.get())) {
             return redirectForUser(currentUser);
         }
-        product.setId(id);
-        return success(productService.save(product));
+        Product existingProduct = existing.get();
+        mergeProduct(existingProduct, product);
+        existingProduct.setId(id);
+
+        try {
+            applySupplier(existingProduct, product, currentUser);
+        } catch (IllegalArgumentException ex) {
+            return badRequest(ex.getMessage());
+        }
+
+        return success(productService.save(existingProduct));
     }
 
     @DeleteMapping("/{id}")
@@ -225,10 +244,57 @@ public class ProductController extends BaseController {
         if (!"supplier".equalsIgnoreCase(user.getUserType())) {
             return false;
         }
-        if (product == null || product.getSupplier() == null || product.getSupplier().getId() == null) {
+        if (product == null) {
             return false;
         }
+        if (product.getSupplier() == null || product.getSupplier().getId() == null) {
+            return true;
+        }
         return product.getSupplier().getId().equals(user.getId());
+    }
+
+    private void mergeProduct(Product target, Product source) {
+        target.setName(source.getName());
+        target.setDescription(source.getDescription());
+        target.setPrice(source.getPrice());
+        target.setStock(source.getStock());
+        target.setStatus(source.getStatus());
+        target.setMainImage(source.getMainImage());
+        target.setCategory(source.getCategory());
+    }
+
+    private void applySupplier(Product target, Product source, CustomUserDetails user) {
+        if (user == null) {
+            throw new IllegalArgumentException("无权执行该操作");
+        }
+
+        String userType = user.getUserType();
+        Long requestedSupplierId = source.getSupplier() != null ? source.getSupplier().getId() : null;
+        Long currentSupplierId = target.getSupplier() != null ? target.getSupplier().getId() : null;
+
+        if ("admin".equalsIgnoreCase(userType)) {
+            Long supplierId = requestedSupplierId != null ? requestedSupplierId : currentSupplierId;
+            if (supplierId == null) {
+                throw new IllegalArgumentException("请选择有效的供应商");
+            }
+            Supplier supplier = supplierService.findById(supplierId)
+                    .orElseThrow(() -> new IllegalArgumentException("供应商不存在"));
+            target.setSupplier(supplier);
+            return;
+        }
+
+        if ("supplier".equalsIgnoreCase(userType)) {
+            Long supplierId = user.getId();
+            if (requestedSupplierId != null && !requestedSupplierId.equals(supplierId)) {
+                throw new IllegalArgumentException("不能将商品归属到其他供应商");
+            }
+            Supplier supplier = supplierService.findById(supplierId)
+                    .orElseThrow(() -> new IllegalArgumentException("供应商不存在"));
+            target.setSupplier(supplier);
+            return;
+        }
+
+        throw new IllegalArgumentException("无权执行该操作");
     }
 
     private ResponseEntity<?> redirectForUser(CustomUserDetails currentUser) {

@@ -4,10 +4,15 @@ import com.example.silkmall.entity.Supplier;
 import com.example.silkmall.repository.SupplierRepository;
 import com.example.silkmall.service.SupplierService;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
+
 import java.util.Date;
 import java.util.List;
+import java.util.Locale;
 
 @Service
 public class SupplierServiceImpl extends UserServiceImpl<Supplier> implements SupplierService {
@@ -53,11 +58,17 @@ public class SupplierServiceImpl extends UserServiceImpl<Supplier> implements Su
     public void updateSupplierLevel(Long id, String level) {
         Supplier supplier = findById(id)
                 .orElseThrow(() -> new RuntimeException("供应商不存在"));
-        
+
         supplier.setSupplierLevel(level);
         save(supplier);
     }
-    
+
+    @Override
+    public Page<Supplier> searchSuppliers(String keyword, String status, String level, Boolean enabled, Pageable pageable) {
+        Specification<Supplier> specification = buildSpecification(keyword, status, level, enabled);
+        return supplierRepository.findAll(specification, pageable);
+    }
+
     @Override
     public Supplier register(Supplier supplier) {
         // 设置默认状态为待审核
@@ -65,17 +76,48 @@ public class SupplierServiceImpl extends UserServiceImpl<Supplier> implements Su
             supplier.setStatus("PENDING");
             supplier.setEnabled(false);
         }
-        
+
         // 设置默认供应商等级
         if (supplier.getSupplierLevel() == null) {
             supplier.setSupplierLevel("BRONZE");
         }
-        
+
         // 设置注册日期
         if (supplier.getJoinDate() == null) {
             supplier.setJoinDate(new Date());
         }
-        
+
         return super.register(supplier);
+    }
+    private Specification<Supplier> buildSpecification(String keyword, String status, String level, Boolean enabled) {
+        Specification<Supplier> specification = Specification.where(null);
+
+        if (keyword != null && !keyword.isBlank()) {
+            String pattern = "%" + keyword.trim().toLowerCase(Locale.ROOT) + "%";
+            specification = specification.and((root, query, cb) -> cb.or(
+                    cb.like(cb.lower(root.get("username")), pattern),
+                    cb.like(cb.lower(root.get("companyName")), pattern),
+                    cb.like(cb.lower(root.get("contactPerson")), pattern),
+                    cb.like(cb.lower(root.get("email")), pattern),
+                    cb.like(cb.lower(root.get("phone")), pattern)
+            ));
+        }
+
+        if (status != null && !status.isBlank()) {
+            specification = specification.and((root, query, cb) ->
+                    cb.equal(root.get("status"), status.trim().toUpperCase(Locale.ROOT)));
+        }
+
+        if (level != null && !level.isBlank()) {
+            specification = specification.and((root, query, cb) ->
+                    cb.equal(root.get("supplierLevel"), level.trim().toUpperCase(Locale.ROOT)));
+        }
+
+        if (enabled != null) {
+            specification = specification.and((root, query, cb) ->
+                    cb.equal(root.get("enabled"), enabled));
+        }
+
+        return specification;
     }
 }

@@ -4,13 +4,17 @@ import com.example.silkmall.entity.Supplier;
 import com.example.silkmall.service.SupplierService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import java.util.Locale;
 import java.util.Optional;
+import java.util.Set;
 
 @RestController
 @RequestMapping("/api/suppliers")
@@ -21,7 +25,37 @@ public class SupplierController extends BaseController {
     public SupplierController(SupplierService supplierService) {
         this.supplierService = supplierService;
     }
-    
+
+    @GetMapping
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<Page<Supplier>> getSuppliers(
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "10") int size,
+            @RequestParam(required = false) String keyword,
+            @RequestParam(required = false) String status,
+            @RequestParam(required = false) String level,
+            @RequestParam(required = false) Boolean enabled,
+            @RequestParam(defaultValue = "createdAt") String sortBy,
+            @RequestParam(defaultValue = "DESC") Sort.Direction sortDirection) {
+        Set<String> allowedSortFields = Set.of("createdAt", "updatedAt", "username", "companyName", "supplierLevel");
+        if (!allowedSortFields.contains(sortBy)) {
+            sortBy = "createdAt";
+        }
+
+        int safePage = Math.max(page, 0);
+        int safeSize = Math.min(Math.max(size, 1), 100);
+        Pageable pageable = PageRequest.of(safePage, safeSize, Sort.by(sortDirection, sortBy));
+
+        String normalizedStatus = status != null && !status.isBlank()
+                ? status.trim().toUpperCase(Locale.ROOT)
+                : null;
+        String normalizedLevel = level != null && !level.isBlank()
+                ? level.trim().toUpperCase(Locale.ROOT)
+                : null;
+
+        return success(supplierService.searchSuppliers(keyword, normalizedStatus, normalizedLevel, enabled, pageable));
+    }
+
     @GetMapping("/{id}")
     @PreAuthorize("hasRole('ADMIN') or (hasRole('SUPPLIER') and #id == principal.id)")
     public ResponseEntity<?> getSupplierById(@PathVariable Long id) {

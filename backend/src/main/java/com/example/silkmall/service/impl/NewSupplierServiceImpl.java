@@ -4,11 +4,16 @@ import com.example.silkmall.entity.Supplier;
 import com.example.silkmall.repository.NewSupplierRepository;
 import com.example.silkmall.service.SupplierService;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Primary;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
+
 import java.util.List;
+import java.util.Locale;
 import java.util.Optional;
-import org.springframework.context.annotation.Primary;
 
 @Service
 @Primary
@@ -71,10 +76,16 @@ public class NewSupplierServiceImpl implements SupplierService {
     public List<Supplier> findByStatus(String status) {
         return newSupplierRepository.findByStatus(status);
     }
-    
+
     @Override
     public List<Supplier> findBySupplierLevel(String level) {
         return newSupplierRepository.findBySupplierLevel(level);
+    }
+
+    @Override
+    public Page<Supplier> searchSuppliers(String keyword, String status, String level, Boolean enabled, Pageable pageable) {
+        Specification<Supplier> specification = buildSpecification(keyword, status, level, enabled);
+        return newSupplierRepository.findAll(specification, pageable);
     }
     
     @Override
@@ -163,8 +174,39 @@ public class NewSupplierServiceImpl implements SupplierService {
     public void updateSupplierLevel(Long id, String level) {
         Supplier supplier = findById(id)
                 .orElseThrow(() -> new RuntimeException("供应商不存在"));
-        
+
         supplier.setSupplierLevel(level);
         newSupplierRepository.save(supplier);
+    }
+    private Specification<Supplier> buildSpecification(String keyword, String status, String level, Boolean enabled) {
+        Specification<Supplier> specification = Specification.where(null);
+
+        if (keyword != null && !keyword.isBlank()) {
+            String pattern = "%" + keyword.trim().toLowerCase(Locale.ROOT) + "%";
+            specification = specification.and((root, query, cb) -> cb.or(
+                    cb.like(cb.lower(root.get("username")), pattern),
+                    cb.like(cb.lower(root.get("companyName")), pattern),
+                    cb.like(cb.lower(root.get("contactPerson")), pattern),
+                    cb.like(cb.lower(root.get("email")), pattern),
+                    cb.like(cb.lower(root.get("phone")), pattern)
+            ));
+        }
+
+        if (status != null && !status.isBlank()) {
+            specification = specification.and((root, query, cb) ->
+                    cb.equal(root.get("status"), status.trim().toUpperCase(Locale.ROOT)));
+        }
+
+        if (level != null && !level.isBlank()) {
+            specification = specification.and((root, query, cb) ->
+                    cb.equal(root.get("supplierLevel"), level.trim().toUpperCase(Locale.ROOT)));
+        }
+
+        if (enabled != null) {
+            specification = specification.and((root, query, cb) ->
+                    cb.equal(root.get("enabled"), enabled));
+        }
+
+        return specification;
     }
 }

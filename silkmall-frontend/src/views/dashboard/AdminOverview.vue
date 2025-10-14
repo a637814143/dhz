@@ -146,23 +146,23 @@ function normaliseSupplierOptions(payload: unknown): SupplierOption[] {
   if (!Array.isArray(payload)) {
     return []
   }
-  return payload
-    .map((item) => {
-      if (!item || typeof item !== 'object') return null
-      const source = item as Record<string, unknown>
-      const id = Number(source.id)
-      if (!Number.isFinite(id)) return null
-      const rawName = source.companyName ?? source.username ?? `供应商 ${id}`
-      const companyName = typeof rawName === 'string' ? rawName.trim() : String(rawName ?? '').trim()
-      return {
-        id,
-        companyName: companyName.length > 0 ? companyName : `供应商 ${id}`,
-        supplierLevel:
-          typeof source.supplierLevel === 'string' ? source.supplierLevel : undefined,
-      }
+
+  const options: SupplierOption[] = []
+  payload.forEach((item) => {
+    if (!item || typeof item !== 'object') return
+    const source = item as Record<string, unknown>
+    const id = Number(source.id)
+    if (!Number.isFinite(id)) return
+    const rawName = source.companyName ?? source.username ?? `供应商 ${id}`
+    const companyName = typeof rawName === 'string' ? rawName.trim() : String(rawName ?? '').trim()
+    options.push({
+      id,
+      companyName: companyName.length > 0 ? companyName : `供应商 ${id}`,
+      supplierLevel: typeof source.supplierLevel === 'string' ? source.supplierLevel : null,
     })
-    .filter((item): item is SupplierOption => item !== null)
-    .sort((a, b) => a.companyName.localeCompare(b.companyName, 'zh-CN'))
+  })
+
+  return options.sort((a, b) => a.companyName.localeCompare(b.companyName, 'zh-CN'))
 }
 
 async function loadSupplierOptions() {
@@ -325,7 +325,8 @@ async function openProductDialog(product?: ProductSummary) {
         const parsed = Number(detail.price)
         productForm.price = Number.isFinite(parsed) ? parsed.toString() : ''
       }
-      const stockValue = Number((detail as Record<string, unknown>).stock)
+      const detailRecord = detail as unknown as Record<string, unknown>
+      const stockValue = Number(detailRecord.stock)
       productForm.stock = Number.isFinite(stockValue) ? stockValue : 0
       productForm.status = detail.status ?? 'OFF_SALE'
       productForm.categoryId = detail.category?.id ?? 0
@@ -435,8 +436,9 @@ async function openProductView(product: ProductSummary) {
     if (!detail) {
       throw new Error('加载商品详情失败')
     }
-    const stockValue = Number((detail as Record<string, unknown>).stock)
-    const salesValue = Number((detail as Record<string, unknown>).sales)
+    const detailRecord = detail as unknown as Record<string, unknown>
+    const stockValue = Number(detailRecord.stock)
+    const salesValue = Number(detailRecord.sales)
     viewingProduct.value = {
       ...detail,
       stock: Number.isFinite(stockValue) ? stockValue : 0,
@@ -506,6 +508,7 @@ function formatNumber(value?: number | null) {
       </div>
       <nav class="admin-actions">
         <RouterLink class="manage-link" to="/admin/products">商品管理</RouterLink>
+        <RouterLink class="manage-link" to="/admin/suppliers">供应商账号管理</RouterLink>
         <RouterLink class="manage-link" to="/admin/consumers">采购账号管理</RouterLink>
       </nav>
     </header>
@@ -633,7 +636,7 @@ function formatNumber(value?: number | null) {
             <span>第 {{ productPagination.page + 1 }} / {{ totalProductPages }} 页</span>
             <button
               type="button"
-              :disabled="totalProductPages && productPagination.page + 1 >= totalProductPages"
+              :disabled="totalProductPages > 0 && productPagination.page + 1 >= totalProductPages"
               @click="changeProductPage(productPagination.page + 1)"
             >
               下一页
