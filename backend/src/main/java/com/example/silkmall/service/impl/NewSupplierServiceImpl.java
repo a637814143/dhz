@@ -116,11 +116,65 @@ public class NewSupplierServiceImpl implements SupplierService {
     
     @Override
     public Supplier update(Supplier supplier) {
-        // 确保密码不会被明文保存
-        if (supplier.getPassword() != null && !supplier.getPassword().startsWith("{bcrypt}")) {
-            supplier.setPassword(passwordEncoder.encode(supplier.getPassword()));
+        if (supplier.getId() == null) {
+            throw new RuntimeException("供应商不存在");
         }
-        return newSupplierRepository.save(supplier);
+
+        Supplier existing = findById(supplier.getId())
+                .orElseThrow(() -> new RuntimeException("供应商不存在"));
+
+        if (supplier.getUsername() != null) {
+            existing.setUsername(supplier.getUsername());
+        }
+        if (supplier.getEmail() != null) {
+            existing.setEmail(supplier.getEmail());
+        }
+        if (supplier.getPhone() != null) {
+            existing.setPhone(supplier.getPhone());
+        }
+        if (supplier.getAddress() != null) {
+            existing.setAddress(supplier.getAddress());
+        }
+        if (supplier.getCompanyName() != null) {
+            existing.setCompanyName(supplier.getCompanyName());
+        }
+        if (supplier.getBusinessLicense() != null) {
+            existing.setBusinessLicense(supplier.getBusinessLicense());
+        }
+        if (supplier.getContactPerson() != null) {
+            existing.setContactPerson(supplier.getContactPerson());
+        }
+        if (supplier.getJoinDate() != null) {
+            existing.setJoinDate(supplier.getJoinDate());
+        }
+        if (supplier.getSupplierLevel() != null) {
+            existing.setSupplierLevel(supplier.getSupplierLevel());
+        }
+        if (supplier.getStatus() != null) {
+            existing.setStatus(supplier.getStatus());
+        }
+        if (supplier.getRole() != null) {
+            existing.setRole(supplier.getRole());
+        }
+        if (supplier.getWalletBalance() != null) {
+            existing.setWalletBalance(supplier.getWalletBalance());
+        }
+        if (supplier.getPassword() != null && !supplier.getPassword().isBlank()) {
+            if (isPasswordEncoded(supplier.getPassword())) {
+                existing.setPassword(supplier.getPassword());
+            } else {
+                existing.setPassword(passwordEncoder.encode(supplier.getPassword()));
+            }
+        }
+
+        existing.setEnabled(supplier.isEnabled());
+
+        return newSupplierRepository.save(existing);
+    }
+
+    private boolean isPasswordEncoded(String password) {
+        return password.startsWith("{bcrypt}") || password.startsWith("$2a$")
+                || password.startsWith("$2b$") || password.startsWith("$2y$");
     }
     
     @Override
