@@ -4,11 +4,16 @@ import com.example.silkmall.entity.Supplier;
 import com.example.silkmall.repository.NewSupplierRepository;
 import com.example.silkmall.service.SupplierService;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Primary;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
+
 import java.util.List;
+import java.util.Locale;
 import java.util.Optional;
-import org.springframework.context.annotation.Primary;
 
 @Service
 @Primary
@@ -71,10 +76,16 @@ public class NewSupplierServiceImpl implements SupplierService {
     public List<Supplier> findByStatus(String status) {
         return newSupplierRepository.findByStatus(status);
     }
-    
+
     @Override
     public List<Supplier> findBySupplierLevel(String level) {
         return newSupplierRepository.findBySupplierLevel(level);
+    }
+
+    @Override
+    public Page<Supplier> searchSuppliers(String keyword, String status, String level, Boolean enabled, Pageable pageable) {
+        Specification<Supplier> specification = buildSpecification(keyword, status, level, enabled);
+        return newSupplierRepository.findAll(specification, pageable);
     }
     
     @Override
@@ -105,11 +116,65 @@ public class NewSupplierServiceImpl implements SupplierService {
     
     @Override
     public Supplier update(Supplier supplier) {
-        // 确保密码不会被明文保存
-        if (supplier.getPassword() != null && !supplier.getPassword().startsWith("{bcrypt}")) {
-            supplier.setPassword(passwordEncoder.encode(supplier.getPassword()));
+        if (supplier.getId() == null) {
+            throw new RuntimeException("供应商不存在");
         }
-        return newSupplierRepository.save(supplier);
+
+        Supplier existing = findById(supplier.getId())
+                .orElseThrow(() -> new RuntimeException("供应商不存在"));
+
+        if (supplier.getUsername() != null) {
+            existing.setUsername(supplier.getUsername());
+        }
+        if (supplier.getEmail() != null) {
+            existing.setEmail(supplier.getEmail());
+        }
+        if (supplier.getPhone() != null) {
+            existing.setPhone(supplier.getPhone());
+        }
+        if (supplier.getAddress() != null) {
+            existing.setAddress(supplier.getAddress());
+        }
+        if (supplier.getCompanyName() != null) {
+            existing.setCompanyName(supplier.getCompanyName());
+        }
+        if (supplier.getBusinessLicense() != null) {
+            existing.setBusinessLicense(supplier.getBusinessLicense());
+        }
+        if (supplier.getContactPerson() != null) {
+            existing.setContactPerson(supplier.getContactPerson());
+        }
+        if (supplier.getJoinDate() != null) {
+            existing.setJoinDate(supplier.getJoinDate());
+        }
+        if (supplier.getSupplierLevel() != null) {
+            existing.setSupplierLevel(supplier.getSupplierLevel());
+        }
+        if (supplier.getStatus() != null) {
+            existing.setStatus(supplier.getStatus());
+        }
+        if (supplier.getRole() != null) {
+            existing.setRole(supplier.getRole());
+        }
+        if (supplier.getWalletBalance() != null) {
+            existing.setWalletBalance(supplier.getWalletBalance());
+        }
+        if (supplier.getPassword() != null && !supplier.getPassword().isBlank()) {
+            if (isPasswordEncoded(supplier.getPassword())) {
+                existing.setPassword(supplier.getPassword());
+            } else {
+                existing.setPassword(passwordEncoder.encode(supplier.getPassword()));
+            }
+        }
+
+        existing.setEnabled(supplier.isEnabled());
+
+        return newSupplierRepository.save(existing);
+    }
+
+    private boolean isPasswordEncoded(String password) {
+        return password.startsWith("{bcrypt}") || password.startsWith("$2a$")
+                || password.startsWith("$2b$") || password.startsWith("$2y$");
     }
     
     @Override
@@ -163,8 +228,39 @@ public class NewSupplierServiceImpl implements SupplierService {
     public void updateSupplierLevel(Long id, String level) {
         Supplier supplier = findById(id)
                 .orElseThrow(() -> new RuntimeException("供应商不存在"));
-        
+
         supplier.setSupplierLevel(level);
         newSupplierRepository.save(supplier);
+    }
+    private Specification<Supplier> buildSpecification(String keyword, String status, String level, Boolean enabled) {
+        Specification<Supplier> specification = Specification.where(null);
+
+        if (keyword != null && !keyword.isBlank()) {
+            String pattern = "%" + keyword.trim().toLowerCase(Locale.ROOT) + "%";
+            specification = specification.and((root, query, cb) -> cb.or(
+                    cb.like(cb.lower(root.get("username")), pattern),
+                    cb.like(cb.lower(root.get("companyName")), pattern),
+                    cb.like(cb.lower(root.get("contactPerson")), pattern),
+                    cb.like(cb.lower(root.get("email")), pattern),
+                    cb.like(cb.lower(root.get("phone")), pattern)
+            ));
+        }
+
+        if (status != null && !status.isBlank()) {
+            specification = specification.and((root, query, cb) ->
+                    cb.equal(root.get("status"), status.trim().toUpperCase(Locale.ROOT)));
+        }
+
+        if (level != null && !level.isBlank()) {
+            specification = specification.and((root, query, cb) ->
+                    cb.equal(root.get("supplierLevel"), level.trim().toUpperCase(Locale.ROOT)));
+        }
+
+        if (enabled != null) {
+            specification = specification.and((root, query, cb) ->
+                    cb.equal(root.get("enabled"), enabled));
+        }
+
+        return specification;
     }
 }

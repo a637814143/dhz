@@ -131,24 +131,25 @@ function normaliseSuppliers(payload: unknown): SupplierOption[] {
   if (!Array.isArray(payload)) {
     return []
   }
-  return payload
-    .map((item) => {
-      if (!item || typeof item !== 'object') return null
-      const source = item as Record<string, unknown>
-      const id = Number(source.id)
-      if (!Number.isFinite(id)) return null
-      const companyNameRaw = source.companyName ?? source.username ?? `供应商 ${id}`
-      const companyName = typeof companyNameRaw === 'string'
-        ? companyNameRaw.trim()
-        : String(companyNameRaw ?? '').trim()
-      return {
-        id,
-        companyName: companyName.length > 0 ? companyName : `供应商 ${id}`,
-        supplierLevel: typeof source.supplierLevel === 'string' ? source.supplierLevel : null,
-      }
+
+  const options: SupplierOption[] = []
+  payload.forEach((item) => {
+    if (!item || typeof item !== 'object') return
+    const source = item as Record<string, unknown>
+    const id = Number(source.id)
+    if (!Number.isFinite(id)) return
+    const companyNameRaw = source.companyName ?? source.username ?? `供应商 ${id}`
+    const companyName = typeof companyNameRaw === 'string'
+      ? companyNameRaw.trim()
+      : String(companyNameRaw ?? '').trim()
+    options.push({
+      id,
+      companyName: companyName.length > 0 ? companyName : `供应商 ${id}`,
+      supplierLevel: typeof source.supplierLevel === 'string' ? source.supplierLevel : null,
     })
-    .filter((item): item is SupplierOption => item !== null)
-    .sort((a, b) => a.companyName.localeCompare(b.companyName, 'zh-CN'))
+  })
+
+  return options.sort((a, b) => a.companyName.localeCompare(b.companyName, 'zh-CN'))
 }
 
 async function loadSuppliers() {
@@ -242,7 +243,8 @@ async function openProductForm(product?: ProductSummary) {
       const parsed = Number(data.price)
       productForm.price = Number.isFinite(parsed) ? parsed.toString() : ''
     }
-    const stockValue = Number((data as Record<string, unknown>).stock)
+    const detailRecord = data as unknown as Record<string, unknown>
+    const stockValue = Number(detailRecord.stock)
     productForm.stock = Number.isFinite(stockValue) ? stockValue : 0
     productForm.status = data.status ?? 'OFF_SALE'
     productForm.categoryId = data.category?.id ?? 0
@@ -473,7 +475,7 @@ async function deleteProduct(productId: number) {
           <span>第 {{ pagination.page + 1 }} / {{ totalPages }} 页</span>
           <button
             type="button"
-            :disabled="totalPages && pagination.page + 1 >= totalPages"
+            :disabled="totalPages > 0 && pagination.page + 1 >= totalPages"
             @click="changePage(pagination.page + 1)"
           >
             下一页
