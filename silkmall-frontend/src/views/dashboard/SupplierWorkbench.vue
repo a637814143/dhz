@@ -2,7 +2,13 @@
 import { computed, onMounted, reactive, ref } from 'vue'
 import api from '@/services/api'
 import { useAuthState } from '@/services/authState'
-import type { CategoryOption, HomepageContent, PageResponse, ProductSummary } from '@/types'
+import type {
+  CategoryOption,
+  HomepageContent,
+  PageResponse,
+  ProductDetail,
+  ProductSummary,
+} from '@/types'
 
 interface SupplierProfile {
   id: number
@@ -49,6 +55,11 @@ const savingProduct = ref(false)
 const productFormError = ref<string | null>(null)
 const productFormMessage = ref<string | null>(null)
 const deletingProductId = ref<number | null>(null)
+const togglingProductId = ref<number | null>(null)
+const detailDialogOpen = ref(false)
+const detailLoading = ref(false)
+const detailError = ref<string | null>(null)
+const productDetail = ref<ProductDetail | null>(null)
 
 const productForm = reactive({
   id: null as number | null,
@@ -76,7 +87,7 @@ async function loadProfile() {
 async function loadProducts() {
   if (!state.user) return
   const { data } = await api.get<PageResponse<ProductSummary>>(`/products/supplier/${state.user.id}`, {
-    params: { page: 0, size: 6 },
+    params: { page: 0, size: 50, sort: 'createdAt,desc' },
   })
   products.value = data.content ?? []
 }
@@ -397,8 +408,12 @@ async function saveProduct() {
       await api.put(`/products/${productForm.id}`, payload)
       productFormMessage.value = '商品信息已更新'
     } else {
-      await api.post('/products', payload)
+      const { data } = await api.post<ProductSummary>('/products', payload)
       productFormMessage.value = '商品已创建并保存'
+      if (data && typeof data === 'object') {
+        const created = data as ProductSummary
+        products.value = [created, ...products.value]
+      }
     }
     await loadProducts()
     productDialogOpen.value = false
@@ -423,6 +438,43 @@ async function deleteProduct(productId: number) {
   } finally {
     deletingProductId.value = null
   }
+}
+
+async function toggleProductStatus(product: ProductSummary, target: 'ON_SALE' | 'OFF_SALE') {
+  if (togglingProductId.value) return
+  togglingProductId.value = product.id
+  try {
+    const endpoint = target === 'ON_SALE' ? 'on-sale' : 'off-sale'
+    await api.put(`/products/${product.id}/${endpoint}`)
+    await loadProducts()
+  } catch (err) {
+    const message = err instanceof Error ? err.message : '更新商品状态失败'
+    window.alert(message)
+  } finally {
+    togglingProductId.value = null
+  }
+}
+
+async function viewProductDetail(productId: number) {
+  detailDialogOpen.value = true
+  detailLoading.value = true
+  detailError.value = null
+  productDetail.value = null
+  try {
+    const { data } = await api.get<ProductDetail>(`/products/${productId}`)
+    productDetail.value = data
+  } catch (err) {
+    detailError.value = err instanceof Error ? err.message : '加载商品详情失败'
+  } finally {
+    detailLoading.value = false
+  }
+}
+
+function closeDetailDialog() {
+  detailDialogOpen.value = false
+  detailLoading.value = false
+  detailError.value = null
+  productDetail.value = null
 }
 
 async function redeemWallet() {
@@ -578,6 +630,15 @@ const statusOptions = [
                 <td>{{ item.sales }}</td>
                 <td><span class="status-pill">{{ productStatus(item.status) }}</span></td>
                 <td class="actions">
+                  <button type="button" class="link-button" @click="viewProductDetail(item.id)">查看</button>
+                  <button
+                    type="button"
+                    class="link-button"
+                    @click="toggleProductStatus(item, item.status === 'ON_SALE' ? 'OFF_SALE' : 'ON_SALE')"
+                    :disabled="togglingProductId === item.id"
+                  >
+                    {{ item.status === 'ON_SALE' ? '下架' : '上架' }}
+                  </button>
                   <button type="button" class="link-button" @click="openProductForm(item)">编辑</button>
                   <button
                     type="button"
@@ -680,6 +741,45 @@ const statusOptions = [
         </ul>
       </section>
     </template>
+
+    <div v-if="detailDialogOpen" class="modal-backdrop" @click.self="closeDetailDialog">
+      <section class="modal" role="dialog" aria-modal="true" aria-labelledby="product-detail-title">
+        <header class="modal-header">
+          <h3 id="product-detail-title">商品详情</h3>
+          <button type="button" class="icon-button" @click="closeDetailDialog" aria-label="关闭">×</button>
+        </header>
+        <div class="modal-body product-detail">
+          <p v-if="detailLoading" class="loading">正在加载详情…</p>
+          <p v-else-if="detailError" class="error">{{ detailError }}</p>
+          <template v-else-if="productDetail">
+            <div class="detail-header">
+              <div>
+                <h4>{{ productDetail.name }}</h4>
+                <p class="status">当前状态：{{ productStatus(productDetail.status) }}</p>
+              </div>
+              <div class="price">{{ formatCurrency(productDetail.price) }}</div>
+            </div>
+            <ul class="detail-grid">
+              <li><span>库存</span><strong>{{ productDetail.stock }}</strong></li>
+              <li><span>销量</span><strong>{{ productDetail.sales }}</strong></li>
+              <li>
+                <span>所属分类</span>
+                <strong>{{ productDetail.categoryName ?? productDetail.category?.name ?? '未分类' }}</strong>
+              </li>
+              <li><span>创建时间</span><strong>{{ productDetail.createdAt }}</strong></li>
+              <li v-if="productDetail.updatedAt"><span>更新时间</span><strong>{{ productDetail.updatedAt }}</strong></li>
+            </ul>
+            <figure v-if="productDetail.mainImage" class="detail-image">
+              <img :src="productDetail.mainImage" :alt="productDetail.name" />
+            </figure>
+            <section class="detail-description">
+              <h5>商品描述</h5>
+              <p>{{ productDetail.description || '暂无描述' }}</p>
+            </section>
+          </template>
+        </div>
+      </section>
+    </div>
 
     <div v-if="showProfileDialog" class="modal-backdrop" @click.self="closeProfileEditor">
       <section class="modal" role="dialog" aria-modal="true" aria-labelledby="supplier-profile-title">
@@ -952,6 +1052,11 @@ const statusOptions = [
   padding: 0;
 }
 
+.link-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
 .link-button.danger {
   color: #b91c1c;
 }
@@ -1021,6 +1126,87 @@ const statusOptions = [
 
 .product-form .success {
   color: #15803d;
+}
+
+.product-detail {
+  display: grid;
+  gap: 1.2rem;
+}
+
+.product-detail .loading {
+  text-align: center;
+  color: rgba(15, 23, 42, 0.6);
+}
+
+.product-detail .detail-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 1rem;
+}
+
+.product-detail .detail-header h4 {
+  margin: 0 0 0.25rem;
+}
+
+.product-detail .detail-header .status {
+  margin: 0;
+  color: rgba(15, 23, 42, 0.6);
+}
+
+.product-detail .detail-header .price {
+  font-size: 1.4rem;
+  font-weight: 700;
+  color: #0ea5e9;
+}
+
+.product-detail .detail-grid {
+  list-style: none;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 0.75rem;
+}
+
+.product-detail .detail-grid li {
+  background: rgba(14, 165, 233, 0.08);
+  border-radius: 12px;
+  padding: 0.75rem;
+  display: grid;
+  gap: 0.35rem;
+}
+
+.product-detail .detail-grid span {
+  font-size: 0.85rem;
+  color: rgba(15, 23, 42, 0.6);
+}
+
+.product-detail .detail-grid strong {
+  font-size: 1rem;
+  color: rgba(15, 23, 42, 0.85);
+}
+
+.product-detail .detail-image {
+  margin: 0;
+  border-radius: 16px;
+  overflow: hidden;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+}
+
+.product-detail .detail-image img {
+  width: 100%;
+  display: block;
+}
+
+.product-detail .detail-description h5 {
+  margin: 0 0 0.5rem;
+  font-size: 1rem;
+}
+
+.product-detail .detail-description p {
+  margin: 0;
+  color: rgba(15, 23, 42, 0.75);
+  line-height: 1.6;
 }
 
 .category-create {
