@@ -2,9 +2,13 @@ package com.example.silkmall.controller;
 
 import com.example.silkmall.dto.ProductOverviewDTO;
 import com.example.silkmall.dto.ProductSummaryDTO;
+import com.example.silkmall.entity.Category;
 import com.example.silkmall.entity.Product;
+import com.example.silkmall.entity.Supplier;
 import com.example.silkmall.security.CustomUserDetails;
 import com.example.silkmall.service.ProductService;
+import com.example.silkmall.service.SupplierService;
+import com.example.silkmall.service.CategoryService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
@@ -27,10 +31,16 @@ import java.util.Set;
 @RequestMapping("/api/products")
 public class ProductController extends BaseController {
     private final ProductService productService;
-    
+    private final SupplierService supplierService;
+    private final CategoryService categoryService;
+
     @Autowired
-    public ProductController(ProductService productService) {
+    public ProductController(ProductService productService,
+                             SupplierService supplierService,
+                             CategoryService categoryService) {
         this.productService = productService;
+        this.supplierService = supplierService;
+        this.categoryService = categoryService;
     }
     
     @GetMapping("/{id}")
@@ -47,9 +57,28 @@ public class ProductController extends BaseController {
     @PreAuthorize("hasRole('ADMIN') or hasRole('SUPPLIER')")
     public ResponseEntity<?> createProduct(@RequestBody Product product,
                                            @AuthenticationPrincipal CustomUserDetails currentUser) {
-        if (!canManageProduct(currentUser, product)) {
-            return redirectForUser(currentUser);
+        product.setId(null);
+
+        ResponseEntity<?> supplierResponse = attachSupplierForCreation(product, currentUser);
+        if (supplierResponse != null) {
+            return supplierResponse;
         }
+
+        ResponseEntity<?> categoryResponse = applyCategoryFromPayload(product, product);
+        if (categoryResponse != null) {
+            return categoryResponse;
+        }
+
+        product.setName(normalize(product.getName()));
+        product.setDescription(normalize(product.getDescription()));
+        product.setMainImage(normalize(product.getMainImage()));
+        product.setStatus(normalizeStatus(product.getStatus(), "OFF_SALE"));
+
+        ResponseEntity<?> validationError = validateProductBasics(product);
+        if (validationError != null) {
+            return validationError;
+        }
+
         return created(productService.save(product));
     }
 
@@ -64,8 +93,26 @@ public class ProductController extends BaseController {
         if (!canManageProduct(currentUser, existing.get())) {
             return redirectForUser(currentUser);
         }
-        product.setId(id);
-        return success(productService.save(product));
+        Product toUpdate = existing.get();
+
+        toUpdate.setName(normalize(product.getName()));
+        toUpdate.setDescription(normalize(product.getDescription()));
+        toUpdate.setPrice(product.getPrice());
+        toUpdate.setStock(product.getStock());
+        toUpdate.setStatus(normalizeStatus(product.getStatus(), toUpdate.getStatus()));
+        toUpdate.setMainImage(normalize(product.getMainImage()));
+
+        ResponseEntity<?> categoryResponse = applyCategoryFromPayload(toUpdate, product);
+        if (categoryResponse != null) {
+            return categoryResponse;
+        }
+
+        ResponseEntity<?> validationError = validateProductBasics(toUpdate);
+        if (validationError != null) {
+            return validationError;
+        }
+
+        return success(productService.save(toUpdate));
     }
 
     @DeleteMapping("/{id}")
@@ -244,5 +291,91 @@ public class ProductController extends BaseController {
         HttpHeaders headers = new HttpHeaders();
         headers.set(HttpHeaders.LOCATION, target);
         return new ResponseEntity<>(headers, HttpStatus.FOUND);
+    }
+
+    private ResponseEntity<?> attachSupplierForCreation(Product product, CustomUserDetails currentUser) {
+        if (currentUser == null) {
+            return redirectForUser(null);
+        }
+
+        Supplier supplier;
+        if ("admin".equalsIgnoreCase(currentUser.getUserType())) {
+            Supplier requested = product.getSupplier();
+            Long supplierId = requested != null ? requested.getId() : null;
+            if (supplierId == null) {
+                return badRequest("请为商品指定供应商");
+            }
+            supplier = supplierService.findById(supplierId)
+                    .orElse(null);
+            if (supplier == null) {
+                return notFound("供应商不存在");
+            }
+        } else if ("supplier".equalsIgnoreCase(currentUser.getUserType())) {
+            supplier = supplierService.findById(currentUser.getId())
+                    .orElse(null);
+            if (supplier == null) {
+                return notFound("供应商不存在");
+            }
+        } else {
+            return redirectForUser(currentUser);
+        }
+
+        product.setSupplier(supplier);
+        return null;
+    }
+
+    private ResponseEntity<?> applyCategoryFromPayload(Product target, Product source) {
+        if (source == null || source.getCategory() == null) {
+            target.setCategory(null);
+            return null;
+        }
+
+        Category requestedCategory = source.getCategory();
+        Long categoryId = requestedCategory.getId();
+        if (categoryId == null) {
+            target.setCategory(null);
+            return null;
+        }
+
+        Category category = categoryService.findById(categoryId)
+                .orElse(null);
+        if (category == null) {
+            return notFound("分类不存在");
+        }
+
+        target.setCategory(category);
+        return null;
+    }
+
+    private String normalize(String value) {
+        if (value == null) {
+            return null;
+        }
+        String trimmed = value.trim();
+        return trimmed.isEmpty() ? null : trimmed;
+    }
+
+    private String normalizeStatus(String requested, String fallback) {
+        String normalized = normalize(requested);
+        if (normalized == null) {
+            return fallback;
+        }
+        return normalized.toUpperCase();
+    }
+
+    private ResponseEntity<?> validateProductBasics(Product product) {
+        if (product.getName() == null) {
+            return badRequest("商品名称不能为空");
+        }
+        if (product.getPrice() == null) {
+            return badRequest("商品价格不能为空");
+        }
+        if (product.getPrice().compareTo(BigDecimal.ZERO) < 0) {
+            return badRequest("商品价格不能为负数");
+        }
+        if (product.getStock() != null && product.getStock() < 0) {
+            return badRequest("库存数量不能为负数");
+        }
+        return null;
     }
 }
