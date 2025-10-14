@@ -1,5 +1,6 @@
 package com.example.silkmall.controller;
 
+import com.example.silkmall.dto.ProductDetailDTO;
 import com.example.silkmall.dto.ProductOverviewDTO;
 import com.example.silkmall.dto.ProductSummaryDTO;
 import com.example.silkmall.entity.Category;
@@ -23,9 +24,11 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
 import java.math.BigDecimal;
+import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 @RestController
 @RequestMapping("/api/products")
@@ -47,10 +50,9 @@ public class ProductController extends BaseController {
     public ResponseEntity<?> getProductById(@PathVariable Long id) {
         Optional<Product> product = productService.findById(id);
         if (product.isPresent()) {
-            return success(product.get());
-        } else {
-            return notFound("产品不存在");
+            return success(toDetailDTO(product.get()));
         }
+        return notFound("产品不存在");
     }
     
     @PostMapping
@@ -79,7 +81,8 @@ public class ProductController extends BaseController {
             return validationError;
         }
 
-        return created(productService.save(product));
+        Product saved = productService.save(product);
+        return created(toSummaryDTO(saved));
     }
 
     @PutMapping("/{id}")
@@ -112,7 +115,8 @@ public class ProductController extends BaseController {
             return validationError;
         }
 
-        return success(productService.save(toUpdate));
+        Product saved = productService.save(toUpdate);
+        return success(toSummaryDTO(saved));
     }
 
     @DeleteMapping("/{id}")
@@ -146,8 +150,10 @@ public class ProductController extends BaseController {
     }
     
     @GetMapping("/supplier/{supplierId}")
-    public ResponseEntity<Page<Product>> getProductsBySupplierId(@PathVariable Long supplierId, Pageable pageable) {
-        return success(productService.findBySupplierId(supplierId, pageable));
+    public ResponseEntity<Page<ProductSummaryDTO>> getProductsBySupplierId(@PathVariable Long supplierId, Pageable pageable) {
+        Page<Product> products = productService.findBySupplierId(supplierId, pageable);
+        Page<ProductSummaryDTO> dtoPage = products.map(this::toSummaryDTO);
+        return success(dtoPage);
     }
     
     @GetMapping("/top-sales")
@@ -247,18 +253,72 @@ public class ProductController extends BaseController {
         dto.setName(product.getName());
         dto.setDescription(product.getDescription());
         dto.setPrice(product.getPrice());
-        dto.setStock(product.getStock());
-        dto.setSales(product.getSales());
+        dto.setStock(product.getStock() != null ? product.getStock() : 0);
+        dto.setSales(product.getSales() != null ? product.getSales() : 0);
         dto.setMainImage(product.getMainImage());
         dto.setStatus(product.getStatus());
         dto.setCreatedAt(product.getCreatedAt());
+        dto.setUpdatedAt(product.getUpdatedAt());
         if (product.getCategory() != null) {
+            dto.setCategoryId(product.getCategory().getId());
             dto.setCategoryName(product.getCategory().getName());
         }
         if (product.getSupplier() != null) {
+            dto.setSupplierId(product.getSupplier().getId());
             dto.setSupplierName(product.getSupplier().getCompanyName());
             dto.setSupplierLevel(product.getSupplier().getSupplierLevel());
         }
+        return dto;
+    }
+
+    private ProductDetailDTO toDetailDTO(Product product) {
+        ProductDetailDTO dto = new ProductDetailDTO();
+        dto.setId(product.getId());
+        dto.setName(product.getName());
+        dto.setDescription(product.getDescription());
+        dto.setPrice(product.getPrice());
+        dto.setStock(product.getStock() != null ? product.getStock() : 0);
+        dto.setSales(product.getSales() != null ? product.getSales() : 0);
+        dto.setMainImage(product.getMainImage());
+        dto.setStatus(product.getStatus());
+        dto.setCreatedAt(product.getCreatedAt());
+        dto.setUpdatedAt(product.getUpdatedAt());
+
+        if (product.getCategory() != null) {
+            ProductDetailDTO.CategoryInfo categoryInfo = new ProductDetailDTO.CategoryInfo();
+            categoryInfo.setId(product.getCategory().getId());
+            categoryInfo.setName(product.getCategory().getName());
+            categoryInfo.setDescription(product.getCategory().getDescription());
+            dto.setCategory(categoryInfo);
+        } else {
+            dto.setCategory(null);
+        }
+
+        if (product.getSupplier() != null) {
+            ProductDetailDTO.SupplierInfo supplierInfo = new ProductDetailDTO.SupplierInfo();
+            supplierInfo.setId(product.getSupplier().getId());
+            supplierInfo.setCompanyName(product.getSupplier().getCompanyName());
+            supplierInfo.setSupplierLevel(product.getSupplier().getSupplierLevel());
+            supplierInfo.setContactName(product.getSupplier().getContactPerson());
+            supplierInfo.setContactPhone(product.getSupplier().getPhone());
+            dto.setSupplier(supplierInfo);
+        } else {
+            dto.setSupplier(null);
+        }
+
+        if (product.getImages() != null && !product.getImages().isEmpty()) {
+            dto.setImages(product.getImages().stream().map(image -> {
+                ProductDetailDTO.ImageInfo imageInfo = new ProductDetailDTO.ImageInfo();
+                imageInfo.setId(image.getId());
+                imageInfo.setImageUrl(image.getImageUrl());
+                imageInfo.setSortOrder(image.getSortOrder());
+                imageInfo.setCreatedAt(image.getCreatedAt());
+                return imageInfo;
+            }).collect(Collectors.toList()));
+        } else {
+            dto.setImages(Collections.emptyList());
+        }
+
         return dto;
     }
 

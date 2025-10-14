@@ -15,7 +15,10 @@ export interface ProductSummary {
   mainImage?: string | null
   status: string
   createdAt: string
+  updatedAt?: string | null
+  categoryId?: number | null
   categoryName?: string | null
+  supplierId?: number | null
   supplierName?: string | null
   supplierLevel?: string | null
 }
