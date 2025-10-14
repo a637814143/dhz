@@ -2,6 +2,7 @@ package com.example.silkmall.controller;
 
 import com.example.silkmall.dto.ConsumerCreateRequest;
 import com.example.silkmall.dto.ConsumerDTO;
+import com.example.silkmall.dto.ConsumerProfileUpdateDTO;
 import com.example.silkmall.entity.Consumer;
 import com.example.silkmall.service.ConsumerService;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -92,6 +93,19 @@ public class ConsumerController extends BaseController {
         Consumer saved = consumerService.save(existingConsumer);
         return success(toDto(saved));
     }
+
+    @PatchMapping("/{id}/profile")
+    @PreAuthorize("hasRole('ADMIN') or (hasRole('CONSUMER') and #id == principal.id)")
+    public ResponseEntity<?> updateProfile(@PathVariable Long id,
+                                           @Valid @RequestBody ConsumerProfileUpdateDTO request) {
+        Consumer consumer = consumerService.findById(id)
+                .orElseThrow(() -> new RuntimeException("消费者不存在"));
+
+        applyProfileUpdate(request, consumer);
+
+        Consumer saved = consumerService.save(consumer);
+        return success(toDto(saved));
+    }
     
     @DeleteMapping("/{id}")
     @PreAuthorize("hasRole('ADMIN')")
@@ -151,6 +165,27 @@ public class ConsumerController extends BaseController {
         }
         if (dto.getEnabled() != null) {
             consumer.setEnabled(dto.getEnabled());
+        }
+    }
+
+    private void applyProfileUpdate(ConsumerProfileUpdateDTO dto, Consumer consumer) {
+        if (dto.getEmail() != null) {
+            consumer.setEmail(normalize(dto.getEmail()));
+        }
+        if (dto.getPhone() != null) {
+            consumer.setPhone(normalize(dto.getPhone()));
+        }
+        if (dto.getAddress() != null) {
+            consumer.setAddress(normalize(dto.getAddress()));
+        }
+        if (dto.getRealName() != null) {
+            consumer.setRealName(normalize(dto.getRealName()));
+        }
+        if (dto.getIdCard() != null) {
+            consumer.setIdCard(normalize(dto.getIdCard()));
+        }
+        if (dto.getAvatar() != null) {
+            consumer.setAvatar(normalize(dto.getAvatar()));
         }
     }
 

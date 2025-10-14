@@ -8,8 +8,11 @@ interface SupplierProfile {
   id: number
   username: string
   companyName?: string | null
+  contactPerson?: string | null
   email?: string | null
   phone?: string | null
+  address?: string | null
+  businessLicense?: string | null
   supplierLevel?: string | null
   status?: string | null
 }
@@ -27,6 +30,19 @@ const redeemCodeInput = ref('')
 const redeeming = ref(false)
 const redeemMessage = ref<string | null>(null)
 const redeemError = ref<string | null>(null)
+
+const showProfileDialog = ref(false)
+const profileSaving = ref(false)
+const profileMessage = ref<string | null>(null)
+const profileError = ref<string | null>(null)
+const profileForm = reactive({
+  companyName: '',
+  contactPerson: '',
+  email: '',
+  phone: '',
+  address: '',
+  businessLicense: '',
+})
 
 const productDialogOpen = ref(false)
 const savingProduct = ref(false)
@@ -54,6 +70,7 @@ async function loadProfile() {
   if (!state.user) return
   const { data } = await api.get<SupplierProfile>(`/suppliers/${state.user.id}`)
   profile.value = data
+  fillProfileForm(data)
 }
 
 async function loadProducts() {
@@ -67,6 +84,70 @@ async function loadProducts() {
 async function loadHomeContent() {
   const { data } = await api.get<HomepageContent>('/content/home')
   homeContent.value = data
+}
+
+function normaliseInput(value: string) {
+  const trimmed = value.trim()
+  return trimmed.length > 0 ? trimmed : ''
+}
+
+function toNullable(value: string) {
+  const trimmed = normaliseInput(value)
+  return trimmed.length > 0 ? trimmed : null
+}
+
+function fillProfileForm(source: SupplierProfile | null) {
+  profileForm.companyName = source?.companyName ?? ''
+  profileForm.contactPerson = source?.contactPerson ?? ''
+  profileForm.email = source?.email ?? ''
+  profileForm.phone = source?.phone ?? ''
+  profileForm.address = source?.address ?? ''
+  profileForm.businessLicense = source?.businessLicense ?? ''
+}
+
+function openProfileEditor() {
+  profileMessage.value = null
+  profileError.value = null
+  fillProfileForm(profile.value)
+  showProfileDialog.value = true
+}
+
+function closeProfileEditor() {
+  showProfileDialog.value = false
+  profileSaving.value = false
+  profileMessage.value = null
+  profileError.value = null
+}
+
+async function submitProfileUpdate() {
+  if (!state.user) return
+  profileSaving.value = true
+  profileMessage.value = null
+  profileError.value = null
+
+  const payload = {
+    companyName: toNullable(profileForm.companyName),
+    contactPerson: toNullable(profileForm.contactPerson),
+    email: toNullable(profileForm.email),
+    phone: toNullable(profileForm.phone),
+    address: toNullable(profileForm.address),
+    businessLicense: toNullable(profileForm.businessLicense),
+  }
+
+  try {
+    const { data } = await api.patch<SupplierProfile>(`/suppliers/${state.user.id}/profile`, payload)
+    profile.value = data
+    fillProfileForm(data)
+    profileMessage.value = '资料已更新'
+    if (state.user) {
+      state.user.email = data.email ?? state.user.email ?? null
+      state.user.phone = data.phone ?? state.user.phone ?? null
+    }
+  } catch (err) {
+    profileError.value = err instanceof Error ? err.message : '更新资料失败'
+  } finally {
+    profileSaving.value = false
+  }
 }
 
 function toCategoryOption(raw: unknown, fallbackName?: string): CategoryOption | null {
@@ -441,11 +522,17 @@ const statusOptions = [
         <div class="panel-title" id="supplier-info">基础信息</div>
         <ul>
           <li><span>企业名称</span><strong>{{ profile?.companyName ?? '—' }}</strong></li>
+          <li><span>联系人</span><strong>{{ profile?.contactPerson ?? '—' }}</strong></li>
           <li><span>联系人邮箱</span><strong>{{ profile?.email ?? '—' }}</strong></li>
           <li><span>联系电话</span><strong>{{ profile?.phone ?? '—' }}</strong></li>
+          <li><span>联系地址</span><strong>{{ profile?.address ?? '尚未填写' }}</strong></li>
+          <li><span>营业执照</span><strong>{{ profile?.businessLicense ?? '—' }}</strong></li>
           <li><span>等级</span><strong>{{ profile?.supplierLevel ?? '未评级' }}</strong></li>
           <li><span>审核状态</span><strong>{{ profile?.status ?? '待审核' }}</strong></li>
         </ul>
+        <div class="profile-actions">
+          <button type="button" class="link-button" @click="openProfileEditor">编辑基础信息</button>
+        </div>
         <div class="redeem-box">
           <label>
             <span>兑换码</span>
@@ -593,6 +680,55 @@ const statusOptions = [
         </ul>
       </section>
     </template>
+
+    <div v-if="showProfileDialog" class="modal-backdrop" @click.self="closeProfileEditor">
+      <section class="modal" role="dialog" aria-modal="true" aria-labelledby="supplier-profile-title">
+        <header class="modal-header">
+          <h3 id="supplier-profile-title">完善供应商资料</h3>
+          <button type="button" class="icon-button" @click="closeProfileEditor" aria-label="关闭">×</button>
+        </header>
+        <form class="modal-body profile-edit-form" @submit.prevent="submitProfileUpdate">
+          <div class="form-grid">
+            <label>
+              <span>企业名称</span>
+              <input v-model="profileForm.companyName" type="text" placeholder="企业名称" />
+            </label>
+            <label>
+              <span>联系人</span>
+              <input v-model="profileForm.contactPerson" type="text" placeholder="主要联系人" />
+            </label>
+          </div>
+          <div class="form-grid">
+            <label>
+              <span>联系邮箱</span>
+              <input v-model="profileForm.email" type="email" placeholder="例如：supplier@example.com" />
+            </label>
+            <label>
+              <span>联系电话</span>
+              <input v-model="profileForm.phone" type="tel" placeholder="便于沟通与发货" />
+            </label>
+          </div>
+          <label>
+            <span>联系地址</span>
+            <textarea v-model="profileForm.address" rows="2" placeholder="请填写详细的发货地址"></textarea>
+          </label>
+          <label>
+            <span>营业执照编号</span>
+            <input v-model="profileForm.businessLicense" type="text" placeholder="选填" />
+          </label>
+          <p v-if="profileMessage" class="form-success">{{ profileMessage }}</p>
+          <p v-if="profileError" class="form-error">{{ profileError }}</p>
+          <footer class="modal-footer">
+            <button type="submit" class="primary-button" :disabled="profileSaving">
+              {{ profileSaving ? '保存中…' : '保存资料' }}
+            </button>
+            <button type="button" class="ghost-button" @click="closeProfileEditor" :disabled="profileSaving">
+              取消
+            </button>
+          </footer>
+        </form>
+      </section>
+    </div>
   </section>
 </template>
 
@@ -711,6 +847,15 @@ const statusOptions = [
 
 .panel.profile strong {
   color: rgba(15, 23, 42, 0.85);
+}
+
+.profile-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.profile-actions .link-button {
+  font-size: 0.9rem;
 }
 
 .redeem-box {
@@ -958,6 +1103,153 @@ const statusOptions = [
 .badge {
   font-weight: 700;
   color: #0284c7;
+}
+
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.45);
+  display: grid;
+  place-items: center;
+  padding: 1.5rem;
+  z-index: 40;
+}
+
+.modal {
+  width: min(640px, 100%);
+  background: #fff;
+  border-radius: 20px;
+  box-shadow: 0 30px 60px rgba(15, 23, 42, 0.25);
+  display: flex;
+  flex-direction: column;
+  max-height: 90vh;
+  overflow: hidden;
+}
+
+.modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1.25rem 1.5rem 1rem;
+  border-bottom: 1px solid rgba(15, 23, 42, 0.08);
+}
+
+.modal-body {
+  padding: 1.5rem;
+  display: grid;
+  gap: 1rem;
+  overflow-y: auto;
+}
+
+.modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.75rem;
+  margin-top: 0.5rem;
+}
+
+.icon-button {
+  border: none;
+  background: transparent;
+  font-size: 1.5rem;
+  line-height: 1;
+  cursor: pointer;
+  color: rgba(15, 23, 42, 0.55);
+  transition: color 0.2s ease;
+}
+
+.icon-button:hover {
+  color: rgba(37, 99, 235, 0.85);
+}
+
+.primary-button {
+  padding: 0.6rem 1.4rem;
+  border-radius: 999px;
+  border: none;
+  background: linear-gradient(135deg, #2563eb, #38bdf8);
+  color: #fff;
+  font-weight: 600;
+  cursor: pointer;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.primary-button:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 15px 25px rgba(37, 99, 235, 0.35);
+}
+
+.primary-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+.ghost-button {
+  padding: 0.55rem 1.3rem;
+  border-radius: 999px;
+  border: 1px solid rgba(37, 99, 235, 0.35);
+  background: transparent;
+  color: #1d4ed8;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s ease;
+}
+
+.ghost-button:hover {
+  background: rgba(37, 99, 235, 0.12);
+}
+
+.ghost-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.profile-edit-form {
+  gap: 1.1rem;
+}
+
+.profile-edit-form .form-grid {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+
+.profile-edit-form label {
+  display: grid;
+  gap: 0.4rem;
+}
+
+.profile-edit-form span {
+  font-weight: 600;
+  color: rgba(15, 23, 42, 0.75);
+}
+
+.profile-edit-form input,
+.profile-edit-form textarea {
+  border-radius: 12px;
+  border: 1px solid rgba(15, 23, 42, 0.15);
+  padding: 0.75rem 0.85rem;
+  font-size: 0.95rem;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.profile-edit-form input:focus,
+.profile-edit-form textarea:focus {
+  outline: none;
+  border-color: rgba(37, 99, 235, 0.6);
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.18);
+}
+
+.profile-edit-form textarea {
+  resize: vertical;
+}
+
+.form-success {
+  color: #15803d;
+}
+
+.form-error {
+  color: #b91c1c;
 }
 
 @media (max-width: 900px) {

@@ -26,6 +26,9 @@ interface ConsumerProfile {
   email?: string | null
   phone?: string | null
   address?: string | null
+  realName?: string | null
+  idCard?: string | null
+  avatar?: string | null
   points?: number | null
   membershipLevel?: string | null
 }
@@ -43,6 +46,19 @@ const redeemCodeInput = ref('')
 const redeeming = ref(false)
 const redeemMessage = ref<string | null>(null)
 const redeemError = ref<string | null>(null)
+
+const showProfileEditor = ref(false)
+const profileSaving = ref(false)
+const profileMessage = ref<string | null>(null)
+const profileError = ref<string | null>(null)
+const profileForm = reactive({
+  email: '',
+  phone: '',
+  address: '',
+  realName: '',
+  idCard: '',
+  avatar: '',
+})
 
 const activeOrder = ref<OrderSummary | null>(null)
 const orderDetail = ref<OrderDetail | null>(null)
@@ -102,6 +118,70 @@ async function loadWallet() {
   } catch (err) {
     console.warn('加载钱包信息失败', err)
     walletBalance.value = null
+  }
+}
+
+function normaliseInput(value: string) {
+  const trimmed = value.trim()
+  return trimmed.length > 0 ? trimmed : ''
+}
+
+function toNullable(value: string) {
+  const trimmed = normaliseInput(value)
+  return trimmed.length > 0 ? trimmed : null
+}
+
+function fillProfileForm(source: ConsumerProfile | null) {
+  profileForm.email = source?.email ?? ''
+  profileForm.phone = source?.phone ?? ''
+  profileForm.address = source?.address ?? ''
+  profileForm.realName = source?.realName ?? ''
+  profileForm.idCard = source?.idCard ?? ''
+  profileForm.avatar = source?.avatar ?? ''
+}
+
+function openProfileEditor() {
+  profileMessage.value = null
+  profileError.value = null
+  fillProfileForm(profile.value)
+  showProfileEditor.value = true
+}
+
+function closeProfileEditor() {
+  showProfileEditor.value = false
+  profileSaving.value = false
+  profileMessage.value = null
+  profileError.value = null
+}
+
+async function submitProfileUpdate() {
+  if (!state.user) return
+  profileError.value = null
+  profileMessage.value = null
+  profileSaving.value = true
+
+  const payload = {
+    email: toNullable(profileForm.email),
+    phone: toNullable(profileForm.phone),
+    address: toNullable(profileForm.address),
+    realName: toNullable(profileForm.realName),
+    idCard: toNullable(profileForm.idCard),
+    avatar: toNullable(profileForm.avatar),
+  }
+
+  try {
+    const { data } = await api.patch<ConsumerProfile>(`/consumers/${state.user.id}/profile`, payload)
+    profile.value = data
+    fillProfileForm(data)
+    profileMessage.value = '资料已更新'
+    if (state.user) {
+      state.user.email = data.email ?? state.user.email ?? null
+      state.user.phone = data.phone ?? state.user.phone ?? null
+    }
+  } catch (err) {
+    profileError.value = err instanceof Error ? err.message : '更新资料失败'
+  } finally {
+    profileSaving.value = false
   }
 }
 
@@ -389,6 +469,9 @@ const shortcutLinks = [
               </tbody>
             </table>
           </div>
+          <div class="profile-actions">
+            <button type="button" class="link-button" @click="openProfileEditor">编辑基础信息</button>
+          </div>
           <div class="redeem-box">
             <label>
               <span>兑换码</span>
@@ -505,6 +588,57 @@ const shortcutLinks = [
         </section>
       </div>
     </template>
+
+    <div v-if="showProfileEditor" class="modal-backdrop" @click.self="closeProfileEditor">
+      <section class="modal" role="dialog" aria-modal="true" aria-labelledby="profile-edit-title">
+        <header class="modal-header">
+          <h3 id="profile-edit-title">修改基础信息</h3>
+          <button type="button" class="icon-button" @click="closeProfileEditor" aria-label="关闭">
+            ×
+          </button>
+        </header>
+        <form class="modal-body profile-edit-form" @submit.prevent="submitProfileUpdate">
+          <div class="form-grid">
+            <label>
+              <span>邮箱</span>
+              <input v-model="profileForm.email" type="email" placeholder="例如：user@example.com" />
+            </label>
+            <label>
+              <span>联系电话</span>
+              <input v-model="profileForm.phone" type="tel" placeholder="用于联系收货" />
+            </label>
+          </div>
+          <label>
+            <span>收货地址</span>
+            <textarea v-model="profileForm.address" rows="2" placeholder="便于配送的详细地址"></textarea>
+          </label>
+          <div class="form-grid">
+            <label>
+              <span>真实姓名</span>
+              <input v-model="profileForm.realName" type="text" placeholder="选填" />
+            </label>
+            <label>
+              <span>身份证号</span>
+              <input v-model="profileForm.idCard" type="text" placeholder="选填" />
+            </label>
+          </div>
+          <label>
+            <span>头像地址</span>
+            <input v-model="profileForm.avatar" type="url" placeholder="选填：头像图片链接" />
+          </label>
+          <p v-if="profileMessage" class="form-success">{{ profileMessage }}</p>
+          <p v-if="profileError" class="form-error">{{ profileError }}</p>
+          <footer class="modal-footer">
+            <button type="submit" class="primary-button" :disabled="profileSaving">
+              {{ profileSaving ? '保存中…' : '保存修改' }}
+            </button>
+            <button type="button" class="ghost-button" @click="closeProfileEditor" :disabled="profileSaving">
+              取消
+            </button>
+          </footer>
+        </form>
+      </section>
+    </div>
 
     <div v-if="showOrderDetailModal" class="modal-backdrop" @click.self="closeOrderDetailModal">
       <section
@@ -822,6 +956,15 @@ const shortcutLinks = [
   color: rgba(17, 24, 39, 0.85);
 }
 
+.profile-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.profile-actions .link-button {
+  font-size: 0.9rem;
+}
+
 .redeem-box {
   display: grid;
   gap: 0.85rem;
@@ -1010,6 +1153,61 @@ const shortcutLinks = [
   display: grid;
   gap: 1rem;
   overflow-y: auto;
+}
+
+.modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.75rem;
+  margin-top: 0.5rem;
+}
+
+.profile-edit-form {
+  gap: 1.1rem;
+}
+
+.profile-edit-form .form-grid {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+
+.profile-edit-form label {
+  display: grid;
+  gap: 0.4rem;
+}
+
+.profile-edit-form span {
+  font-weight: 600;
+  color: rgba(17, 24, 39, 0.75);
+}
+
+.profile-edit-form input,
+.profile-edit-form textarea {
+  border-radius: 12px;
+  border: 1px solid rgba(17, 24, 39, 0.15);
+  padding: 0.75rem 0.85rem;
+  font-size: 0.95rem;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.profile-edit-form input:focus,
+.profile-edit-form textarea:focus {
+  outline: none;
+  border-color: rgba(79, 70, 229, 0.6);
+  box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.18);
+}
+
+.profile-edit-form textarea {
+  resize: vertical;
+}
+
+.form-success {
+  color: #15803d;
+}
+
+.form-error {
+  color: #b91c1c;
 }
 
 .modal-actions {
