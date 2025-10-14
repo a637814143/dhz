@@ -74,17 +74,26 @@ public class NewUserController extends BaseController {
         if (!existingSupplier.isPresent()) {
             return notFound("未找到该供应商");
         }
-        
-        supplier.setId(id);
+
+        Supplier toUpdate = existingSupplier.get();
+
+        toUpdate.setUsername(supplier.getUsername());
+        toUpdate.setEmail(supplier.getEmail());
+        toUpdate.setPhone(supplier.getPhone());
+        toUpdate.setAddress(supplier.getAddress());
+        toUpdate.setCompanyName(supplier.getCompanyName());
+        toUpdate.setBusinessLicense(supplier.getBusinessLicense());
+        toUpdate.setContactPerson(supplier.getContactPerson());
+        toUpdate.setSupplierLevel(supplier.getSupplierLevel());
+        toUpdate.setStatus(supplier.getStatus());
+        toUpdate.setEnabled(supplier.isEnabled());
+
         // 如果密码不为空，则更新密码
         if (supplier.getPassword() != null && !supplier.getPassword().isEmpty()) {
-            supplier.setPassword(passwordEncoder.encode(supplier.getPassword()));
-        } else {
-            // 否则保持原密码不变
-            supplier.setPassword(existingSupplier.get().getPassword());
+            toUpdate.setPassword(passwordEncoder.encode(supplier.getPassword()));
         }
-        
-        return success(supplierService.update(supplier));
+
+        return success(supplierService.update(toUpdate));
     }
     
     @PutMapping("/admins/{id}")
