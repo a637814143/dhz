@@ -570,7 +570,7 @@ function resolveHome(role?: string | null) {
 }
 
 .auth-shell.mode-register .panel-form {
-  width: min(1240px, 100%);
+  width: min(980px, 100%);
 }
 
 .panel-body {
@@ -722,11 +722,11 @@ function resolveHome(role?: string | null) {
 .form-grid {
   display: grid;
   gap: 1.35rem;
-  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  grid-template-columns: 1fr;
 }
 
 .auth-shell.mode-register .form-grid {
-  grid-template-columns: repeat(2, minmax(260px, 1fr));
+  grid-template-columns: 1fr;
 }
 
 .role-selector {
@@ -744,12 +744,11 @@ function resolveHome(role?: string | null) {
 .role-options {
   display: grid;
   gap: 1rem;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  grid-template-columns: 1fr;
 }
 
 .auth-shell.mode-register .role-options {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  column-gap: 1.25rem;
+  grid-template-columns: 1fr;
 }
 
 @media (max-width: 1024px) {
@@ -758,7 +757,7 @@ function resolveHome(role?: string | null) {
   }
 
   .auth-shell.mode-register .role-options {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: 1fr;
   }
 }
 
