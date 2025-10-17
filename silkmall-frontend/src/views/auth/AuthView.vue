@@ -422,7 +422,7 @@ function resolveHome(role?: string | null) {
 .auth-shell {
   display: grid;
   grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr);
-  width: min(1100px, 100%);
+  width: min(1220px, 100%);
   background: linear-gradient(135deg, rgba(245, 223, 189, 0.65), rgba(255, 255, 255, 0.95));
   border-radius: 28px;
   overflow: hidden;
@@ -501,7 +501,7 @@ function resolveHome(role?: string | null) {
 .auth-panel {
   background: rgba(255, 255, 255, 0.92);
   backdrop-filter: blur(12px);
-  padding: 3rem 3rem 3.5rem;
+  padding: 3.2rem 3.5rem 3.6rem;
   display: flex;
   flex-direction: column;
   gap: 2.5rem;
@@ -522,7 +522,7 @@ function resolveHome(role?: string | null) {
   gap: 1rem;
   justify-items: center;
   text-align: center;
-  max-width: 420px;
+  max-width: 520px;
 }
 
 .panel-tabs {
@@ -559,9 +559,9 @@ function resolveHome(role?: string | null) {
 
 .panel-form {
   display: grid;
-  gap: 1.5rem;
-  width: min(460px, 100%);
-  padding: 1.75rem 1.75rem 2rem;
+  gap: 1.6rem;
+  width: min(540px, 100%);
+  padding: 2rem 2.1rem 2.3rem;
   background: rgba(255, 255, 255, 0.94);
   border: 1px solid rgba(17, 24, 39, 0.08);
   border-radius: 20px;
@@ -570,7 +570,7 @@ function resolveHome(role?: string | null) {
 }
 
 .auth-shell.mode-register .panel-form {
-  width: min(700px, 100%);
+  width: min(860px, 100%);
 }
 
 .panel-body {
