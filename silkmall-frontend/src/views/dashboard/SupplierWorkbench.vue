@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, nextTick, onMounted, reactive, ref, watch } from 'vue'
 import api from '@/services/api'
 import { useAuthState } from '@/services/authState'
 import type { CategoryOption, HomepageContent, PageResponse, ProductSummary } from '@/types'
@@ -36,6 +36,9 @@ const savingProduct = ref(false)
 const productFormError = ref<string | null>(null)
 const productFormMessage = ref<string | null>(null)
 const deletingProductId = ref<number | null>(null)
+
+const profileDialogRef = ref<HTMLDivElement | null>(null)
+const productDialogRef = ref<HTMLDivElement | null>(null)
 
 const profileDialogOpen = ref(false)
 const profileSaving = ref(false)
@@ -82,12 +85,36 @@ function fillProfileForm(source: SupplierProfile | null) {
   profileForm.businessLicense = source?.businessLicense ?? ''
 }
 
+function extractProducts(payload: unknown): ProductSummary[] {
+  if (Array.isArray(payload)) {
+    return payload as ProductSummary[]
+  }
+
+  if (!payload || typeof payload !== 'object') {
+    return []
+  }
+
+  const source = payload as Record<string, unknown>
+
+  const directContent = source.content
+  if (Array.isArray(directContent)) {
+    return directContent as ProductSummary[]
+  }
+
+  const nestedData = source.data
+  if (nestedData && nestedData !== payload) {
+    return extractProducts(nestedData)
+  }
+
+  return []
+}
+
 async function loadProducts() {
   if (!state.user) return
   const { data } = await api.get<PageResponse<ProductSummary>>(`/products/supplier/${state.user.id}`, {
-    params: { page: 0, size: 6 },
+    params: { page: 0, size: 20, sort: 'createdAt,desc' },
   })
-  products.value = data.content ?? []
+  products.value = extractProducts(data)
 }
 
 async function loadHomeContent() {
@@ -240,6 +267,22 @@ async function bootstrap() {
 
 onMounted(() => {
   bootstrap()
+})
+
+watch(profileDialogOpen, (open) => {
+  if (open) {
+    nextTick(() => {
+      profileDialogRef.value?.focus()
+    })
+  }
+})
+
+watch(productDialogOpen, (open) => {
+  if (open) {
+    nextTick(() => {
+      productDialogRef.value?.focus()
+    })
+  }
 })
 
 const totalStock = computed(() => products.value.reduce((acc, item) => acc + (item.stock ?? 0), 0))
@@ -526,48 +569,7 @@ const statusOptions = [
           <li><span>等级</span><strong>{{ profile?.supplierLevel ?? '未评级' }}</strong></li>
           <li><span>审核状态</span><strong>{{ profile?.status ?? '待审核' }}</strong></li>
         </ul>
-        <form v-if="profileDialogOpen" class="profile-form" @submit.prevent="saveProfile">
-          <div class="grid">
-            <label>
-              <span>企业名称</span>
-              <input v-model="profileForm.companyName" type="text" placeholder="请输入企业名称" />
-            </label>
-            <label>
-              <span>联系人</span>
-              <input v-model="profileForm.contactPerson" type="text" placeholder="请输入联系人姓名" />
-            </label>
-            <label>
-              <span>邮箱</span>
-              <input v-model="profileForm.email" type="email" placeholder="请输入联系邮箱" />
-            </label>
-            <label>
-              <span>联系电话</span>
-              <input v-model="profileForm.phone" type="text" placeholder="请输入联系电话" />
-            </label>
-            <label class="full">
-              <span>联系地址</span>
-              <input v-model="profileForm.address" type="text" placeholder="请输入联系地址" />
-            </label>
-            <label class="full">
-              <span>营业执照编号</span>
-              <input
-                v-model="profileForm.businessLicense"
-                type="text"
-                placeholder="请输入营业执照编号"
-              />
-            </label>
-          </div>
-          <p v-if="profileFormError" class="form-error">{{ profileFormError }}</p>
-          <p v-if="profileFormMessage" class="form-success">{{ profileFormMessage }}</p>
-          <div class="form-actions">
-            <button type="submit" class="primary" :disabled="profileSaving">
-              {{ profileSaving ? '保存中…' : '保存资料' }}
-            </button>
-            <button type="button" class="ghost" @click="cancelProfileDialog" :disabled="profileSaving">
-              取消
-            </button>
-          </div>
-        </form>
+        
         <div class="redeem-box">
           <label>
             <span>兑换码</span>
@@ -629,7 +631,121 @@ const statusOptions = [
         </div>
         <p v-else class="empty">暂无商品，请尽快完成商品录入与上架。</p>
 
-        <form v-if="productDialogOpen" class="product-form" @submit.prevent="saveProduct">
+        <div class="category-create">
+          <h4>快速创建分类</h4>
+          <div class="category-row">
+            <input v-model="categoryNameInput" type="text" placeholder="分类名称" :disabled="categorySaving" />
+            <button type="button" @click="createCategory" :disabled="categorySaving">
+              {{ categorySaving ? '创建中…' : '添加分类' }}
+            </button>
+          </div>
+          <p v-if="categoryFeedback" class="success">{{ categoryFeedback }}</p>
+          <p v-if="categoryError" class="error">{{ categoryError }}</p>
+        </div>
+      </section>
+
+      <section class="panel promotions" aria-labelledby="promotion-list">
+        <div class="panel-title" id="promotion-list">平台促销建议</div>
+        <ul class="promotion-list">
+          <li v-for="promo in homeContent?.promotions ?? []" :key="promo.productId">
+            <div>
+              <strong>{{ promo.title }}</strong>
+              <p>{{ promo.description }}</p>
+            </div>
+            <span class="badge">{{ Math.round(promo.discountRate * 100) }}% OFF</span>
+          </li>
+        </ul>
+      </section>
+    </template>
+  </section>
+
+  <teleport to="body">
+    <div
+      v-if="profileDialogOpen"
+      class="modal-overlay"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="profile-dialog-title"
+      @click.self="cancelProfileDialog"
+    >
+      <div
+        ref="profileDialogRef"
+        class="modal-card"
+        role="document"
+        tabindex="-1"
+        @keydown.esc="cancelProfileDialog"
+      >
+        <header class="modal-header">
+          <h2 id="profile-dialog-title">编辑基础信息</h2>
+          <button type="button" class="icon-button" @click="cancelProfileDialog" aria-label="关闭窗口">×</button>
+        </header>
+        <form class="profile-form" @submit.prevent="saveProfile">
+          <div class="grid">
+            <label>
+              <span>企业名称</span>
+              <input v-model="profileForm.companyName" type="text" placeholder="请输入企业名称" />
+            </label>
+            <label>
+              <span>联系人</span>
+              <input v-model="profileForm.contactPerson" type="text" placeholder="请输入联系人姓名" />
+            </label>
+            <label>
+              <span>邮箱</span>
+              <input v-model="profileForm.email" type="email" placeholder="请输入联系邮箱" />
+            </label>
+            <label>
+              <span>联系电话</span>
+              <input v-model="profileForm.phone" type="text" placeholder="请输入联系电话" />
+            </label>
+            <label class="full">
+              <span>联系地址</span>
+              <input v-model="profileForm.address" type="text" placeholder="请输入联系地址" />
+            </label>
+            <label class="full">
+              <span>营业执照编号</span>
+              <input
+                v-model="profileForm.businessLicense"
+                type="text"
+                placeholder="请输入营业执照编号"
+              />
+            </label>
+          </div>
+          <p v-if="profileFormError" class="form-error">{{ profileFormError }}</p>
+          <p v-if="profileFormMessage" class="form-success">{{ profileFormMessage }}</p>
+          <div class="form-actions">
+            <button type="submit" class="primary" :disabled="profileSaving">
+              {{ profileSaving ? '保存中…' : '保存资料' }}
+            </button>
+            <button type="button" class="ghost" @click="cancelProfileDialog" :disabled="profileSaving">
+              取消
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </teleport>
+
+  <teleport to="body">
+    <div
+      v-if="productDialogOpen"
+      class="modal-overlay"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="product-dialog-title"
+      @click.self="cancelProductForm"
+    >
+      <div
+        ref="productDialogRef"
+        class="modal-card"
+        role="document"
+        tabindex="-1"
+        @keydown.esc="cancelProductForm"
+      >
+        <header class="modal-header">
+          <h2 id="product-dialog-title">{{ productForm.id ? '编辑商品' : '新增商品' }}</h2>
+          <button type="button" class="icon-button" @click="cancelProductForm" aria-label="关闭窗口">×</button>
+        </header>
+        <form class="product-form" @submit.prevent="saveProduct">
           <div class="grid">
             <label>
               <span>商品名称</span>
@@ -688,40 +804,76 @@ const statusOptions = [
             </button>
           </div>
         </form>
-
-        <div class="category-create">
-          <h4>快速创建分类</h4>
-          <div class="category-row">
-            <input v-model="categoryNameInput" type="text" placeholder="分类名称" :disabled="categorySaving" />
-            <button type="button" @click="createCategory" :disabled="categorySaving">
-              {{ categorySaving ? '创建中…' : '添加分类' }}
-            </button>
-          </div>
-          <p v-if="categoryFeedback" class="success">{{ categoryFeedback }}</p>
-          <p v-if="categoryError" class="error">{{ categoryError }}</p>
-        </div>
-      </section>
-
-      <section class="panel promotions" aria-labelledby="promotion-list">
-        <div class="panel-title" id="promotion-list">平台促销建议</div>
-        <ul class="promotion-list">
-          <li v-for="promo in homeContent?.promotions ?? []" :key="promo.productId">
-            <div>
-              <strong>{{ promo.title }}</strong>
-              <p>{{ promo.description }}</p>
-            </div>
-            <span class="badge">{{ Math.round(promo.discountRate * 100) }}% OFF</span>
-          </li>
-        </ul>
-      </section>
-    </template>
-  </section>
+      </div>
+    </div>
+  </teleport>
 </template>
 
 <style scoped>
 .workbench-shell {
   display: grid;
   gap: 2.5rem;
+}
+
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.5rem;
+  z-index: 2000;
+}
+
+.modal-card {
+  background: #fff;
+  border-radius: 20px;
+  width: min(720px, 100%);
+  max-height: min(90vh, 880px);
+  overflow: auto;
+  box-shadow: 0 24px 48px rgba(15, 23, 42, 0.18);
+  padding: 1.8rem;
+  display: grid;
+  gap: 1.5rem;
+}
+
+.modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.modal-header h2 {
+  margin: 0;
+  font-size: 1.35rem;
+  font-weight: 700;
+  color: rgba(15, 23, 42, 0.9);
+}
+
+.icon-button {
+  border: none;
+  background: none;
+  font-size: 1.6rem;
+  line-height: 1;
+  cursor: pointer;
+  color: rgba(15, 23, 42, 0.6);
+}
+
+.icon-button:hover {
+  color: rgba(15, 23, 42, 0.85);
+}
+
+@media (max-width: 640px) {
+  .modal-card {
+    padding: 1.25rem;
+    border-radius: 16px;
+  }
+
+  .modal-header h2 {
+    font-size: 1.15rem;
+  }
 }
 
 .workbench-header {
@@ -836,8 +988,6 @@ const statusOptions = [
 }
 
 .profile-form {
-  border-top: 1px solid rgba(15, 23, 42, 0.08);
-  padding-top: 1rem;
   display: grid;
   gap: 1rem;
 }
@@ -998,9 +1148,6 @@ const statusOptions = [
 .product-form {
   display: grid;
   gap: 1rem;
-  margin-top: 1.5rem;
-  padding-top: 1.5rem;
-  border-top: 1px solid rgba(15, 23, 42, 0.08);
 }
 
 .product-form .grid {
