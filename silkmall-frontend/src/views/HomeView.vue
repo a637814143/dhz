@@ -279,7 +279,7 @@ onBeforeUnmount(() => {
   <section class="home-view">
     <section class="hero" :style="{ '--hero-image': `url(${primaryBannerImage})` }">
       <div class="hero-text">
-        <p class="tag">{{ primaryBanner ? '焦点推荐' : 'SilkMall · 蚕桑数智化' }}</p>
+        <p class="tag">{{ primaryBanner ? '焦点推荐' : '蚕制品销售 · 蚕桑数智化' }}</p>
         <h1>{{ primaryBanner?.headline ?? '用数据驱动蚕制品销售，打造全渠道智慧商城' }}</h1>
         <p>
           {{ primaryBanner?.subHeadline ?? '集产品管理、供应商协同与销售洞察于一体，帮助蚕桑企业实时掌握库存、销量与渠道动态，实现丝绸好物的高效上架与精准营销。' }}

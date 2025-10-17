@@ -1,9 +1,10 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import { RouterLink, RouterView, useRouter } from 'vue-router'
+import { RouterLink, RouterView, useRouter, useRoute } from 'vue-router'
 import { useAuthState } from '@/services/authState'
 
 const router = useRouter()
+const route = useRoute()
 const { state, isAuthenticated, clearAuth } = useAuthState()
 
 const roleHome = computed(() => {
@@ -15,13 +16,17 @@ const roleHome = computed(() => {
     case 'consumer':
       return '/consumer/dashboard'
     default:
-      return '/login'
+      return '/auth'
   }
+})
+
+const showGuestLinks = computed(() => {
+  return !isAuthenticated.value && route.name !== 'auth'
 })
 
 function signOut() {
   clearAuth()
-  router.push({ name: 'login' })
+  router.push({ name: 'auth', query: { mode: 'login' } })
 }
 </script>
 
@@ -31,26 +36,30 @@ function signOut() {
       <RouterLink to="/" class="brand" aria-label="返回首页">
         <span class="brand-mark">丝</span>
         <div class="brand-meta">
-          <strong class="brand-title">SilkMall</strong>
+          <strong class="brand-title">蚕制品销售</strong>
           <span class="brand-subtitle">蚕制品智慧销售平台</span>
         </div>
       </RouterLink>
 
-      <nav class="primary-nav" aria-label="主导航">
+      <nav
+        v-if="isAuthenticated"
+        class="primary-nav"
+        aria-label="主导航"
+      >
         <RouterLink to="/" active-class="is-active" class="nav-link">产品中心</RouterLink>
         <RouterLink to="/orders" active-class="is-active" class="nav-link">订单中心</RouterLink>
         <RouterLink to="/about" active-class="is-active" class="nav-link">关于项目</RouterLink>
       </nav>
 
-      <div class="auth-controls">
+      <div v-if="isAuthenticated || showGuestLinks" class="auth-controls">
         <template v-if="isAuthenticated">
           <span class="user-chip">{{ state.user?.username }}</span>
           <RouterLink :to="roleHome" class="dashboard-link">我的工作台</RouterLink>
           <button type="button" class="logout-button" @click="signOut">退出</button>
         </template>
         <template v-else>
-          <RouterLink to="/login" class="login-link">登录</RouterLink>
-          <RouterLink to="/register" class="register-link">注册</RouterLink>
+          <RouterLink :to="{ name: 'auth', query: { mode: 'login' } }" class="login-link">登录</RouterLink>
+          <RouterLink :to="{ name: 'auth', query: { mode: 'register' } }" class="register-link">注册</RouterLink>
         </template>
       </div>
     </header>
@@ -60,7 +69,7 @@ function signOut() {
     </main>
 
     <footer class="app-footer">
-      <p>© {{ new Date().getFullYear() }} SilkMall. 致力于打造数字化蚕桑产业链。</p>
+      <p>© {{ new Date().getFullYear() }} 蚕制品销售。致力于打造数字化蚕桑产业链。</p>
     </footer>
   </div>
 </template>

@@ -23,8 +23,8 @@ api.interceptors.response.use(
     if (status === 401 || status === 403) {
       clearAuth()
       const current = window.location.pathname + window.location.search
-      if (!current.startsWith('/login')) {
-        window.location.href = `/login?redirect=${encodeURIComponent(current)}`
+      if (!current.startsWith('/auth')) {
+        window.location.href = `/auth?mode=login&redirect=${encodeURIComponent(current)}`
       }
     }
     const data = error?.response?.data
