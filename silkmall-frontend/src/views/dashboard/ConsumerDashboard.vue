@@ -26,6 +26,9 @@ interface ConsumerProfile {
   email?: string | null
   phone?: string | null
   address?: string | null
+  realName?: string | null
+  idCard?: string | null
+  avatar?: string | null
   points?: number | null
   membershipLevel?: string | null
 }
@@ -52,6 +55,7 @@ const orderDetailError = ref<string | null>(null)
 const showOrderDetailModal = ref(false)
 const showReturnModal = ref(false)
 const showEditModal = ref(false)
+const showProfileModal = ref(false)
 
 const returnSubmitting = ref(false)
 const returnMessage = ref<string | null>(null)
@@ -69,6 +73,19 @@ const orderUpdateForm = reactive({
   recipientName: '',
   recipientPhone: '',
 })
+
+const profileForm = reactive({
+  username: '',
+  realName: '',
+  idCard: '',
+  email: '',
+  phone: '',
+  address: '',
+})
+
+const profileSubmitting = ref(false)
+const profileFormMessage = ref<string | null>(null)
+const profileFormError = ref<string | null>(null)
 
 const orderItems = computed<OrderItemDetail[]>(() => orderDetail.value?.orderItems ?? [])
 const hasRecommendations = computed(() => (homeContent.value?.recommendations?.length ?? 0) > 0)
@@ -233,6 +250,85 @@ function fillUpdateForm(detail: OrderDetail | null) {
   orderUpdateForm.recipientPhone = detail?.recipientPhone ?? ''
 }
 
+function openProfileDialog() {
+  const current = profile.value
+  profileForm.username = current?.username ?? state.user?.username ?? ''
+  profileForm.realName = current?.realName ?? ''
+  profileForm.idCard = current?.idCard ?? ''
+  profileForm.email = current?.email ?? ''
+  profileForm.phone = current?.phone ?? ''
+  profileForm.address = current?.address ?? ''
+  profileFormMessage.value = null
+  profileFormError.value = null
+  showProfileModal.value = true
+}
+
+function closeProfileDialog() {
+  showProfileModal.value = false
+  profileSubmitting.value = false
+  profileFormMessage.value = null
+  profileFormError.value = null
+}
+
+async function submitProfileUpdate() {
+  if (!state.user) {
+    profileFormError.value = '请先登录消费者账号'
+    return
+  }
+
+  const realName = profileForm.realName.trim()
+  if (!realName) {
+    profileFormError.value = '请填写真实姓名'
+    return
+  }
+
+  const idCard = profileForm.idCard.trim()
+  if (!idCard) {
+    profileFormError.value = '请填写身份证号'
+    return
+  }
+
+  const username = (profileForm.username || state.user.username).trim()
+  if (!username) {
+    profileFormError.value = '账号信息缺失，请联系管理员'
+    return
+  }
+
+  const payload = {
+    id: state.user.id,
+    username,
+    realName,
+    idCard,
+    email: profileForm.email.trim() || null,
+    phone: profileForm.phone.trim() || null,
+    address: profileForm.address.trim() || null,
+    avatar: profile.value?.avatar ?? null,
+  }
+
+  profileSubmitting.value = true
+  profileFormError.value = null
+  profileFormMessage.value = null
+  try {
+    const { data } = await api.put<ConsumerProfile>(`/consumers/${state.user.id}`, payload)
+    profile.value = data
+    profileFormMessage.value = '基础信息已更新'
+    const authUser = state.user
+    if (authUser) {
+      state.user = {
+        ...authUser,
+        username: data.username ?? authUser.username,
+        email: data.email ?? null,
+        phone: data.phone ?? null,
+      }
+    }
+  } catch (err) {
+    const message = err instanceof Error ? err.message : '更新基础信息失败'
+    profileFormError.value = message
+  } finally {
+    profileSubmitting.value = false
+  }
+}
+
 async function openOrderDetail(order: OrderSummary) {
   activeOrder.value = order
   const detail = await ensureOrderDetail(order)
@@ -358,10 +454,27 @@ const shortcutLinks = [
     <template v-else>
       <div class="grid">
         <section class="panel profile full-row table-panel" aria-labelledby="profile-title">
-          <div class="panel-title" id="profile-title">账户信息</div>
+          <div class="panel-title-row">
+            <div class="panel-title" id="profile-title">账户信息</div>
+            <button type="button" class="panel-action-button" @click="openProfileDialog">
+              编辑基础信息
+            </button>
+          </div>
           <div class="table-container">
             <table class="dashboard-table profile-table">
               <tbody>
+                <tr>
+                  <th scope="row">账号</th>
+                  <td>{{ profile?.username ?? state.user?.username ?? '—' }}</td>
+                </tr>
+                <tr>
+                  <th scope="row">真实姓名</th>
+                  <td>{{ profile?.realName ?? '—' }}</td>
+                </tr>
+                <tr>
+                  <th scope="row">身份证号</th>
+                  <td>{{ profile?.idCard ?? '—' }}</td>
+                </tr>
                 <tr>
                   <th scope="row">邮箱</th>
                   <td>{{ profile?.email ?? '—' }}</td>
@@ -505,6 +618,49 @@ const shortcutLinks = [
         </section>
       </div>
     </template>
+
+    <div v-if="showProfileModal" class="modal-backdrop" @click.self="closeProfileDialog">
+      <section class="modal" role="dialog" aria-modal="true" aria-labelledby="profile-edit-title">
+        <header class="modal-header">
+          <h3 id="profile-edit-title">编辑基础信息</h3>
+          <button type="button" class="icon-button" @click="closeProfileDialog" aria-label="关闭">
+            ×
+          </button>
+        </header>
+        <form class="modal-body" @submit.prevent="submitProfileUpdate">
+          <label>
+            <span>真实姓名</span>
+            <input v-model="profileForm.realName" type="text" placeholder="请输入真实姓名" />
+          </label>
+          <label>
+            <span>身份证号</span>
+            <input v-model="profileForm.idCard" type="text" placeholder="请输入身份证号" />
+          </label>
+          <label>
+            <span>邮箱</span>
+            <input v-model="profileForm.email" type="email" placeholder="请输入常用邮箱" />
+          </label>
+          <label>
+            <span>联系电话</span>
+            <input v-model="profileForm.phone" type="tel" placeholder="请输入联系电话" />
+          </label>
+          <label>
+            <span>收货地址</span>
+            <input v-model="profileForm.address" type="text" placeholder="请输入默认收货地址" />
+          </label>
+          <p v-if="profileFormMessage" class="modal-success">{{ profileFormMessage }}</p>
+          <p v-if="profileFormError" class="modal-error">{{ profileFormError }}</p>
+          <footer class="modal-actions">
+            <button type="submit" class="primary-button" :disabled="profileSubmitting">
+              {{ profileSubmitting ? '保存中…' : '保存信息' }}
+            </button>
+            <button type="button" class="ghost-button" @click="closeProfileDialog" :disabled="profileSubmitting">
+              取消
+            </button>
+          </footer>
+        </form>
+      </section>
+    </div>
 
     <div v-if="showOrderDetailModal" class="modal-backdrop" @click.self="closeOrderDetailModal">
       <section
@@ -765,6 +921,40 @@ const shortcutLinks = [
 
 .table-panel {
   gap: 1.75rem;
+}
+
+.panel-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.panel-action-button {
+  border: 1px solid rgba(79, 70, 229, 0.24);
+  background: rgba(79, 70, 229, 0.08);
+  color: #4f46e5;
+  border-radius: 999px;
+  padding: 0.5rem 1.2rem;
+  font-weight: 600;
+  transition: background 0.2s ease, color 0.2s ease, transform 0.2s ease;
+}
+
+.panel-action-button:hover {
+  background: rgba(79, 70, 229, 0.14);
+  color: #312e81;
+  transform: translateY(-1px);
+}
+
+.panel-action-button:focus-visible {
+  outline: 2px solid rgba(79, 70, 229, 0.45);
+  outline-offset: 2px;
+}
+
+.panel-action-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none;
 }
 
 .panel-title {

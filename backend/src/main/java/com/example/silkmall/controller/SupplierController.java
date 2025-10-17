@@ -35,9 +35,14 @@ public class SupplierController extends BaseController {
     
     @PutMapping("/{id}")
     @PreAuthorize("hasRole('ADMIN') or (hasRole('SUPPLIER') and #id == principal.id)")
-    public ResponseEntity<Supplier> updateSupplier(@PathVariable Long id, @RequestBody Supplier supplier) {
-        supplier.setId(id);
-        return success(supplierService.update(supplier));
+    public ResponseEntity<?> updateSupplier(@PathVariable Long id, @RequestBody Supplier request) {
+        Supplier existing = supplierService.findById(id)
+                .orElseThrow(() -> new RuntimeException("供应商不存在"));
+
+        applyUpdates(request, existing);
+
+        Supplier saved = supplierService.save(existing);
+        return success(saved);
     }
     
     @DeleteMapping("/{id}")
@@ -81,5 +86,24 @@ public class SupplierController extends BaseController {
     public ResponseEntity<Void> updateSupplierLevel(@PathVariable Long id, @RequestParam String level) {
         supplierService.updateSupplierLevel(id, level);
         return success();
+    }
+
+    private void applyUpdates(Supplier source, Supplier target) {
+        target.setUsername(normalize(source.getUsername(), target.getUsername()));
+        target.setEmail(normalize(source.getEmail(), target.getEmail()));
+        target.setPhone(normalize(source.getPhone(), target.getPhone()));
+        target.setAddress(normalize(source.getAddress(), target.getAddress()));
+
+        target.setCompanyName(normalize(source.getCompanyName(), target.getCompanyName()));
+        target.setBusinessLicense(normalize(source.getBusinessLicense(), target.getBusinessLicense()));
+        target.setContactPerson(normalize(source.getContactPerson(), target.getContactPerson()));
+    }
+
+    private String normalize(String value, String fallback) {
+        if (value == null) {
+            return fallback;
+        }
+        String trimmed = value.trim();
+        return trimmed.isEmpty() ? null : trimmed;
     }
 }
