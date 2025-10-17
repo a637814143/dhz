@@ -1,5 +1,6 @@
 package com.example.silkmall.controller;
 
+import com.example.silkmall.dto.SupplierProfileUpdateRequest;
 import com.example.silkmall.entity.Supplier;
 import com.example.silkmall.service.SupplierService;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -38,6 +39,34 @@ public class SupplierController extends BaseController {
     public ResponseEntity<Supplier> updateSupplier(@PathVariable Long id, @RequestBody Supplier supplier) {
         supplier.setId(id);
         return success(supplierService.update(supplier));
+    }
+
+    @PutMapping("/{id}/profile")
+    @PreAuthorize("hasRole('ADMIN') or (hasRole('SUPPLIER') and #id == principal.id)")
+    public ResponseEntity<Supplier> updateProfile(@PathVariable Long id, @RequestBody SupplierProfileUpdateRequest request) {
+        Supplier existingSupplier = supplierService.findById(id)
+                .orElseThrow(() -> new RuntimeException("供应商不存在"));
+
+        if (request.getCompanyName() != null) {
+            existingSupplier.setCompanyName(normalize(request.getCompanyName()));
+        }
+        if (request.getEmail() != null) {
+            existingSupplier.setEmail(normalize(request.getEmail()));
+        }
+        if (request.getPhone() != null) {
+            existingSupplier.setPhone(normalize(request.getPhone()));
+        }
+        if (request.getAddress() != null) {
+            existingSupplier.setAddress(normalize(request.getAddress()));
+        }
+        if (request.getContactPerson() != null) {
+            existingSupplier.setContactPerson(normalize(request.getContactPerson()));
+        }
+        if (request.getBusinessLicense() != null) {
+            existingSupplier.setBusinessLicense(normalize(request.getBusinessLicense()));
+        }
+
+        return success(supplierService.save(existingSupplier));
     }
     
     @DeleteMapping("/{id}")
@@ -81,5 +110,13 @@ public class SupplierController extends BaseController {
     public ResponseEntity<Void> updateSupplierLevel(@PathVariable Long id, @RequestParam String level) {
         supplierService.updateSupplierLevel(id, level);
         return success();
+    }
+
+    private String normalize(String value) {
+        if (value == null) {
+            return null;
+        }
+        String trimmed = value.trim();
+        return trimmed.isEmpty() ? null : trimmed;
     }
 }

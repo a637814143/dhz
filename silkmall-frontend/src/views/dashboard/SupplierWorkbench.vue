@@ -10,6 +10,9 @@ interface SupplierProfile {
   companyName?: string | null
   email?: string | null
   phone?: string | null
+  address?: string | null
+  contactPerson?: string | null
+  businessLicense?: string | null
   supplierLevel?: string | null
   status?: string | null
 }
@@ -34,6 +37,19 @@ const productFormError = ref<string | null>(null)
 const productFormMessage = ref<string | null>(null)
 const deletingProductId = ref<number | null>(null)
 
+const profileDialogOpen = ref(false)
+const profileSaving = ref(false)
+const profileFormError = ref<string | null>(null)
+const profileFormMessage = ref<string | null>(null)
+const profileForm = reactive({
+  companyName: '',
+  email: '',
+  phone: '',
+  address: '',
+  contactPerson: '',
+  businessLicense: '',
+})
+
 const productForm = reactive({
   id: null as number | null,
   name: '',
@@ -54,6 +70,16 @@ async function loadProfile() {
   if (!state.user) return
   const { data } = await api.get<SupplierProfile>(`/suppliers/${state.user.id}`)
   profile.value = data
+  fillProfileForm(data)
+}
+
+function fillProfileForm(source: SupplierProfile | null) {
+  profileForm.companyName = source?.companyName ?? ''
+  profileForm.email = source?.email ?? ''
+  profileForm.phone = source?.phone ?? ''
+  profileForm.address = source?.address ?? ''
+  profileForm.contactPerson = source?.contactPerson ?? ''
+  profileForm.businessLicense = source?.businessLicense ?? ''
 }
 
 async function loadProducts() {
@@ -241,6 +267,55 @@ function resetProductForm() {
   productForm.mainImage = ''
   productFormError.value = null
   productFormMessage.value = null
+}
+
+function openProfileDialog() {
+  profileFormError.value = null
+  profileFormMessage.value = null
+  fillProfileForm(profile.value)
+  profileDialogOpen.value = true
+}
+
+function cancelProfileDialog() {
+  profileDialogOpen.value = false
+  profileFormError.value = null
+  profileFormMessage.value = null
+}
+
+async function saveProfile() {
+  if (!state.user) {
+    profileFormError.value = '请先登录供应商账号'
+    return
+  }
+
+  const companyName = profileForm.companyName.trim()
+  if (!companyName) {
+    profileFormError.value = '请填写企业名称'
+    return
+  }
+
+  const payload: Record<string, unknown> = {
+    companyName,
+    email: profileForm.email.trim() || null,
+    phone: profileForm.phone.trim() || null,
+    address: profileForm.address.trim() || null,
+    contactPerson: profileForm.contactPerson.trim() || null,
+    businessLicense: profileForm.businessLicense.trim() || null,
+  }
+
+  profileSaving.value = true
+  profileFormError.value = null
+  try {
+    const { data } = await api.put<SupplierProfile>(`/suppliers/${state.user.id}/profile`, payload)
+    profile.value = data
+    fillProfileForm(data)
+    profileFormMessage.value = '基础信息已更新'
+  } catch (err) {
+    const message = err instanceof Error ? err.message : '更新基础信息失败'
+    profileFormError.value = message
+  } finally {
+    profileSaving.value = false
+  }
 }
 
 async function openProductForm(product?: ProductSummary) {
@@ -438,14 +513,61 @@ const statusOptions = [
     <div v-else-if="error" class="placeholder is-error">{{ error }}</div>
     <template v-else>
       <section class="panel profile" aria-labelledby="supplier-info">
-        <div class="panel-title" id="supplier-info">基础信息</div>
+        <div class="panel-title-row">
+          <div class="panel-title" id="supplier-info">基础信息</div>
+          <button type="button" class="link-button" @click="openProfileDialog">编辑资料</button>
+        </div>
         <ul>
           <li><span>企业名称</span><strong>{{ profile?.companyName ?? '—' }}</strong></li>
+          <li><span>联系人</span><strong>{{ profile?.contactPerson ?? '—' }}</strong></li>
           <li><span>联系人邮箱</span><strong>{{ profile?.email ?? '—' }}</strong></li>
           <li><span>联系电话</span><strong>{{ profile?.phone ?? '—' }}</strong></li>
+          <li><span>联系地址</span><strong>{{ profile?.address ?? '—' }}</strong></li>
           <li><span>等级</span><strong>{{ profile?.supplierLevel ?? '未评级' }}</strong></li>
           <li><span>审核状态</span><strong>{{ profile?.status ?? '待审核' }}</strong></li>
         </ul>
+        <form v-if="profileDialogOpen" class="profile-form" @submit.prevent="saveProfile">
+          <div class="grid">
+            <label>
+              <span>企业名称</span>
+              <input v-model="profileForm.companyName" type="text" placeholder="请输入企业名称" />
+            </label>
+            <label>
+              <span>联系人</span>
+              <input v-model="profileForm.contactPerson" type="text" placeholder="请输入联系人姓名" />
+            </label>
+            <label>
+              <span>邮箱</span>
+              <input v-model="profileForm.email" type="email" placeholder="请输入联系邮箱" />
+            </label>
+            <label>
+              <span>联系电话</span>
+              <input v-model="profileForm.phone" type="text" placeholder="请输入联系电话" />
+            </label>
+            <label class="full">
+              <span>联系地址</span>
+              <input v-model="profileForm.address" type="text" placeholder="请输入联系地址" />
+            </label>
+            <label class="full">
+              <span>营业执照编号</span>
+              <input
+                v-model="profileForm.businessLicense"
+                type="text"
+                placeholder="请输入营业执照编号"
+              />
+            </label>
+          </div>
+          <p v-if="profileFormError" class="form-error">{{ profileFormError }}</p>
+          <p v-if="profileFormMessage" class="form-success">{{ profileFormMessage }}</p>
+          <div class="form-actions">
+            <button type="submit" class="primary" :disabled="profileSaving">
+              {{ profileSaving ? '保存中…' : '保存资料' }}
+            </button>
+            <button type="button" class="ghost" @click="cancelProfileDialog" :disabled="profileSaving">
+              取消
+            </button>
+          </div>
+        </form>
         <div class="redeem-box">
           <label>
             <span>兑换码</span>
@@ -711,6 +833,68 @@ const statusOptions = [
 
 .panel.profile strong {
   color: rgba(15, 23, 42, 0.85);
+}
+
+.profile-form {
+  border-top: 1px solid rgba(15, 23, 42, 0.08);
+  padding-top: 1rem;
+  display: grid;
+  gap: 1rem;
+}
+
+.profile-form .grid {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+
+.profile-form label {
+  display: grid;
+  gap: 0.35rem;
+  font-weight: 600;
+  color: rgba(15, 23, 42, 0.75);
+}
+
+.profile-form label.full {
+  grid-column: 1 / -1;
+}
+
+.profile-form input {
+  padding: 0.6rem 0.75rem;
+  border-radius: 0.75rem;
+  border: 1px solid rgba(15, 23, 42, 0.12);
+}
+
+.form-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: center;
+}
+
+.ghost {
+  border: 1px solid rgba(37, 99, 235, 0.35);
+  border-radius: 0.75rem;
+  padding: 0.55rem 1.5rem;
+  background: transparent;
+  color: rgba(37, 99, 235, 0.95);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.ghost:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+}
+
+.form-error {
+  color: #b91c1c;
+  font-size: 0.95rem;
+}
+
+.form-success {
+  color: #15803d;
+  font-size: 0.95rem;
 }
 
 .redeem-box {
