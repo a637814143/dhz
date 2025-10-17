@@ -235,169 +235,190 @@ function resolveHome(role?: string | null) {
 </script>
 
 <template>
-  <section class="auth-shell" :class="[`mode-${mode}`]">
-    <div class="auth-hero" aria-hidden="true">
-      <div class="hero-content">
-        <h1>蚕制品销售数字蚕桑平台</h1>
-        <p>
-          一站式完成采购、供应、运营与客服，支持多角色协同与多因素安全登录。
-        </p>
-        <ul>
-          <li>实时掌握热销排行与促销活动</li>
-          <li>全链路订单、库存与物流跟踪</li>
-          <li>智能客服、评价体系与互动社群</li>
-        </ul>
-      </div>
-    </div>
-
-    <div class="auth-panel" @keyup="handleLoginKey">
-      <div class="panel-header">
-        <div class="panel-tabs" role="tablist">
-          <button
-            type="button"
-            role="tab"
-            :aria-selected="mode === 'login'"
-            :class="['tab-button', { active: mode === 'login' }]"
-            @click="updateMode('login')"
-          >
-            安全登录
-          </button>
-          <button
-            type="button"
-            role="tab"
-            :aria-selected="mode === 'register'"
-            :class="['tab-button', { active: mode === 'register' }]"
-            @click="updateMode('register')"
-          >
-            立即注册
-          </button>
+  <div class="auth-page">
+    <section class="auth-shell" :class="[`mode-${mode}`]">
+      <div class="auth-hero" aria-hidden="true">
+        <div class="hero-content">
+          <h1>蚕制品销售数字蚕桑平台</h1>
+          <p>
+            一站式完成采购、供应、运营与客服，支持多角色协同与多因素安全登录。
+          </p>
+          <ul>
+            <li>实时掌握热销排行与促销活动</li>
+            <li>全链路订单、库存与物流跟踪</li>
+            <li>智能客服、评价体系与互动社群</li>
+          </ul>
         </div>
-        <p v-if="mode === 'login'">请输入账号、密码及验证码完成身份验证。</p>
-        <p v-else>完善账户信息，选择角色即可加入蚕制品销售。</p>
       </div>
 
-      <form v-if="mode === 'login'" class="panel-form" @submit.prevent="submitLogin">
-        <label class="form-control">
-          <span>账号</span>
-          <input v-model.trim="loginForm.username" type="text" placeholder="用户名 / 邮箱" autocomplete="username" />
-        </label>
-
-        <label class="form-control">
-          <span>密码</span>
-          <input
-            v-model="loginForm.password"
-            type="password"
-            placeholder="请输入密码"
-            autocomplete="current-password"
-          />
-        </label>
-
-        <div class="form-control captcha-group">
-          <div class="captcha-input">
-            <span>安全验证码</span>
-            <input
-              v-model.trim="loginForm.verificationCode"
-              type="text"
-              placeholder="请输入计算结果"
-              maxlength="6"
-            />
-          </div>
-          <button type="button" class="captcha-button" @click="refreshCaptcha" :disabled="captchaCountdown > 0">
-            <span v-if="captcha">{{ captcha.question }}</span>
-            <span v-else>获取验证码</span>
-            <small v-if="captchaCountdown > 0">{{ captchaCountdown }}s</small>
-          </button>
-        </div>
-
-        <div v-if="loginError" class="form-alert is-error" role="alert">{{ loginError }}</div>
-        <div
-          v-if="loginSuccessMessage || registrationSuccessMessage"
-          class="form-alert is-success"
-          role="status"
-        >
-          {{ loginSuccessMessage ?? registrationSuccessMessage }}
-        </div>
-
-        <button type="submit" class="submit-button" :disabled="!canSubmitLogin">
-          <span v-if="loginLoading" class="loader" aria-hidden="true"></span>
-          {{ loginLoading ? '正在验证…' : '安全登录' }}
-        </button>
-
-        <footer class="panel-footer">
-          <span>还没有账号？</span>
-          <button type="button" class="link-button" @click="updateMode('register')">立即注册</button>
-        </footer>
-      </form>
-
-      <form v-else class="panel-form" @submit.prevent="submitRegister">
-        <div class="form-grid">
-          <label class="form-control">
-            <span>用户名</span>
-            <input v-model.trim="registerForm.username" type="text" placeholder="3-20 个字符" autocomplete="username" />
-          </label>
-
-          <label class="form-control">
-            <span>邮箱</span>
-            <input v-model.trim="registerForm.email" type="email" placeholder="example@silkmall.com" autocomplete="email" />
-          </label>
-
-          <label class="form-control">
-            <span>手机号</span>
-            <input v-model.trim="registerForm.phone" type="tel" placeholder="用于接收通知" autocomplete="tel" />
-          </label>
-
-          <label class="form-control">
-            <span>登录密码</span>
-            <input v-model="registerForm.password" type="password" placeholder="至少 6 位" autocomplete="new-password" />
-          </label>
-
-          <label class="form-control">
-            <span>确认密码</span>
-            <input v-model="registerForm.confirmPassword" type="password" placeholder="再次输入密码" autocomplete="new-password" />
-          </label>
-        </div>
-
-        <fieldset class="role-selector">
-          <legend>选择用户类型</legend>
-          <div class="role-options">
-            <label
-              v-for="role in roles"
-              :key="role.value"
-              :class="['role-card', { active: registerForm.userType === role.value }]"
+      <div class="auth-panel" @keyup="handleLoginKey">
+        <div class="panel-header">
+          <div class="panel-tabs" role="tablist">
+            <button
+              type="button"
+              role="tab"
+              :aria-selected="mode === 'login'"
+              :class="['tab-button', { active: mode === 'login' }]"
+              @click="updateMode('login')"
             >
-              <input v-model="registerForm.userType" type="radio" :value="role.value" />
-              <div class="role-meta">
-                <strong>{{ role.label }}</strong>
-                <p>{{ role.description }}</p>
-              </div>
-            </label>
+              安全登录
+            </button>
+            <button
+              type="button"
+              role="tab"
+              :aria-selected="mode === 'register'"
+              :class="['tab-button', { active: mode === 'register' }]"
+              @click="updateMode('register')"
+            >
+              立即注册
+            </button>
           </div>
-        </fieldset>
+          <p v-if="mode === 'login'">请输入账号、密码及验证码完成身份验证。</p>
+          <p v-else>完善账户信息，选择角色即可加入蚕制品销售。</p>
+        </div>
 
-        <div v-if="registerError" class="form-alert is-error" role="alert">{{ registerError }}</div>
-        <div v-if="registerSuccessBanner" class="form-alert is-success" role="status">{{ registerSuccessBanner }}</div>
+        <div class="panel-body">
+          <Transition name="auth-swap" mode="out-in">
+            <form v-if="mode === 'login'" key="login" class="panel-form" @submit.prevent="submitLogin">
+              <label class="form-control">
+                <span>账号</span>
+                <input v-model.trim="loginForm.username" type="text" placeholder="用户名 / 邮箱" autocomplete="username" />
+              </label>
 
-        <button class="submit-button" type="submit" :disabled="!canSubmitRegister">
-          <span v-if="registerLoading" class="loader" aria-hidden="true"></span>
-          {{ registerLoading ? '提交中…' : '提交注册' }}
-        </button>
+              <label class="form-control">
+                <span>密码</span>
+                <input
+                  v-model="loginForm.password"
+                  type="password"
+                  placeholder="请输入密码"
+                  autocomplete="current-password"
+                />
+              </label>
 
-        <footer class="panel-footer">
-          <span>已有账号？</span>
-          <button type="button" class="link-button" @click="updateMode('login')">直接登录</button>
-        </footer>
-      </form>
-    </div>
-  </section>
+              <div class="form-control captcha-group">
+                <div class="captcha-input">
+                  <span>安全验证码</span>
+                  <input
+                    v-model.trim="loginForm.verificationCode"
+                    type="text"
+                    placeholder="请输入计算结果"
+                    maxlength="6"
+                  />
+                </div>
+                <button type="button" class="captcha-button" @click="refreshCaptcha" :disabled="captchaCountdown > 0">
+                  <span v-if="captcha">{{ captcha.question }}</span>
+                  <span v-else>获取验证码</span>
+                  <small v-if="captchaCountdown > 0">{{ captchaCountdown }}s</small>
+                </button>
+              </div>
+
+              <div v-if="loginError" class="form-alert is-error" role="alert">{{ loginError }}</div>
+              <div
+                v-if="loginSuccessMessage || registrationSuccessMessage"
+                class="form-alert is-success"
+                role="status"
+              >
+                {{ loginSuccessMessage ?? registrationSuccessMessage }}
+              </div>
+
+              <button type="submit" class="submit-button" :disabled="!canSubmitLogin">
+                <span v-if="loginLoading" class="loader" aria-hidden="true"></span>
+                {{ loginLoading ? '正在验证…' : '安全登录' }}
+              </button>
+
+              <footer class="panel-footer">
+                <span>还没有账号？</span>
+                <button type="button" class="link-button" @click="updateMode('register')">立即注册</button>
+              </footer>
+            </form>
+
+            <form v-else key="register" class="panel-form" @submit.prevent="submitRegister">
+              <div class="form-grid">
+                <label class="form-control">
+                  <span>用户名</span>
+                  <input v-model.trim="registerForm.username" type="text" placeholder="3-20 个字符" autocomplete="username" />
+                </label>
+
+              <label class="form-control">
+                <span>邮箱</span>
+                <input v-model.trim="registerForm.email" type="email" placeholder="example@canzhipin.com" autocomplete="email" />
+              </label>
+
+              <label class="form-control">
+                <span>手机号</span>
+                <input v-model.trim="registerForm.phone" type="tel" placeholder="用于接收通知" autocomplete="tel" />
+              </label>
+
+              <label class="form-control">
+                <span>登录密码</span>
+                <input v-model="registerForm.password" type="password" placeholder="至少 6 位" autocomplete="new-password" />
+              </label>
+
+              <label class="form-control">
+                <span>确认密码</span>
+                <input
+                  v-model="registerForm.confirmPassword"
+                  type="password"
+                  placeholder="再次输入密码"
+                  autocomplete="new-password"
+                />
+              </label>
+            </div>
+
+            <fieldset class="role-selector">
+              <legend>选择用户类型</legend>
+              <div class="role-options">
+                <label
+                  v-for="role in roles"
+                  :key="role.value"
+                  :class="['role-card', { active: registerForm.userType === role.value }]"
+                >
+                  <input v-model="registerForm.userType" type="radio" :value="role.value" />
+                  <div class="role-meta">
+                    <strong>{{ role.label }}</strong>
+                    <p>{{ role.description }}</p>
+                  </div>
+                </label>
+              </div>
+            </fieldset>
+
+            <div v-if="registerError" class="form-alert is-error" role="alert">{{ registerError }}</div>
+            <div v-if="registerSuccessBanner" class="form-alert is-success" role="status">{{ registerSuccessBanner }}</div>
+
+            <button class="submit-button" type="submit" :disabled="!canSubmitRegister">
+              <span v-if="registerLoading" class="loader" aria-hidden="true"></span>
+              {{ registerLoading ? '提交中…' : '提交注册' }}
+            </button>
+
+              <footer class="panel-footer">
+                <span>已有账号？</span>
+                <button type="button" class="link-button" @click="updateMode('login')">直接登录</button>
+              </footer>
+            </form>
+          </Transition>
+        </div>
+      </div>
+    </section>
+  </div>
 </template>
 
 <style scoped>
+.auth-page {
+  min-height: calc(100vh - 120px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4rem 1.5rem;
+  background: radial-gradient(circle at 10% 20%, rgba(255, 255, 255, 0.95), rgba(245, 222, 179, 0.2)),
+    linear-gradient(145deg, rgba(247, 238, 225, 0.8), rgba(242, 142, 28, 0.18));
+}
+
 .auth-shell {
   display: grid;
   grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr);
-  min-height: calc(100vh - 120px);
+  width: min(1100px, 100%);
   background: linear-gradient(135deg, rgba(245, 223, 189, 0.65), rgba(255, 255, 255, 0.95));
-  border-radius: 24px;
+  border-radius: 28px;
   overflow: hidden;
   box-shadow: 0 30px 60px rgba(0, 0, 0, 0.08);
 }
@@ -413,11 +434,23 @@ function resolveHome(role?: string | null) {
   align-items: flex-end;
 }
 
+.auth-hero::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(circle at 25% 75%, rgba(255, 255, 255, 0.25), transparent 60%),
+    radial-gradient(circle at 90% 15%, rgba(242, 142, 28, 0.25), transparent 65%);
+  opacity: 0.7;
+  pointer-events: none;
+}
+
 .hero-content {
   max-width: 480px;
   display: grid;
   gap: 1rem;
   color: rgba(17, 24, 39, 0.9);
+  position: relative;
+  z-index: 1;
 }
 
 .hero-content h1 {
@@ -465,12 +498,25 @@ function resolveHome(role?: string | null) {
   padding: 3rem 3rem 3.5rem;
   display: flex;
   flex-direction: column;
-  gap: 2rem;
+  gap: 2.5rem;
+  align-items: center;
+  position: relative;
+}
+
+.auth-panel::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.12), rgba(255, 255, 255, 0));
+  pointer-events: none;
 }
 
 .panel-header {
   display: grid;
   gap: 1rem;
+  justify-items: center;
+  text-align: center;
+  max-width: 420px;
 }
 
 .panel-tabs {
@@ -478,6 +524,7 @@ function resolveHome(role?: string | null) {
   padding: 0.35rem;
   border-radius: 999px;
   background: rgba(242, 142, 28, 0.12);
+  box-shadow: inset 0 0 0 1px rgba(242, 142, 28, 0.12);
 }
 
 .tab-button {
@@ -490,6 +537,7 @@ function resolveHome(role?: string | null) {
   color: rgba(17, 24, 39, 0.65);
   cursor: pointer;
   transition: all 0.25s ease;
+  font-size: 0.95rem;
 }
 
 .tab-button.active {
@@ -505,6 +553,37 @@ function resolveHome(role?: string | null) {
 .panel-form {
   display: grid;
   gap: 1.5rem;
+  width: min(420px, 100%);
+  padding: 1.75rem 1.75rem 2rem;
+  background: rgba(255, 255, 255, 0.94);
+  border: 1px solid rgba(17, 24, 39, 0.08);
+  border-radius: 20px;
+  box-shadow: 0 24px 45px rgba(17, 24, 39, 0.08);
+  transition: transform 0.25s ease, box-shadow 0.25s ease;
+}
+
+.panel-body {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1.75rem;
+}
+
+.auth-swap-enter-active,
+.auth-swap-leave-active {
+  transition: opacity 0.25s ease, transform 0.25s ease;
+}
+
+.auth-swap-enter-from,
+.auth-swap-leave-to {
+  opacity: 0;
+  transform: translateY(12px) scale(0.98);
+}
+
+.auth-shell.mode-register .panel-form,
+.auth-shell.mode-login .panel-form {
+  transform: translateY(0);
 }
 
 .form-control {
@@ -536,7 +615,7 @@ function resolveHome(role?: string | null) {
 .captcha-group {
   display: flex;
   gap: 1rem;
-  align-items: flex-end;
+  align-items: center;
 }
 
 .captcha-input {
@@ -549,6 +628,7 @@ function resolveHome(role?: string | null) {
 .captcha-button {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 0.6rem;
   border: none;
   border-radius: 12px;
@@ -558,6 +638,7 @@ function resolveHome(role?: string | null) {
   font-weight: 600;
   cursor: pointer;
   transition: background 0.2s ease, transform 0.2s ease;
+  min-width: 160px;
 }
 
 .captcha-button:hover:not(:disabled) {
@@ -650,6 +731,7 @@ function resolveHome(role?: string | null) {
   padding: 1.1rem 1rem;
   border-radius: 16px;
   border: 1px solid rgba(17, 24, 39, 0.12);
+  background: rgba(255, 255, 255, 0.95);
   cursor: pointer;
   transition: border-color 0.2s ease, box-shadow 0.2s ease;
 }
@@ -661,6 +743,7 @@ function resolveHome(role?: string | null) {
 .role-card.active {
   border-color: rgba(242, 142, 28, 0.45);
   box-shadow: 0 12px 24px rgba(242, 142, 28, 0.18);
+  transform: translateY(-2px);
 }
 
 .role-meta strong {
@@ -680,6 +763,7 @@ function resolveHome(role?: string | null) {
   margin-top: 0.5rem;
   font-size: 0.95rem;
   color: rgba(17, 24, 39, 0.65);
+  justify-content: center;
 }
 
 .link-button {
@@ -688,6 +772,7 @@ function resolveHome(role?: string | null) {
   color: #f07a26;
   font-weight: 600;
   cursor: pointer;
+  padding: 0;
 }
 
 @keyframes spin {
@@ -708,6 +793,25 @@ function resolveHome(role?: string | null) {
 
   .auth-panel {
     padding: 2.5rem 1.75rem 3rem;
+  }
+}
+
+@media (max-width: 720px) {
+  .auth-page {
+    padding: 3rem 1rem;
+  }
+
+  .panel-form {
+    padding: 1.5rem 1.25rem 1.75rem;
+  }
+
+  .captcha-group {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .captcha-button {
+    width: 100%;
   }
 }
 </style>
