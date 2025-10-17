@@ -31,7 +31,7 @@ function signOut() {
       <RouterLink to="/" class="brand" aria-label="返回首页">
         <span class="brand-mark">丝</span>
         <div class="brand-meta">
-          <strong class="brand-title">SilkMall</strong>
+          <strong class="brand-title">蚕制品销售</strong>
           <span class="brand-subtitle">蚕制品智慧销售平台</span>
         </div>
       </RouterLink>
@@ -64,7 +64,7 @@ function signOut() {
     </main>
 
     <footer class="app-footer">
-      <p>© {{ new Date().getFullYear() }} SilkMall. 致力于打造数字化蚕桑产业链。</p>
+      <p>© {{ new Date().getFullYear() }} 蚕制品销售。致力于打造数字化蚕桑产业链。</p>
     </footer>
   </div>
 </template>

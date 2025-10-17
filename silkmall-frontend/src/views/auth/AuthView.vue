@@ -238,7 +238,7 @@ function resolveHome(role?: string | null) {
   <section class="auth-shell" :class="[`mode-${mode}`]">
     <div class="auth-hero" aria-hidden="true">
       <div class="hero-content">
-        <h1>SilkMall 数字蚕桑平台</h1>
+        <h1>蚕制品销售数字蚕桑平台</h1>
         <p>
           一站式完成采购、供应、运营与客服，支持多角色协同与多因素安全登录。
         </p>
@@ -273,7 +273,7 @@ function resolveHome(role?: string | null) {
           </button>
         </div>
         <p v-if="mode === 'login'">请输入账号、密码及验证码完成身份验证。</p>
-        <p v-else>完善账户信息，选择角色即可加入 SilkMall。</p>
+        <p v-else>完善账户信息，选择角色即可加入蚕制品销售。</p>
       </div>
 
       <form v-if="mode === 'login'" class="panel-form" @submit.prevent="submitLogin">
