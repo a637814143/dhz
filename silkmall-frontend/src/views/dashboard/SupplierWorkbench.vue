@@ -2,7 +2,7 @@
 import { computed, nextTick, onMounted, reactive, ref, watch } from 'vue'
 import api from '@/services/api'
 import { useAuthState } from '@/services/authState'
-import type { CategoryOption, HomepageContent, PageResponse, ProductSummary } from '@/types'
+import type { CategoryOption, HomepageContent, ProductDetail, ProductImage, ProductSummary } from '@/types'
 
 interface SupplierProfile {
   id: number
@@ -36,6 +36,13 @@ const savingProduct = ref(false)
 const productFormError = ref<string | null>(null)
 const productFormMessage = ref<string | null>(null)
 const deletingProductId = ref<number | null>(null)
+const togglingProductId = ref<number | null>(null)
+
+const viewDialogOpen = ref(false)
+const viewDialogRef = ref<HTMLDivElement | null>(null)
+const viewingProduct = ref<ProductDetail | null>(null)
+const viewLoading = ref(false)
+const viewError = ref<string | null>(null)
 
 const profileDialogRef = ref<HTMLDivElement | null>(null)
 const productDialogRef = ref<HTMLDivElement | null>(null)
@@ -85,9 +92,43 @@ function fillProfileForm(source: SupplierProfile | null) {
   profileForm.businessLicense = source?.businessLicense ?? ''
 }
 
-function extractProducts(payload: unknown): ProductSummary[] {
+function toIsoString(value: unknown): string {
+  if (typeof value === 'string') {
+    const trimmed = value.trim()
+    if (!trimmed) {
+      return ''
+    }
+    const parsed = Date.parse(trimmed)
+    if (!Number.isNaN(parsed)) {
+      return new Date(parsed).toISOString()
+    }
+    const numeric = Number(trimmed)
+    if (Number.isFinite(numeric)) {
+      const fromNumeric = new Date(numeric)
+      if (!Number.isNaN(fromNumeric.getTime())) {
+        return fromNumeric.toISOString()
+      }
+    }
+    return trimmed
+  }
+
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    const fromNumber = new Date(value)
+    if (!Number.isNaN(fromNumber.getTime())) {
+      return fromNumber.toISOString()
+    }
+  }
+
+  if (value instanceof Date && !Number.isNaN(value.getTime())) {
+    return value.toISOString()
+  }
+
+  return ''
+}
+
+function unwrapProductArray(payload: unknown): unknown[] {
   if (Array.isArray(payload)) {
-    return payload as ProductSummary[]
+    return payload
   }
 
   if (!payload || typeof payload !== 'object') {
@@ -95,26 +136,282 @@ function extractProducts(payload: unknown): ProductSummary[] {
   }
 
   const source = payload as Record<string, unknown>
+  const candidateKeys = ['content', 'records', 'items', 'list', 'rows', 'result', 'data']
 
-  const directContent = source.content
-  if (Array.isArray(directContent)) {
-    return directContent as ProductSummary[]
+  for (const key of candidateKeys) {
+    const value = source[key]
+    if (Array.isArray(value)) {
+      return value
+    }
   }
 
-  const nestedData = source.data
-  if (nestedData && nestedData !== payload) {
-    return extractProducts(nestedData)
+  for (const key of candidateKeys) {
+    const value = source[key]
+    if (value && typeof value === 'object' && value !== payload) {
+      const nested = unwrapProductArray(value)
+      if (nested.length > 0) {
+        return nested
+      }
+    }
   }
 
   return []
 }
 
+function toNumber(value: unknown, fallback = 0): number {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return value
+  }
+  if (typeof value === 'string') {
+    const parsed = Number(value)
+    if (Number.isFinite(parsed)) {
+      return parsed
+    }
+  }
+  if (typeof value === 'bigint') {
+    return Number(value)
+  }
+  return fallback
+}
+
+function toInteger(value: unknown, fallback = 0): number {
+  const parsed = toNumber(value, fallback)
+  if (!Number.isFinite(parsed)) {
+    return fallback
+  }
+  const integer = Math.trunc(parsed)
+  return Number.isFinite(integer) ? integer : fallback
+}
+
+function normaliseProduct(payload: unknown): ProductSummary | null {
+  if (!payload || typeof payload !== 'object') {
+    return null
+  }
+
+  const source = payload as Record<string, any>
+  const id = toInteger(source.id ?? source.productId, NaN)
+  if (!Number.isFinite(id)) {
+    return null
+  }
+
+  const nameRaw = source.name ?? ''
+  const name = typeof nameRaw === 'string' ? nameRaw.trim() : String(nameRaw ?? '').trim()
+  const description = typeof source.description === 'string' ? source.description : ''
+  const price = toNumber(source.price, 0)
+  const stock = Math.max(0, toInteger(source.stock, 0))
+  const sales = Math.max(0, toInteger(source.sales, 0))
+  const mainImage = typeof source.mainImage === 'string' ? source.mainImage : null
+  const statusRaw = typeof source.status === 'string' ? source.status.toUpperCase() : 'OFF_SALE'
+  const createdAtIso =
+    toIsoString(source.createdAt ?? source.createTime ?? source.created_at) || new Date().toISOString()
+  const categoryName =
+    typeof source.categoryName === 'string'
+      ? source.categoryName
+      : typeof source.category?.name === 'string'
+        ? source.category.name
+        : null
+  const supplierName =
+    typeof source.supplierName === 'string'
+      ? source.supplierName
+      : typeof source.supplier?.companyName === 'string'
+        ? source.supplier.companyName
+        : null
+  const supplierLevel =
+    typeof source.supplierLevel === 'string'
+      ? source.supplierLevel
+      : typeof source.supplier?.supplierLevel === 'string'
+        ? source.supplier.supplierLevel
+        : null
+
+  return {
+    id,
+    name: name || `商品 ${id}`,
+    description,
+    price,
+    stock,
+    sales,
+    mainImage,
+    status: statusRaw,
+    createdAt: createdAtIso,
+    categoryName,
+    supplierName,
+    supplierLevel,
+  }
+}
+
+function toTimestamp(value?: string | null): number {
+  if (!value) {
+    return 0
+  }
+  const parsed = Date.parse(value)
+  if (!Number.isNaN(parsed)) {
+    return parsed
+  }
+  const numeric = Number(value)
+  if (Number.isFinite(numeric)) {
+    return numeric
+  }
+  return 0
+}
+
+function sortProducts(list: ProductSummary[]): ProductSummary[] {
+  return [...list].sort((a, b) => {
+    const timeDiff = toTimestamp(b.createdAt) - toTimestamp(a.createdAt)
+    if (timeDiff !== 0) {
+      return timeDiff
+    }
+    return b.id - a.id
+  })
+}
+
+function normaliseProductList(payload: unknown): ProductSummary[] {
+  const rawList = unwrapProductArray(payload)
+  const mapped = rawList
+    .map((item) => normaliseProduct(item))
+    .filter((item): item is ProductSummary => item !== null)
+  return sortProducts(mapped)
+}
+
 async function loadProducts() {
   if (!state.user) return
-  const { data } = await api.get<PageResponse<ProductSummary>>(`/products/supplier/${state.user.id}`, {
+  const { data } = await api.get(`/products/supplier/${state.user.id}`, {
     params: { page: 0, size: 20, sort: 'createdAt,desc' },
   })
-  products.value = extractProducts(data)
+  products.value = normaliseProductList(data)
+}
+
+function updateProductList(product: ProductSummary, options: { prepend?: boolean } = {}) {
+  const base = products.value.filter((item) => item.id !== product.id)
+  if (options.prepend) {
+    base.unshift(product)
+  } else {
+    base.push(product)
+  }
+  products.value = sortProducts(base)
+}
+
+function removeProductFromList(productId: number) {
+  products.value = products.value.filter((item) => item.id !== productId)
+}
+
+function setProductStatusInList(productId: number, status: string) {
+  products.value = sortProducts(
+    products.value.map((item) => (item.id === productId ? { ...item, status } : item))
+  )
+}
+
+function normaliseProductDetail(payload: unknown, fallback?: ProductSummary): ProductDetail | null {
+  const summary = normaliseProduct(payload) ?? fallback ?? null
+  if (!summary) {
+    return null
+  }
+
+  const source = payload && typeof payload === 'object' ? (payload as Record<string, any>) : {}
+  const detail: ProductDetail = {
+    ...summary,
+    description:
+      typeof source.description === 'string'
+        ? source.description
+        : summary.description ?? fallback?.description ?? '',
+  }
+
+  const updatedIso = toIsoString(source.updatedAt ?? source.updateTime ?? source.updated_at)
+  if (updatedIso) {
+    detail.updatedAt = updatedIso
+  }
+
+  if (Array.isArray(source.images)) {
+    const parsedImages = source.images
+      .map((item: unknown) => {
+        if (!item || typeof item !== 'object') {
+          return null
+        }
+        const imageSource = item as Record<string, any>
+        const imageId = toInteger(imageSource.id, NaN)
+        const imageUrl = typeof imageSource.imageUrl === 'string' ? imageSource.imageUrl : null
+        if (!Number.isFinite(imageId) || !imageUrl) {
+          return null
+        }
+        const image: ProductImage = {
+          id: imageId,
+          imageUrl,
+        }
+        if (imageSource.sortOrder !== undefined) {
+          const sortOrder = toInteger(imageSource.sortOrder, NaN)
+          if (Number.isFinite(sortOrder)) {
+            image.sortOrder = sortOrder
+          }
+        }
+        const created = toIsoString(imageSource.createdAt ?? imageSource.createTime ?? imageSource.created_at)
+        if (created) {
+          image.createdAt = created
+        }
+        return image
+      })
+      .filter((item): item is ProductImage => item !== null)
+    if (parsedImages.length > 0) {
+      detail.images = parsedImages
+    }
+  }
+
+  const categorySource = source.category
+  if (categorySource && typeof categorySource === 'object') {
+    const record = categorySource as Record<string, any>
+    const categoryId = toInteger(record.id, 0)
+    const categoryName =
+      typeof record.name === 'string' ? record.name : detail.categoryName ?? fallback?.categoryName ?? ''
+    detail.category = {
+      id: Number.isFinite(categoryId) ? categoryId : 0,
+      name: categoryName || `分类 ${categoryId || ''}`.trim(),
+      description: typeof record.description === 'string' ? record.description : null,
+    }
+  } else if (detail.categoryName) {
+    detail.category = {
+      id: 0,
+      name: detail.categoryName,
+      description: null,
+    }
+  }
+
+  const supplierSource = source.supplier
+  if (supplierSource && typeof supplierSource === 'object') {
+    const record = supplierSource as Record<string, any>
+    const supplierId = toInteger(record.id, 0)
+    detail.supplier = {
+      id: Number.isFinite(supplierId) ? supplierId : 0,
+      companyName:
+        typeof record.companyName === 'string'
+          ? record.companyName
+          : detail.supplierName ?? fallback?.supplierName ?? '—',
+      supplierLevel:
+        typeof record.supplierLevel === 'string'
+          ? record.supplierLevel
+          : detail.supplierLevel ?? null,
+      contactName:
+        typeof record.contactName === 'string'
+          ? record.contactName
+          : typeof record.contactPerson === 'string'
+            ? record.contactPerson
+            : undefined,
+      contactPhone: typeof record.contactPhone === 'string' ? record.contactPhone : undefined,
+    }
+  } else if (detail.supplierName) {
+    detail.supplier = {
+      id: 0,
+      companyName: detail.supplierName,
+      supplierLevel: detail.supplierLevel ?? null,
+    }
+  }
+
+  return detail
+}
+
+async function refreshProductsSilently() {
+  try {
+    await loadProducts()
+  } catch (err) {
+    console.warn('刷新商品列表失败', err)
+  }
 }
 
 async function loadHomeContent() {
@@ -285,6 +582,18 @@ watch(productDialogOpen, (open) => {
   }
 })
 
+watch(viewDialogOpen, (open) => {
+  if (open) {
+    nextTick(() => {
+      viewDialogRef.value?.focus()
+    })
+  } else {
+    viewLoading.value = false
+    viewError.value = null
+    viewingProduct.value = null
+  }
+})
+
 const totalStock = computed(() => products.value.reduce((acc, item) => acc + (item.stock ?? 0), 0))
 const totalSales = computed(() => products.value.reduce((acc, item) => acc + (item.sales ?? 0), 0))
 const onSaleProducts = computed(() => products.value.filter((item) => item.status === 'ON_SALE').length)
@@ -292,6 +601,24 @@ const onSaleProducts = computed(() => products.value.filter((item) => item.statu
 function formatCurrency(amount?: number | null) {
   if (typeof amount !== 'number' || Number.isNaN(amount)) return '¥0.00'
   return new Intl.NumberFormat('zh-CN', { style: 'currency', currency: 'CNY' }).format(amount)
+}
+
+function formatDateTime(value?: string | null) {
+  if (!value) {
+    return '—'
+  }
+  const parsed = new Date(value)
+  if (!Number.isNaN(parsed.getTime())) {
+    return parsed.toLocaleString('zh-CN', { hour12: false })
+  }
+  const numeric = Number(value)
+  if (Number.isFinite(numeric)) {
+    const fromNumeric = new Date(numeric)
+    if (!Number.isNaN(fromNumeric.getTime())) {
+      return fromNumeric.toLocaleString('zh-CN', { hour12: false })
+    }
+  }
+  return value
 }
 
 function productStatus(status?: string | null) {
@@ -366,12 +693,22 @@ async function openProductForm(product?: ProductSummary) {
   productFormMessage.value = null
   await loadCategories()
   if (product) {
-    productForm.id = product.id
-    productForm.name = product.name
-    productForm.description = product.description ?? ''
-    productForm.price = product.price?.toString() ?? ''
-    productForm.stock = product.stock ?? 0
-    const categoryRef = (product as any).categoryId ?? (product as any).category?.id ?? null
+    let source: ProductDetail | ProductSummary = product
+    try {
+      const { data } = await api.get<ProductDetail>(`/products/${product.id}`)
+      const detail = normaliseProductDetail(data, product)
+      if (detail) {
+        source = detail
+      }
+    } catch (err) {
+      console.warn('加载商品详情失败', err)
+    }
+    productForm.id = source.id
+    productForm.name = source.name
+    productForm.description = source.description ?? ''
+    productForm.price = (source.price ?? '').toString()
+    productForm.stock = source.stock ?? 0
+    const categoryRef = (source as any).categoryId ?? (source as any).category?.id ?? null
     if (typeof categoryRef === 'number') {
       productForm.categoryId = categoryRef
     } else if (categoryRef !== null && categoryRef !== undefined) {
@@ -380,8 +717,8 @@ async function openProductForm(product?: ProductSummary) {
     } else {
       productForm.categoryId = null
     }
-    productForm.status = product.status ?? 'ON_SALE'
-    productForm.mainImage = product.mainImage ?? ''
+    productForm.status = source.status ?? 'ON_SALE'
+    productForm.mainImage = source.mainImage ?? ''
   } else {
     resetProductForm()
   }
@@ -431,13 +768,24 @@ async function saveProduct() {
   productFormError.value = null
   try {
     if (productForm.id) {
-      await api.put(`/products/${productForm.id}`, payload)
+      const { data } = await api.put(`/products/${productForm.id}`, payload)
+      const updated = normaliseProduct(data)
+      if (updated) {
+        updateProductList(updated)
+      } else {
+        await refreshProductsSilently()
+      }
       productFormMessage.value = '商品信息已更新'
     } else {
-      await api.post('/products', payload)
+      const { data } = await api.post('/products', payload)
+      const created = normaliseProduct(data)
+      if (created) {
+        updateProductList(created, { prepend: true })
+      } else {
+        await refreshProductsSilently()
+      }
       productFormMessage.value = '商品已创建并保存'
     }
-    await loadProducts()
     productDialogOpen.value = false
     resetProductForm()
   } catch (err) {
@@ -453,13 +801,56 @@ async function deleteProduct(productId: number) {
   deletingProductId.value = productId
   try {
     await api.delete(`/products/${productId}`)
-    await loadProducts()
+    removeProductFromList(productId)
+    await refreshProductsSilently()
   } catch (err) {
     const message = err instanceof Error ? err.message : '删除商品失败'
     window.alert(message)
   } finally {
     deletingProductId.value = null
   }
+}
+
+async function toggleProductStatus(product: ProductSummary) {
+  const targetStatus = product.status === 'ON_SALE' ? 'OFF_SALE' : 'ON_SALE'
+  togglingProductId.value = product.id
+  try {
+    const endpoint = targetStatus === 'ON_SALE' ? 'on-sale' : 'off-sale'
+    await api.put(`/products/${product.id}/${endpoint}`)
+    setProductStatusInList(product.id, targetStatus)
+    window.alert(targetStatus === 'ON_SALE' ? '商品已上架' : '商品已下架')
+  } catch (err) {
+    const message = err instanceof Error ? err.message : '更新商品状态失败'
+    window.alert(message)
+  } finally {
+    togglingProductId.value = null
+    await refreshProductsSilently()
+  }
+}
+
+async function openProductDetails(product: ProductSummary) {
+  viewError.value = null
+  viewLoading.value = true
+  const fallback = normaliseProductDetail(product, product)
+  if (fallback) {
+    viewingProduct.value = fallback
+  }
+  viewDialogOpen.value = true
+  try {
+    const { data } = await api.get<ProductDetail>(`/products/${product.id}`)
+    const detail = normaliseProductDetail(data, product)
+    if (detail) {
+      viewingProduct.value = detail
+    }
+  } catch (err) {
+    viewError.value = err instanceof Error ? err.message : '加载商品详情失败'
+  } finally {
+    viewLoading.value = false
+  }
+}
+
+function closeProductDetails() {
+  viewDialogOpen.value = false
 }
 
 async function redeemWallet() {
@@ -521,7 +912,7 @@ async function createCategory() {
 
 const statusOptions = [
   { value: 'ON_SALE', label: '在售' },
-  { value: 'OFF_SALE', label: '未上架' },
+  { value: 'OFF_SALE', label: '已下架' },
 ]
 </script>
 
@@ -615,7 +1006,16 @@ const statusOptions = [
                 <td>{{ item.sales }}</td>
                 <td><span class="status-pill">{{ productStatus(item.status) }}</span></td>
                 <td class="actions">
+                  <button type="button" class="link-button" @click="openProductDetails(item)">查看</button>
                   <button type="button" class="link-button" @click="openProductForm(item)">编辑</button>
+                  <button
+                    type="button"
+                    class="link-button warning"
+                    @click="toggleProductStatus(item)"
+                    :disabled="togglingProductId === item.id"
+                  >
+                    {{ item.status === 'ON_SALE' ? '下架' : '上架' }}
+                  </button>
                   <button
                     type="button"
                     class="link-button danger"
@@ -721,6 +1121,83 @@ const statusOptions = [
             </button>
           </div>
         </form>
+      </div>
+    </div>
+  </teleport>
+
+  <teleport to="body">
+    <div
+      v-if="viewDialogOpen"
+      class="modal-overlay"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="product-view-dialog-title"
+      @click.self="closeProductDetails"
+    >
+      <div
+        ref="viewDialogRef"
+        class="modal-card is-wide"
+        role="document"
+        tabindex="-1"
+        @keydown.esc="closeProductDetails"
+      >
+        <header class="modal-header">
+          <h2 id="product-view-dialog-title">商品详情</h2>
+          <button type="button" class="icon-button" @click="closeProductDetails" aria-label="关闭窗口">×</button>
+        </header>
+        <div class="modal-body">
+          <div v-if="viewLoading" class="placeholder">正在加载商品信息…</div>
+          <div v-else-if="viewError" class="placeholder is-error">{{ viewError }}</div>
+          <template v-else-if="viewingProduct">
+            <div class="product-detail-grid">
+              <figure v-if="viewingProduct.mainImage" class="product-cover">
+                <img :src="viewingProduct.mainImage" :alt="viewingProduct.name" />
+              </figure>
+              <div class="product-info-block">
+                <h3>{{ viewingProduct.name }}</h3>
+                <p class="price">{{ formatCurrency(viewingProduct.price) }}</p>
+                <p class="status">
+                  状态：
+                  <span class="status-pill" :class="{ 'is-off': viewingProduct.status !== 'ON_SALE' }">
+                    {{ productStatus(viewingProduct.status) }}
+                  </span>
+                </p>
+                <ul class="meta-list">
+                  <li>库存：<strong>{{ viewingProduct.stock }}</strong></li>
+                  <li>销量：<strong>{{ viewingProduct.sales }}</strong></li>
+                  <li>
+                    分类：
+                    <strong>{{ viewingProduct.category?.name ?? viewingProduct.categoryName ?? '未分类' }}</strong>
+                  </li>
+                  <li>
+                    供应商：
+                    <strong>{{ viewingProduct.supplier?.companyName ?? viewingProduct.supplierName ?? '—' }}</strong>
+                  </li>
+                  <li>创建时间：<strong>{{ formatDateTime(viewingProduct.createdAt) }}</strong></li>
+                  <li>
+                    更新时间：
+                    <strong>{{ formatDateTime(viewingProduct.updatedAt ?? viewingProduct.createdAt) }}</strong>
+                  </li>
+                </ul>
+              </div>
+            </div>
+            <section class="detail-section">
+              <h3>商品描述</h3>
+              <p>{{ viewingProduct.description?.trim().length ? viewingProduct.description : '暂无描述' }}</p>
+            </section>
+            <section v-if="viewingProduct.images?.length" class="detail-section">
+              <h3>图片</h3>
+              <div class="image-strip">
+                <img
+                  v-for="image in viewingProduct.images"
+                  :key="image.id"
+                  :src="image.imageUrl"
+                  :alt="`${viewingProduct.name} 图片`"
+                />
+              </div>
+            </section>
+          </template>
+        </div>
       </div>
     </div>
   </teleport>
@@ -838,6 +1315,15 @@ const statusOptions = [
   gap: 1.5rem;
 }
 
+.modal-card.is-wide {
+  width: min(860px, 100%);
+}
+
+.modal-body {
+  display: grid;
+  gap: 1.5rem;
+}
+
 .modal-header {
   display: flex;
   align-items: center;
@@ -850,6 +1336,104 @@ const statusOptions = [
   font-size: 1.35rem;
   font-weight: 700;
   color: rgba(15, 23, 42, 0.9);
+}
+
+.product-detail-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 260px) minmax(0, 1fr);
+  gap: 1.5rem;
+  align-items: start;
+}
+
+.product-cover {
+  margin: 0;
+  border-radius: 16px;
+  overflow: hidden;
+  background: rgba(15, 23, 42, 0.04);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 220px;
+}
+
+.product-cover img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.product-info-block {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.product-info-block h3 {
+  margin: 0;
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: rgba(15, 23, 42, 0.9);
+}
+
+.product-info-block .price {
+  margin: 0;
+  font-size: 1.35rem;
+  font-weight: 600;
+  color: #0ea5e9;
+}
+
+.product-info-block .status {
+  margin: 0;
+  color: rgba(15, 23, 42, 0.65);
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.meta-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.35rem;
+  color: rgba(15, 23, 42, 0.7);
+}
+
+.meta-list li strong {
+  margin-left: 0.3rem;
+  color: rgba(15, 23, 42, 0.95);
+}
+
+.detail-section {
+  display: grid;
+  gap: 0.6rem;
+}
+
+.detail-section h3 {
+  margin: 0;
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: rgba(15, 23, 42, 0.85);
+}
+
+.detail-section p {
+  margin: 0;
+  line-height: 1.65;
+  color: rgba(15, 23, 42, 0.7);
+}
+
+.image-strip {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  gap: 0.75rem;
+}
+
+.image-strip img {
+  width: 100%;
+  height: 100px;
+  object-fit: cover;
+  border-radius: 12px;
+  box-shadow: 0 6px 16px rgba(15, 23, 42, 0.18);
 }
 
 .icon-button {
@@ -873,6 +1457,10 @@ const statusOptions = [
 
   .modal-header h2 {
     font-size: 1.15rem;
+  }
+
+  .product-detail-grid {
+    grid-template-columns: 1fr;
   }
 }
 
@@ -1127,9 +1715,15 @@ const statusOptions = [
   font-weight: 600;
 }
 
+.status-pill.is-off {
+  background: rgba(107, 114, 128, 0.18);
+  color: #6b7280;
+}
+
 .product-table td.actions {
   display: flex;
   gap: 0.5rem;
+  flex-wrap: wrap;
 }
 
 .link-button {
@@ -1139,6 +1733,10 @@ const statusOptions = [
   cursor: pointer;
   font-weight: 600;
   padding: 0;
+}
+
+.link-button.warning {
+  color: #d97706;
 }
 
 .link-button.danger {
