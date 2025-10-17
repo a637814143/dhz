@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import api from '@/services/api'
 import type {
   Announcement,
@@ -57,6 +57,16 @@ const totalProductPages = computed(() =>
     : 0
 )
 
+const PRODUCT_EVENT_NAME = 'silkmall:products:changed'
+
+type ProductChangeAction = 'created' | 'updated' | 'deleted' | 'status-changed'
+
+interface ProductChangeDetail {
+  action: ProductChangeAction
+  productId?: number | null
+  source?: string
+}
+
 const productDialogOpen = ref(false)
 const productViewOpen = ref(false)
 const productFormError = ref<string | null>(null)
@@ -65,6 +75,9 @@ const savingProduct = ref(false)
 const deletingProductId = ref<number | null>(null)
 const updatingStatusId = ref<number | null>(null)
 const viewingProduct = ref<ProductDetail | null>(null)
+const pendingExternalRefresh = ref(false)
+
+let externalRefreshTimer: ReturnType<typeof setTimeout> | null = null
 
 const productForm = reactive({
   id: null as number | null,
@@ -249,6 +262,56 @@ async function loadProducts(withSpinner = true) {
   }
 }
 
+function extractNumericId(value: unknown): number | null {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return value
+  }
+  if (!value || typeof value !== 'object') {
+    return null
+  }
+  const source = value as Record<string, unknown>
+  const rawId = source.id
+  const parsed = typeof rawId === 'number' ? rawId : Number(rawId)
+  return Number.isFinite(parsed) ? parsed : null
+}
+
+function broadcastProductChange(detail: ProductChangeDetail) {
+  if (typeof window === 'undefined') return
+  window.dispatchEvent(new CustomEvent<ProductChangeDetail>(PRODUCT_EVENT_NAME, { detail }))
+}
+
+function scheduleExternalRefresh() {
+  if (externalRefreshTimer !== null) return
+  externalRefreshTimer = setTimeout(async () => {
+    externalRefreshTimer = null
+    try {
+      await refreshProductsAndOverview()
+    } catch (err) {
+      console.error(err)
+    }
+  }, 250)
+}
+
+function handleExternalProductChange(event: Event) {
+  const detail = (event as CustomEvent<ProductChangeDetail | undefined>).detail
+  if (detail?.source === 'admin-overview') {
+    return
+  }
+  if (typeof document !== 'undefined' && document.hidden) {
+    pendingExternalRefresh.value = true
+    return
+  }
+  scheduleExternalRefresh()
+}
+
+function handleVisibilityChange() {
+  if (typeof document === 'undefined') return
+  if (!document.hidden && pendingExternalRefresh.value) {
+    pendingExternalRefresh.value = false
+    scheduleExternalRefresh()
+  }
+}
+
 async function initProductManagement() {
   productLoading.value = true
   productError.value = null
@@ -393,9 +456,19 @@ async function saveProduct() {
     if (productForm.id) {
       await api.put(`/products/${productForm.id}`, payload)
       productFormMessage.value = '商品信息已更新'
+      broadcastProductChange({
+        action: 'updated',
+        productId: productForm.id,
+        source: 'admin-overview',
+      })
     } else {
-      await api.post('/products', payload)
+      const { data } = await api.post('/products', payload)
       productFormMessage.value = '商品已创建并保存'
+      broadcastProductChange({
+        action: 'created',
+        productId: extractNumericId(data),
+        source: 'admin-overview',
+      })
     }
 
     await refreshProductsAndOverview()
@@ -414,6 +487,11 @@ async function deleteProduct(productId: number) {
   deletingProductId.value = productId
   try {
     await api.delete(`/products/${productId}`)
+    broadcastProductChange({
+      action: 'deleted',
+      productId,
+      source: 'admin-overview',
+    })
     await refreshProductsAndOverview()
   } catch (err) {
     const message = err instanceof Error ? err.message : '删除商品失败'
@@ -431,6 +509,11 @@ async function changeProductStatus(productId: number, nextStatus: 'ON_SALE' | 'O
     } else {
       await api.put(`/products/${productId}/off-sale`)
     }
+    broadcastProductChange({
+      action: 'status-changed',
+      productId,
+      source: 'admin-overview',
+    })
     await refreshProductsAndOverview()
   } catch (err) {
     const message = err instanceof Error ? err.message : '更新商品状态失败'
@@ -492,6 +575,22 @@ async function bootstrap() {
 onMounted(() => {
   bootstrap()
   initProductManagement()
+  if (typeof window !== 'undefined') {
+    window.addEventListener(PRODUCT_EVENT_NAME, handleExternalProductChange as EventListener)
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+  }
+})
+
+onBeforeUnmount(() => {
+  if (typeof window !== 'undefined') {
+    window.removeEventListener(PRODUCT_EVENT_NAME, handleExternalProductChange as EventListener)
+    document.removeEventListener('visibilitychange', handleVisibilityChange)
+  }
+  if (externalRefreshTimer !== null) {
+    clearTimeout(externalRefreshTimer)
+    externalRefreshTimer = null
+  }
+  pendingExternalRefresh.value = false
 })
 
 function formatCurrency(amount?: number | string | null) {

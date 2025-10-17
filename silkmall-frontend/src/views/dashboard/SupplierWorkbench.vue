@@ -17,6 +17,16 @@ interface SupplierProfile {
   status?: string | null
 }
 
+const PRODUCT_EVENT_NAME = 'silkmall:products:changed'
+
+type ProductChangeAction = 'created' | 'updated' | 'deleted' | 'status-changed'
+
+interface ProductChangeDetail {
+  action: ProductChangeAction
+  productId?: number | null
+  source?: string
+}
+
 const { state } = useAuthState()
 
 const profile = ref<SupplierProfile | null>(null)
@@ -67,6 +77,24 @@ const categoryNameInput = ref('')
 const categorySaving = ref(false)
 const categoryFeedback = ref<string | null>(null)
 const categoryError = ref<string | null>(null)
+
+function extractNumericId(value: unknown): number | null {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return value
+  }
+  if (!value || typeof value !== 'object') {
+    return null
+  }
+  const source = value as Record<string, unknown>
+  const rawId = source.id
+  const parsed = typeof rawId === 'number' ? rawId : Number(rawId)
+  return Number.isFinite(parsed) ? parsed : null
+}
+
+function announceProductChange(detail: ProductChangeDetail) {
+  if (typeof window === 'undefined') return
+  window.dispatchEvent(new CustomEvent<ProductChangeDetail>(PRODUCT_EVENT_NAME, { detail }))
+}
 
 async function loadProfile() {
   if (!state.user) return
@@ -413,9 +441,19 @@ async function saveProduct() {
     if (productForm.id) {
       await api.put(`/products/${productForm.id}`, payload)
       productFormMessage.value = '商品信息已更新'
+      announceProductChange({
+        action: 'updated',
+        productId: productForm.id,
+        source: 'supplier-workbench',
+      })
     } else {
-      await api.post('/products', payload)
+      const { data } = await api.post('/products', payload)
       productFormMessage.value = '商品已创建并保存'
+      announceProductChange({
+        action: 'created',
+        productId: extractNumericId(data),
+        source: 'supplier-workbench',
+      })
     }
     await loadProducts()
     productDialogOpen.value = false
@@ -434,6 +472,11 @@ async function deleteProduct(productId: number) {
   try {
     await api.delete(`/products/${productId}`)
     await loadProducts()
+    announceProductChange({
+      action: 'deleted',
+      productId,
+      source: 'supplier-workbench',
+    })
   } catch (err) {
     const message = err instanceof Error ? err.message : '删除商品失败'
     window.alert(message)

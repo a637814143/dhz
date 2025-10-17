@@ -24,6 +24,16 @@ interface ProductDetail {
   supplier?: { id: number; companyName?: string | null } | null
 }
 
+const PRODUCT_EVENT_NAME = 'silkmall:products:changed'
+
+type ProductChangeAction = 'created' | 'updated' | 'deleted' | 'status-changed'
+
+interface ProductChangeDetail {
+  action: ProductChangeAction
+  productId?: number | null
+  source?: string
+}
+
 const loading = ref(true)
 const tableLoading = ref(false)
 const error = ref<string | null>(null)
@@ -112,6 +122,24 @@ function resetProductForm() {
   productForm.mainImage = ''
   productFormError.value = null
   productFormMessage.value = null
+}
+
+function extractNumericId(value: unknown): number | null {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return value
+  }
+  if (!value || typeof value !== 'object') {
+    return null
+  }
+  const source = value as Record<string, unknown>
+  const rawId = source.id
+  const parsed = typeof rawId === 'number' ? rawId : Number(rawId)
+  return Number.isFinite(parsed) ? parsed : null
+}
+
+function broadcastProductChange(detail: ProductChangeDetail) {
+  if (typeof window === 'undefined') return
+  window.dispatchEvent(new CustomEvent<ProductChangeDetail>(PRODUCT_EVENT_NAME, { detail }))
 }
 
 async function loadOverview() {
@@ -339,9 +367,19 @@ async function saveProduct() {
     if (productForm.id) {
       await api.put(`/products/${productForm.id}`, payload)
       productFormMessage.value = '商品信息已更新'
+      broadcastProductChange({
+        action: 'updated',
+        productId: productForm.id,
+        source: 'admin-product-management',
+      })
     } else {
-      await api.post('/products', payload)
+      const { data } = await api.post('/products', payload)
       productFormMessage.value = '商品已创建并保存'
+      broadcastProductChange({
+        action: 'created',
+        productId: extractNumericId(data),
+        source: 'admin-product-management',
+      })
     }
 
     await Promise.all([loadProducts(), loadOverview()])
@@ -360,6 +398,11 @@ async function deleteProduct(productId: number) {
   deletingProductId.value = productId
   try {
     await api.delete(`/products/${productId}`)
+    broadcastProductChange({
+      action: 'deleted',
+      productId,
+      source: 'admin-product-management',
+    })
     await Promise.all([loadProducts(), loadOverview()])
   } catch (err) {
     const message = err instanceof Error ? err.message : '删除商品失败'
@@ -377,6 +420,11 @@ async function changeProductStatus(productId: number, nextStatus: 'ON_SALE' | 'O
     } else {
       await api.put(`/products/${productId}/off-sale`)
     }
+    broadcastProductChange({
+      action: 'status-changed',
+      productId,
+      source: 'admin-product-management',
+    })
     await Promise.all([loadProducts(), loadOverview()])
   } catch (err) {
     const message = err instanceof Error ? err.message : '更新商品状态失败'
