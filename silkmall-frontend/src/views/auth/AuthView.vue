@@ -421,8 +421,8 @@ function resolveHome(role?: string | null) {
 
 .auth-shell {
   display: grid;
-  grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr);
-  width: min(1500px, 100%);
+  grid-template-columns: minmax(0, 1.05fr) minmax(0, 1.35fr);
+  width: min(1680px, 100%);
   background: linear-gradient(135deg, rgba(245, 223, 189, 0.65), rgba(255, 255, 255, 0.95));
   border-radius: 28px;
   overflow: hidden;
@@ -560,7 +560,7 @@ function resolveHome(role?: string | null) {
 .panel-form {
   display: grid;
   gap: 1.75rem;
-  width: min(720px, 100%);
+  width: min(860px, 100%);
   padding: 2.3rem 2.6rem 2.5rem;
   background: rgba(255, 255, 255, 0.94);
   border: 1px solid rgba(17, 24, 39, 0.08);
@@ -570,7 +570,7 @@ function resolveHome(role?: string | null) {
 }
 
 .auth-shell.mode-register .panel-form {
-  width: min(1120px, 100%);
+  width: min(1240px, 100%);
 }
 
 .panel-body {
@@ -722,7 +722,7 @@ function resolveHome(role?: string | null) {
 .form-grid {
   display: grid;
   gap: 1.35rem;
-  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
 }
 
 .auth-shell.mode-register .form-grid {
@@ -749,6 +749,7 @@ function resolveHome(role?: string | null) {
 
 .auth-shell.mode-register .role-options {
   grid-template-columns: repeat(3, minmax(0, 1fr));
+  column-gap: 1.25rem;
 }
 
 @media (max-width: 1024px) {
