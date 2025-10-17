@@ -414,15 +414,15 @@ function resolveHome(role?: string | null) {
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 4rem 1.5rem;
+  padding: 5rem 2.5rem;
   background: radial-gradient(circle at 10% 20%, rgba(255, 255, 255, 0.95), rgba(245, 222, 179, 0.2)),
     linear-gradient(145deg, rgba(247, 238, 225, 0.8), rgba(242, 142, 28, 0.18));
 }
 
 .auth-shell {
   display: grid;
-  grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr);
-  width: min(1220px, 100%);
+  grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr);
+  width: min(1400px, 100%);
   background: linear-gradient(135deg, rgba(245, 223, 189, 0.65), rgba(255, 255, 255, 0.95));
   border-radius: 28px;
   overflow: hidden;
@@ -501,7 +501,7 @@ function resolveHome(role?: string | null) {
 .auth-panel {
   background: rgba(255, 255, 255, 0.92);
   backdrop-filter: blur(12px);
-  padding: 3.2rem 3.5rem 3.6rem;
+  padding: 3.6rem 3.9rem 3.9rem;
   display: flex;
   flex-direction: column;
   gap: 2.5rem;
@@ -559,9 +559,9 @@ function resolveHome(role?: string | null) {
 
 .panel-form {
   display: grid;
-  gap: 1.6rem;
-  width: min(540px, 100%);
-  padding: 2rem 2.1rem 2.3rem;
+  gap: 1.75rem;
+  width: min(640px, 100%);
+  padding: 2.3rem 2.6rem 2.5rem;
   background: rgba(255, 255, 255, 0.94);
   border: 1px solid rgba(17, 24, 39, 0.08);
   border-radius: 20px;
@@ -570,7 +570,7 @@ function resolveHome(role?: string | null) {
 }
 
 .auth-shell.mode-register .panel-form {
-  width: min(860px, 100%);
+  width: min(980px, 100%);
 }
 
 .panel-body {
@@ -721,12 +721,12 @@ function resolveHome(role?: string | null) {
 
 .form-grid {
   display: grid;
-  gap: 1.2rem;
-  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 1.35rem;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
 }
 
 .auth-shell.mode-register .form-grid {
-  grid-template-columns: repeat(2, minmax(240px, 1fr));
+  grid-template-columns: repeat(2, minmax(260px, 1fr));
 }
 
 .role-selector {
@@ -753,7 +753,7 @@ function resolveHome(role?: string | null) {
 
 @media (max-width: 1024px) {
   .auth-shell.mode-register .panel-form {
-    width: min(620px, 100%);
+    width: min(760px, 100%);
   }
 
   .auth-shell.mode-register .role-options {
