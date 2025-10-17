@@ -10,6 +10,9 @@ interface SupplierProfile {
   companyName?: string | null
   email?: string | null
   phone?: string | null
+  address?: string | null
+  contactPerson?: string | null
+  businessLicense?: string | null
   supplierLevel?: string | null
   status?: string | null
 }
@@ -27,6 +30,21 @@ const redeemCodeInput = ref('')
 const redeeming = ref(false)
 const redeemMessage = ref<string | null>(null)
 const redeemError = ref<string | null>(null)
+
+const profileDialogOpen = ref(false)
+const profileSubmitting = ref(false)
+const profileFormMessage = ref<string | null>(null)
+const profileFormError = ref<string | null>(null)
+
+const profileForm = reactive({
+  username: '',
+  companyName: '',
+  contactPerson: '',
+  businessLicense: '',
+  email: '',
+  phone: '',
+  address: '',
+})
 
 const productDialogOpen = ref(false)
 const savingProduct = ref(false)
@@ -197,6 +215,86 @@ async function loadWallet() {
   } catch (err) {
     console.warn('加载钱包失败', err)
     walletBalance.value = null
+  }
+}
+
+function openProfileDialog() {
+  const current = profile.value
+  profileForm.username = current?.username ?? state.user?.username ?? ''
+  profileForm.companyName = current?.companyName ?? ''
+  profileForm.contactPerson = current?.contactPerson ?? ''
+  profileForm.businessLicense = current?.businessLicense ?? ''
+  profileForm.email = current?.email ?? ''
+  profileForm.phone = current?.phone ?? ''
+  profileForm.address = current?.address ?? ''
+  profileFormMessage.value = null
+  profileFormError.value = null
+  profileDialogOpen.value = true
+}
+
+function closeProfileDialog() {
+  profileDialogOpen.value = false
+  profileSubmitting.value = false
+  profileFormMessage.value = null
+  profileFormError.value = null
+}
+
+async function submitProfileUpdate() {
+  if (!state.user) {
+    profileFormError.value = '请先登录供应商账号'
+    return
+  }
+
+  const companyName = profileForm.companyName.trim()
+  if (!companyName) {
+    profileFormError.value = '请填写企业名称'
+    return
+  }
+
+  const contactPerson = profileForm.contactPerson.trim()
+  if (!contactPerson) {
+    profileFormError.value = '请填写联系人信息'
+    return
+  }
+
+  const username = (profileForm.username || state.user.username).trim()
+  if (!username) {
+    profileFormError.value = '账号信息缺失，请联系管理员'
+    return
+  }
+
+  const payload = {
+    id: state.user.id,
+    username,
+    companyName,
+    contactPerson,
+    businessLicense: profileForm.businessLicense.trim() || null,
+    email: profileForm.email.trim() || null,
+    phone: profileForm.phone.trim() || null,
+    address: profileForm.address.trim() || null,
+  }
+
+  profileSubmitting.value = true
+  profileFormError.value = null
+  profileFormMessage.value = null
+  try {
+    const { data } = await api.put<SupplierProfile>(`/suppliers/${state.user.id}`, payload)
+    profile.value = data
+    profileFormMessage.value = '基础信息已更新'
+    const authUser = state.user
+    if (authUser) {
+      state.user = {
+        ...authUser,
+        username: data.username ?? authUser.username,
+        email: data.email ?? null,
+        phone: data.phone ?? null,
+      }
+    }
+  } catch (err) {
+    const message = err instanceof Error ? err.message : '更新基础信息失败'
+    profileFormError.value = message
+  } finally {
+    profileSubmitting.value = false
   }
 }
 
@@ -438,11 +536,17 @@ const statusOptions = [
     <div v-else-if="error" class="placeholder is-error">{{ error }}</div>
     <template v-else>
       <section class="panel profile" aria-labelledby="supplier-info">
-        <div class="panel-title" id="supplier-info">基础信息</div>
+        <div class="panel-title-row">
+          <div class="panel-title" id="supplier-info">基础信息</div>
+          <button type="button" class="panel-action-button" @click="openProfileDialog">编辑基础信息</button>
+        </div>
         <ul>
           <li><span>企业名称</span><strong>{{ profile?.companyName ?? '—' }}</strong></li>
+          <li><span>联系人</span><strong>{{ profile?.contactPerson ?? '—' }}</strong></li>
           <li><span>联系人邮箱</span><strong>{{ profile?.email ?? '—' }}</strong></li>
           <li><span>联系电话</span><strong>{{ profile?.phone ?? '—' }}</strong></li>
+          <li><span>联系地址</span><strong>{{ profile?.address ?? '—' }}</strong></li>
+          <li><span>营业执照</span><strong>{{ profile?.businessLicense ?? '—' }}</strong></li>
           <li><span>等级</span><strong>{{ profile?.supplierLevel ?? '未评级' }}</strong></li>
           <li><span>审核状态</span><strong>{{ profile?.status ?? '待审核' }}</strong></li>
         </ul>
@@ -593,6 +697,53 @@ const statusOptions = [
         </ul>
       </section>
     </template>
+
+    <div v-if="profileDialogOpen" class="modal-backdrop" @click.self="closeProfileDialog">
+      <section class="modal" role="dialog" aria-modal="true" aria-labelledby="supplier-profile-title">
+        <header class="modal-header">
+          <h3 id="supplier-profile-title">编辑基础信息</h3>
+          <button type="button" class="icon-button" @click="closeProfileDialog" aria-label="关闭">
+            ×
+          </button>
+        </header>
+        <form class="modal-body" @submit.prevent="submitProfileUpdate">
+          <label>
+            <span>企业名称</span>
+            <input v-model="profileForm.companyName" type="text" placeholder="请输入企业名称" />
+          </label>
+          <label>
+            <span>联系人</span>
+            <input v-model="profileForm.contactPerson" type="text" placeholder="请输入联系人" />
+          </label>
+          <label>
+            <span>联系人邮箱</span>
+            <input v-model="profileForm.email" type="email" placeholder="请输入联系人邮箱" />
+          </label>
+          <label>
+            <span>联系电话</span>
+            <input v-model="profileForm.phone" type="tel" placeholder="请输入联系电话" />
+          </label>
+          <label>
+            <span>联系地址</span>
+            <input v-model="profileForm.address" type="text" placeholder="请输入联系地址" />
+          </label>
+          <label>
+            <span>营业执照</span>
+            <input v-model="profileForm.businessLicense" type="text" placeholder="请输入营业执照编号" />
+          </label>
+          <p v-if="profileFormMessage" class="modal-success">{{ profileFormMessage }}</p>
+          <p v-if="profileFormError" class="modal-error">{{ profileFormError }}</p>
+          <footer class="modal-actions">
+            <button type="submit" class="primary-button" :disabled="profileSubmitting">
+              {{ profileSubmitting ? '保存中…' : '保存信息' }}
+            </button>
+            <button type="button" class="ghost-button" @click="closeProfileDialog" :disabled="profileSubmitting">
+              取消
+            </button>
+          </footer>
+        </form>
+      </section>
+    </div>
   </section>
 </template>
 
@@ -679,6 +830,34 @@ const statusOptions = [
   justify-content: space-between;
   align-items: center;
   gap: 1rem;
+}
+
+.panel-action-button {
+  border: 1px solid rgba(14, 165, 233, 0.24);
+  background: rgba(56, 189, 248, 0.12);
+  color: #0f172a;
+  border-radius: 999px;
+  padding: 0.5rem 1.2rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s ease, transform 0.2s ease, color 0.2s ease;
+}
+
+.panel-action-button:hover {
+  background: rgba(14, 165, 233, 0.18);
+  color: #0e7490;
+  transform: translateY(-1px);
+}
+
+.panel-action-button:focus-visible {
+  outline: 2px solid rgba(14, 165, 233, 0.45);
+  outline-offset: 2px;
+}
+
+.panel-action-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none;
 }
 
 .primary {
@@ -958,6 +1137,123 @@ const statusOptions = [
 .badge {
   font-weight: 700;
   color: #0284c7;
+}
+
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.5rem;
+  z-index: 30;
+}
+
+.modal {
+  background: #fff;
+  border-radius: 20px;
+  max-width: 520px;
+  width: 100%;
+  box-shadow: 0 24px 60px rgba(15, 23, 42, 0.18);
+  overflow: hidden;
+}
+
+.modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1.2rem 1.5rem 1rem;
+  border-bottom: 1px solid rgba(226, 232, 240, 0.8);
+}
+
+.modal-body {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  padding: 1.5rem;
+}
+
+.modal-body label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  font-size: 0.95rem;
+}
+
+.modal-body input {
+  padding: 0.65rem 0.8rem;
+  border-radius: 0.75rem;
+  border: 1px solid rgba(15, 23, 42, 0.18);
+}
+
+.modal-actions {
+  display: flex;
+  gap: 0.75rem;
+  justify-content: flex-end;
+  margin-top: 0.5rem;
+}
+
+.primary-button {
+  background: linear-gradient(135deg, #0ea5e9, #2563eb);
+  color: #fff;
+  border: none;
+  border-radius: 0.75rem;
+  padding: 0.65rem 1.4rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.primary-button:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 12px 20px rgba(37, 99, 235, 0.22);
+}
+
+.primary-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.ghost-button {
+  border: 1px solid rgba(15, 23, 42, 0.18);
+  background: transparent;
+  color: #0f172a;
+  border-radius: 0.75rem;
+  padding: 0.65rem 1.3rem;
+  cursor: pointer;
+  transition: background 0.2s ease, color 0.2s ease;
+}
+
+.ghost-button:hover:not(:disabled) {
+  background: rgba(148, 163, 184, 0.15);
+}
+
+.ghost-button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.icon-button {
+  border: none;
+  background: transparent;
+  font-size: 1.4rem;
+  cursor: pointer;
+  color: rgba(15, 23, 42, 0.6);
+}
+
+.icon-button:hover {
+  color: rgba(15, 23, 42, 0.85);
+}
+
+.modal-success {
+  color: #15803d;
+  font-size: 0.9rem;
+}
+
+.modal-error {
+  color: #b91c1c;
+  font-size: 0.9rem;
 }
 
 @media (max-width: 900px) {
