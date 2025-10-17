@@ -2,6 +2,7 @@ package com.example.silkmall.controller;
 
 import com.example.silkmall.dto.ConsumerCreateRequest;
 import com.example.silkmall.dto.ConsumerDTO;
+import com.example.silkmall.dto.ConsumerProfileUpdateRequest;
 import com.example.silkmall.entity.Consumer;
 import com.example.silkmall.service.ConsumerService;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -88,6 +89,35 @@ public class ConsumerController extends BaseController {
 
         // 更新消费者信息
         applyDtoToEntity(consumerDTO, existingConsumer);
+
+        Consumer saved = consumerService.save(existingConsumer);
+        return success(toDto(saved));
+    }
+
+    @PutMapping("/{id}/profile")
+    @PreAuthorize("hasRole('ADMIN') or (hasRole('CONSUMER') and #id == principal.id)")
+    public ResponseEntity<?> updateProfile(@PathVariable Long id, @RequestBody ConsumerProfileUpdateRequest request) {
+        Consumer existingConsumer = consumerService.findById(id)
+                .orElseThrow(() -> new RuntimeException("消费者不存在"));
+
+        if (request.getEmail() != null) {
+            existingConsumer.setEmail(normalize(request.getEmail()));
+        }
+        if (request.getPhone() != null) {
+            existingConsumer.setPhone(normalize(request.getPhone()));
+        }
+        if (request.getAddress() != null) {
+            existingConsumer.setAddress(normalize(request.getAddress()));
+        }
+        if (request.getRealName() != null) {
+            existingConsumer.setRealName(normalize(request.getRealName()));
+        }
+        if (request.getIdCard() != null) {
+            existingConsumer.setIdCard(normalize(request.getIdCard()));
+        }
+        if (request.getAvatar() != null) {
+            existingConsumer.setAvatar(normalize(request.getAvatar()));
+        }
 
         Consumer saved = consumerService.save(existingConsumer);
         return success(toDto(saved));

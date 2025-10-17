@@ -28,6 +28,9 @@ interface ConsumerProfile {
   address?: string | null
   points?: number | null
   membershipLevel?: string | null
+  realName?: string | null
+  idCard?: string | null
+  avatar?: string | null
 }
 
 const { state } = useAuthState()
@@ -70,6 +73,18 @@ const orderUpdateForm = reactive({
   recipientPhone: '',
 })
 
+const profileDialogOpen = ref(false)
+const profileSaving = ref(false)
+const profileFormError = ref<string | null>(null)
+const profileFormMessage = ref<string | null>(null)
+const profileForm = reactive({
+  email: '',
+  phone: '',
+  address: '',
+  realName: '',
+  idCard: '',
+})
+
 const orderItems = computed<OrderItemDetail[]>(() => orderDetail.value?.orderItems ?? [])
 const hasRecommendations = computed(() => (homeContent.value?.recommendations?.length ?? 0) > 0)
 const hasAnnouncements = computed(() => announcements.value.length > 0)
@@ -78,6 +93,15 @@ async function loadProfile() {
   if (!state.user) return
   const { data } = await api.get<ConsumerProfile>(`/consumers/${state.user.id}`)
   profile.value = data
+  fillProfileForm(data)
+}
+
+function fillProfileForm(source: ConsumerProfile | null) {
+  profileForm.email = source?.email ?? ''
+  profileForm.phone = source?.phone ?? ''
+  profileForm.address = source?.address ?? ''
+  profileForm.realName = source?.realName ?? ''
+  profileForm.idCard = source?.idCard ?? ''
 }
 
 async function loadOrders() {
@@ -136,6 +160,53 @@ function formatDateTime(value?: string | null) {
 function membershipBadge(level?: string | null) {
   if (!level) return '普通会员'
   return level
+}
+
+function openProfileDialog() {
+  profileFormError.value = null
+  profileFormMessage.value = null
+  fillProfileForm(profile.value)
+  profileDialogOpen.value = true
+}
+
+function cancelProfileDialog() {
+  profileDialogOpen.value = false
+  profileFormError.value = null
+  profileFormMessage.value = null
+}
+
+async function saveProfile() {
+  if (!state.user) {
+    profileFormError.value = '请先登录采购账号'
+    return
+  }
+
+  const payload: Record<string, unknown> = {
+    email: profileForm.email.trim() || null,
+    phone: profileForm.phone.trim() || null,
+    address: profileForm.address.trim() || null,
+    realName: profileForm.realName.trim() || null,
+    idCard: profileForm.idCard.trim() || null,
+  }
+
+  if (!payload.email && !payload.phone && !payload.address && !payload.realName && !payload.idCard) {
+    profileFormError.value = '请至少填写一项需要更新的资料'
+    return
+  }
+
+  profileSaving.value = true
+  profileFormError.value = null
+  try {
+    const { data } = await api.put<ConsumerProfile>(`/consumers/${state.user.id}/profile`, payload)
+    profile.value = data
+    fillProfileForm(data)
+    profileFormMessage.value = '账户资料已更新'
+  } catch (err) {
+    const message = err instanceof Error ? err.message : '更新账户资料失败'
+    profileFormError.value = message
+  } finally {
+    profileSaving.value = false
+  }
 }
 
 async function redeemWallet() {
@@ -358,7 +429,10 @@ const shortcutLinks = [
     <template v-else>
       <div class="grid">
         <section class="panel profile full-row table-panel" aria-labelledby="profile-title">
-          <div class="panel-title" id="profile-title">账户信息</div>
+          <div class="panel-title-row">
+            <div class="panel-title" id="profile-title">账户信息</div>
+            <button type="button" class="link-button" @click="openProfileDialog">编辑资料</button>
+          </div>
           <div class="table-container">
             <table class="dashboard-table profile-table">
               <tbody>
@@ -389,6 +463,40 @@ const shortcutLinks = [
               </tbody>
             </table>
           </div>
+          <form v-if="profileDialogOpen" class="profile-form" @submit.prevent="saveProfile">
+            <div class="grid">
+              <label>
+                <span>邮箱</span>
+                <input v-model="profileForm.email" type="email" placeholder="请输入邮箱" />
+              </label>
+              <label>
+                <span>联系电话</span>
+                <input v-model="profileForm.phone" type="text" placeholder="请输入联系电话" />
+              </label>
+              <label class="full">
+                <span>收货地址</span>
+                <input v-model="profileForm.address" type="text" placeholder="请输入常用收货地址" />
+              </label>
+              <label>
+                <span>真实姓名</span>
+                <input v-model="profileForm.realName" type="text" placeholder="请输入真实姓名" />
+              </label>
+              <label>
+                <span>身份证号</span>
+                <input v-model="profileForm.idCard" type="text" placeholder="请输入身份证号" />
+              </label>
+            </div>
+            <p v-if="profileFormError" class="form-error">{{ profileFormError }}</p>
+            <p v-if="profileFormMessage" class="form-success">{{ profileFormMessage }}</p>
+            <div class="form-actions">
+              <button type="submit" class="primary" :disabled="profileSaving">
+                {{ profileSaving ? '保存中…' : '保存资料' }}
+              </button>
+              <button type="button" class="ghost" @click="cancelProfileDialog" :disabled="profileSaving">
+                取消
+              </button>
+            </div>
+          </form>
           <div class="redeem-box">
             <label>
               <span>兑换码</span>
@@ -773,6 +881,13 @@ const shortcutLinks = [
   color: rgba(17, 24, 39, 0.78);
 }
 
+.panel-title-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+}
+
 .table-container {
   border-radius: 18px;
   border: 1px solid rgba(79, 70, 229, 0.12);
@@ -820,6 +935,70 @@ const shortcutLinks = [
 
 .profile-table td {
   color: rgba(17, 24, 39, 0.85);
+}
+
+.profile-form {
+  display: grid;
+  gap: 1rem;
+  padding: 1.2rem 1.3rem;
+  border-radius: 16px;
+  border: 1px solid rgba(79, 70, 229, 0.16);
+  background: rgba(255, 255, 255, 0.92);
+}
+
+.profile-form .grid {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+
+.profile-form label {
+  display: grid;
+  gap: 0.35rem;
+  font-weight: 600;
+  color: rgba(17, 24, 39, 0.7);
+}
+
+.profile-form label.full {
+  grid-column: 1 / -1;
+}
+
+.profile-form input {
+  padding: 0.6rem 0.75rem;
+  border-radius: 0.75rem;
+  border: 1px solid rgba(17, 24, 39, 0.15);
+}
+
+.form-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: center;
+}
+
+.ghost {
+  border: 1px solid rgba(99, 102, 241, 0.35);
+  border-radius: 0.75rem;
+  padding: 0.55rem 1.5rem;
+  background: transparent;
+  color: rgba(79, 70, 229, 0.95);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.ghost:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+}
+
+.form-error {
+  color: #b91c1c;
+  font-size: 0.95rem;
+}
+
+.form-success {
+  color: #15803d;
+  font-size: 0.95rem;
 }
 
 .redeem-box {
