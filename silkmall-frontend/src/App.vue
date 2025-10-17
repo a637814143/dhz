@@ -15,13 +15,13 @@ const roleHome = computed(() => {
     case 'consumer':
       return '/consumer/dashboard'
     default:
-      return '/login'
+      return '/auth'
   }
 })
 
 function signOut() {
   clearAuth()
-  router.push({ name: 'login' })
+  router.push({ name: 'auth', query: { mode: 'login' } })
 }
 </script>
 
@@ -49,8 +49,8 @@ function signOut() {
           <button type="button" class="logout-button" @click="signOut">退出</button>
         </template>
         <template v-else>
-          <RouterLink to="/login" class="login-link">登录</RouterLink>
-          <RouterLink to="/register" class="register-link">注册</RouterLink>
+          <RouterLink :to="{ name: 'auth', query: { mode: 'login' } }" class="login-link">登录</RouterLink>
+          <RouterLink :to="{ name: 'auth', query: { mode: 'register' } }" class="register-link">注册</RouterLink>
         </template>
       </div>
     </header>

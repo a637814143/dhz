@@ -3,8 +3,7 @@ import HomeView from '../views/HomeView.vue'
 import { useAuthState } from '@/services/authState'
 
 const OrderCenterView = () => import('../views/OrderCenterView.vue')
-const LoginView = () => import('../views/auth/LoginView.vue')
-const RegisterView = () => import('../views/auth/RegisterView.vue')
+const AuthView = () => import('../views/auth/AuthView.vue')
 const ConsumerDashboard = () => import('../views/dashboard/ConsumerDashboard.vue')
 const SupplierWorkbench = () => import('../views/dashboard/SupplierWorkbench.vue')
 const AdminOverview = () => import('../views/dashboard/AdminOverview.vue')
@@ -19,6 +18,7 @@ const router = createRouter({
       path: '/',
       name: 'home',
       component: HomeView,
+      meta: { requiresAuth: true },
     },
     {
       path: '/about',
@@ -27,11 +27,13 @@ const router = createRouter({
       // this generates a separate chunk (About.[hash].js) for this route
       // which is lazy-loaded when the route is visited.
       component: () => import('../views/AboutView.vue'),
+      meta: { requiresAuth: true },
     },
     {
       path: '/product/:id',
       name: 'product-detail',
       component: ProductDetailView,
+      meta: { requiresAuth: true },
     },
     {
       path: '/orders',
@@ -40,16 +42,18 @@ const router = createRouter({
       meta: { requiresAuth: true, roles: ['consumer', 'admin'] },
     },
     {
+      path: '/auth',
+      name: 'auth',
+      component: AuthView,
+      meta: { guestOnly: true, requiresAuth: false },
+    },
+    {
       path: '/login',
-      name: 'login',
-      component: LoginView,
-      meta: { guestOnly: true },
+      redirect: (to) => ({ name: 'auth', query: { ...to.query, mode: 'login' } }),
     },
     {
       path: '/register',
-      name: 'register',
-      component: RegisterView,
-      meta: { guestOnly: true },
+      redirect: (to) => ({ name: 'auth', query: { ...to.query, mode: 'register' } }),
     },
     {
       path: '/consumer/dashboard',
@@ -93,15 +97,17 @@ function resolveHome(role?: string | null) {
     case 'consumer':
       return '/consumer/dashboard'
     default:
-      return '/login'
+      return '/auth'
   }
 }
 
 router.beforeEach((to) => {
   const { isAuthenticated, state } = useAuthState()
 
-  if (to.meta?.requiresAuth && !isAuthenticated.value) {
-    return { name: 'login', query: { redirect: to.fullPath } }
+  const requiresAuth = to.meta?.requiresAuth !== false
+
+  if (requiresAuth && !isAuthenticated.value && to.name !== 'auth') {
+    return { name: 'auth', query: { ...to.query, redirect: to.fullPath, mode: 'login' } }
   }
 
   if (to.meta?.roles && isAuthenticated.value) {
