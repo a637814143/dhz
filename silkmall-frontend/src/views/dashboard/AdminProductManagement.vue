@@ -18,6 +18,8 @@ interface ProductDetail {
   sales: number
   mainImage?: string | null
   status: string
+  createdAt?: string | null
+  updatedAt?: string | null
   category?: { id: number; name?: string | null } | null
   supplier?: { id: number; companyName?: string | null } | null
 }
@@ -49,6 +51,9 @@ const productFormError = ref<string | null>(null)
 const productFormMessage = ref<string | null>(null)
 const savingProduct = ref(false)
 const deletingProductId = ref<number | null>(null)
+const statusUpdatingId = ref<number | null>(null)
+const productViewOpen = ref(false)
+const viewingProduct = ref<ProductDetail | null>(null)
 
 const productForm = reactive({
   id: null as number | null,
@@ -131,24 +136,29 @@ function normaliseSuppliers(payload: unknown): SupplierOption[] {
   if (!Array.isArray(payload)) {
     return []
   }
-  return payload
-    .map((item) => {
-      if (!item || typeof item !== 'object') return null
-      const source = item as Record<string, unknown>
-      const id = Number(source.id)
-      if (!Number.isFinite(id)) return null
-      const companyNameRaw = source.companyName ?? source.username ?? `供应商 ${id}`
-      const companyName = typeof companyNameRaw === 'string'
+  const options: SupplierOption[] = []
+  for (const item of payload) {
+    if (!item || typeof item !== 'object') continue
+    const source = item as Record<string, unknown>
+    const id = Number(source.id)
+    if (!Number.isFinite(id)) continue
+    const companyNameRaw = source.companyName ?? source.username ?? `供应商 ${id}`
+    const companyName =
+      typeof companyNameRaw === 'string'
         ? companyNameRaw.trim()
         : String(companyNameRaw ?? '').trim()
-      return {
-        id,
-        companyName: companyName.length > 0 ? companyName : `供应商 ${id}`,
-        supplierLevel: typeof source.supplierLevel === 'string' ? source.supplierLevel : null,
-      }
-    })
-    .filter((item): item is SupplierOption => item !== null)
-    .sort((a, b) => a.companyName.localeCompare(b.companyName, 'zh-CN'))
+    const option: SupplierOption = {
+      id,
+      companyName: companyName.length > 0 ? companyName : `供应商 ${id}`,
+    }
+    if (typeof source.supplierLevel === 'string') {
+      option.supplierLevel = source.supplierLevel
+    } else if (source.supplierLevel === null) {
+      option.supplierLevel = null
+    }
+    options.push(option)
+  }
+  return options.sort((a, b) => a.companyName.localeCompare(b.companyName, 'zh-CN'))
 }
 
 async function loadSuppliers() {
@@ -186,6 +196,29 @@ async function loadProducts() {
   } finally {
     tableLoading.value = false
   }
+}
+
+async function openProductView(product: ProductSummary) {
+  try {
+    const { data } = await api.get<ProductDetail>(`/products/${product.id}`)
+    const detailRecord = data as unknown as Record<string, unknown>
+    const stockValue = Number(detailRecord.stock)
+    const salesValue = Number(detailRecord.sales)
+    viewingProduct.value = {
+      ...data,
+      stock: Number.isFinite(stockValue) ? stockValue : 0,
+      sales: Number.isFinite(salesValue) ? salesValue : 0,
+    }
+    productViewOpen.value = true
+  } catch (err) {
+    const message = err instanceof Error ? err.message : '加载商品详情失败'
+    window.alert(message)
+  }
+}
+
+function closeProductView() {
+  productViewOpen.value = false
+  viewingProduct.value = null
 }
 
 async function bootstrap() {
@@ -242,7 +275,8 @@ async function openProductForm(product?: ProductSummary) {
       const parsed = Number(data.price)
       productForm.price = Number.isFinite(parsed) ? parsed.toString() : ''
     }
-    const stockValue = Number((data as Record<string, unknown>).stock)
+    const detailRecord = data as unknown as Record<string, unknown>
+    const stockValue = Number(detailRecord.stock)
     productForm.stock = Number.isFinite(stockValue) ? stockValue : 0
     productForm.status = data.status ?? 'OFF_SALE'
     productForm.categoryId = data.category?.id ?? 0
@@ -332,6 +366,23 @@ async function deleteProduct(productId: number) {
     window.alert(message)
   } finally {
     deletingProductId.value = null
+  }
+}
+
+async function changeProductStatus(productId: number, nextStatus: 'ON_SALE' | 'OFF_SALE') {
+  statusUpdatingId.value = productId
+  try {
+    if (nextStatus === 'ON_SALE') {
+      await api.put(`/products/${productId}/on-sale`)
+    } else {
+      await api.put(`/products/${productId}/off-sale`)
+    }
+    await Promise.all([loadProducts(), loadOverview()])
+  } catch (err) {
+    const message = err instanceof Error ? err.message : '更新商品状态失败'
+    window.alert(message)
+  } finally {
+    statusUpdatingId.value = null
   }
 }
 </script>
@@ -450,7 +501,17 @@ async function deleteProduct(productId: number) {
                 <td><span class="status-pill">{{ formatStatus(item.status) }}</span></td>
                 <td>{{ formatDate(item.createdAt as string | undefined) }}</td>
                 <td class="actions">
+                  <button type="button" class="link-button" @click="openProductView(item)">查看</button>
                   <button type="button" class="link-button" @click="openProductForm(item)">编辑</button>
+                  <button
+                    type="button"
+                    class="link-button"
+                    :class="{ danger: item.status === 'ON_SALE' }"
+                    @click="changeProductStatus(item.id, item.status === 'ON_SALE' ? 'OFF_SALE' : 'ON_SALE')"
+                    :disabled="statusUpdatingId === item.id"
+                  >
+                    {{ item.status === 'ON_SALE' ? '下架' : '上架' }}
+                  </button>
                   <button
                     type="button"
                     class="link-button danger"
@@ -473,7 +534,7 @@ async function deleteProduct(productId: number) {
           <span>第 {{ pagination.page + 1 }} / {{ totalPages }} 页</span>
           <button
             type="button"
-            :disabled="totalPages && pagination.page + 1 >= totalPages"
+            :disabled="totalPages > 0 && pagination.page + 1 >= totalPages"
             @click="changePage(pagination.page + 1)"
           >
             下一页
@@ -549,6 +610,61 @@ async function deleteProduct(productId: number) {
         </div>
       </div>
     </form>
+
+    <div v-if="productViewOpen && viewingProduct" class="product-view" role="dialog" aria-modal="true">
+      <div class="view-surface">
+        <header>
+          <h2>商品详情</h2>
+          <button type="button" class="ghost" @click="closeProductView">关闭</button>
+        </header>
+        <dl class="detail-grid">
+          <div>
+            <dt>商品名称</dt>
+            <dd>{{ viewingProduct?.name }}</dd>
+          </div>
+          <div>
+            <dt>所属分类</dt>
+            <dd>{{ viewingProduct?.category?.name ?? '—' }}</dd>
+          </div>
+          <div>
+            <dt>供应商</dt>
+            <dd>{{ viewingProduct?.supplier?.companyName ?? '—' }}</dd>
+          </div>
+          <div>
+            <dt>售价</dt>
+            <dd>{{ formatCurrency(Number(viewingProduct?.price)) }}</dd>
+          </div>
+          <div>
+            <dt>库存</dt>
+            <dd>{{ formatNumber(viewingProduct?.stock) }}</dd>
+          </div>
+          <div>
+            <dt>销量</dt>
+            <dd>{{ formatNumber(viewingProduct?.sales) }}</dd>
+          </div>
+          <div>
+            <dt>状态</dt>
+            <dd>{{ formatStatus(viewingProduct?.status) }}</dd>
+          </div>
+          <div>
+            <dt>创建时间</dt>
+            <dd>{{ formatDate(viewingProduct?.createdAt) }}</dd>
+          </div>
+          <div>
+            <dt>最近更新</dt>
+            <dd>{{ formatDate(viewingProduct?.updatedAt) }}</dd>
+          </div>
+          <div class="full-width">
+            <dt>商品描述</dt>
+            <dd>{{ viewingProduct?.description || '—' }}</dd>
+          </div>
+          <div v-if="viewingProduct?.mainImage" class="full-width">
+            <dt>商品主图</dt>
+            <dd><img :src="viewingProduct.mainImage" alt="商品主图" /></dd>
+          </div>
+        </dl>
+      </div>
+    </div>
   </section>
 </template>
 
@@ -762,6 +878,68 @@ tbody tr:nth-child(odd) {
 .link-button:disabled {
   opacity: 0.6;
   cursor: not-allowed;
+}
+
+.product-view {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem 1rem;
+  z-index: 40;
+}
+
+.view-surface {
+  background: #fff;
+  border-radius: 20px;
+  padding: 1.8rem;
+  width: min(720px, 100%);
+  max-height: 90vh;
+  overflow-y: auto;
+  box-shadow: 0 30px 60px rgba(15, 23, 42, 0.2);
+  display: grid;
+  gap: 1.5rem;
+}
+
+.view-surface header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+}
+
+.detail-grid {
+  display: grid;
+  gap: 0.9rem;
+}
+
+.detail-grid > div {
+  display: grid;
+  gap: 0.25rem;
+  grid-template-columns: max-content 1fr;
+  align-items: flex-start;
+}
+
+.detail-grid dt {
+  font-weight: 600;
+  color: rgba(15, 23, 42, 0.65);
+}
+
+.detail-grid dd {
+  margin: 0;
+  color: rgba(15, 23, 42, 0.85);
+}
+
+.detail-grid .full-width {
+  grid-template-columns: 1fr;
+}
+
+.detail-grid img {
+  max-width: 100%;
+  border-radius: 1rem;
+  box-shadow: 0 12px 30px rgba(15, 23, 42, 0.2);
 }
 
 .empty {

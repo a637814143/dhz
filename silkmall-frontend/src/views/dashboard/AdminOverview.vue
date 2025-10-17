@@ -63,6 +63,7 @@ const productFormError = ref<string | null>(null)
 const productFormMessage = ref<string | null>(null)
 const savingProduct = ref(false)
 const deletingProductId = ref<number | null>(null)
+const updatingStatusId = ref<number | null>(null)
 const viewingProduct = ref<ProductDetail | null>(null)
 
 const productForm = reactive({
@@ -146,23 +147,26 @@ function normaliseSupplierOptions(payload: unknown): SupplierOption[] {
   if (!Array.isArray(payload)) {
     return []
   }
-  return payload
-    .map((item) => {
-      if (!item || typeof item !== 'object') return null
-      const source = item as Record<string, unknown>
-      const id = Number(source.id)
-      if (!Number.isFinite(id)) return null
-      const rawName = source.companyName ?? source.username ?? `供应商 ${id}`
-      const companyName = typeof rawName === 'string' ? rawName.trim() : String(rawName ?? '').trim()
-      return {
-        id,
-        companyName: companyName.length > 0 ? companyName : `供应商 ${id}`,
-        supplierLevel:
-          typeof source.supplierLevel === 'string' ? source.supplierLevel : undefined,
-      }
-    })
-    .filter((item): item is SupplierOption => item !== null)
-    .sort((a, b) => a.companyName.localeCompare(b.companyName, 'zh-CN'))
+  const options: SupplierOption[] = []
+  for (const item of payload) {
+    if (!item || typeof item !== 'object') continue
+    const source = item as Record<string, unknown>
+    const id = Number(source.id)
+    if (!Number.isFinite(id)) continue
+    const rawName = source.companyName ?? source.username ?? `供应商 ${id}`
+    const companyName = typeof rawName === 'string' ? rawName.trim() : String(rawName ?? '').trim()
+    const option: SupplierOption = {
+      id,
+      companyName: companyName.length > 0 ? companyName : `供应商 ${id}`,
+    }
+    if (typeof source.supplierLevel === 'string') {
+      option.supplierLevel = source.supplierLevel
+    } else if (source.supplierLevel === null) {
+      option.supplierLevel = null
+    }
+    options.push(option)
+  }
+  return options.sort((a, b) => a.companyName.localeCompare(b.companyName, 'zh-CN'))
 }
 
 async function loadSupplierOptions() {
@@ -325,7 +329,8 @@ async function openProductDialog(product?: ProductSummary) {
         const parsed = Number(detail.price)
         productForm.price = Number.isFinite(parsed) ? parsed.toString() : ''
       }
-      const stockValue = Number((detail as Record<string, unknown>).stock)
+      const detailRecord = detail as unknown as Record<string, unknown>
+      const stockValue = Number(detailRecord.stock)
       productForm.stock = Number.isFinite(stockValue) ? stockValue : 0
       productForm.status = detail.status ?? 'OFF_SALE'
       productForm.categoryId = detail.category?.id ?? 0
@@ -418,6 +423,23 @@ async function deleteProduct(productId: number) {
   }
 }
 
+async function changeProductStatus(productId: number, nextStatus: 'ON_SALE' | 'OFF_SALE') {
+  updatingStatusId.value = productId
+  try {
+    if (nextStatus === 'ON_SALE') {
+      await api.put(`/products/${productId}/on-sale`)
+    } else {
+      await api.put(`/products/${productId}/off-sale`)
+    }
+    await refreshProductsAndOverview()
+  } catch (err) {
+    const message = err instanceof Error ? err.message : '更新商品状态失败'
+    window.alert(message)
+  } finally {
+    updatingStatusId.value = null
+  }
+}
+
 async function refreshProductsAndOverview() {
   try {
     await loadOverview()
@@ -435,8 +457,9 @@ async function openProductView(product: ProductSummary) {
     if (!detail) {
       throw new Error('加载商品详情失败')
     }
-    const stockValue = Number((detail as Record<string, unknown>).stock)
-    const salesValue = Number((detail as Record<string, unknown>).sales)
+    const detailRecord = detail as unknown as Record<string, unknown>
+    const stockValue = Number(detailRecord.stock)
+    const salesValue = Number(detailRecord.sales)
     viewingProduct.value = {
       ...detail,
       stock: Number.isFinite(stockValue) ? stockValue : 0,
@@ -613,6 +636,15 @@ function formatNumber(value?: number | null) {
                     <button type="button" class="link-button" @click="openProductDialog(item)">编辑</button>
                     <button
                       type="button"
+                      class="link-button"
+                      :class="{ danger: item.status === 'ON_SALE' }"
+                      @click="changeProductStatus(item.id, item.status === 'ON_SALE' ? 'OFF_SALE' : 'ON_SALE')"
+                      :disabled="updatingStatusId === item.id"
+                    >
+                      {{ item.status === 'ON_SALE' ? '下架' : '上架' }}
+                    </button>
+                    <button
+                      type="button"
                       class="link-button danger"
                       @click="deleteProduct(item.id)"
                       :disabled="deletingProductId === item.id"
@@ -633,7 +665,7 @@ function formatNumber(value?: number | null) {
             <span>第 {{ productPagination.page + 1 }} / {{ totalProductPages }} 页</span>
             <button
               type="button"
-              :disabled="totalProductPages && productPagination.page + 1 >= totalProductPages"
+              :disabled="totalProductPages > 0 && productPagination.page + 1 >= totalProductPages"
               @click="changeProductPage(productPagination.page + 1)"
             >
               下一页
