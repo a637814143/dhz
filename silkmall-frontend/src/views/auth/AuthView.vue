@@ -295,22 +295,28 @@ function resolveHome(role?: string | null) {
                 />
               </label>
 
-              <div class="form-control captcha-group">
-                <div class="captcha-input">
-                  <span>安全验证码</span>
+              <label class="form-control captcha-group">
+                <span class="field-label">安全验证码</span>
+                <div class="captcha-row">
                   <input
+                    id="login-captcha"
                     v-model.trim="loginForm.verificationCode"
                     type="text"
                     placeholder="请输入计算结果"
                     maxlength="6"
                   />
+                  <button
+                    type="button"
+                    class="captcha-button"
+                    @click="refreshCaptcha"
+                    :disabled="captchaCountdown > 0"
+                  >
+                    <span class="captcha-question" v-if="captcha">{{ captcha.question }}</span>
+                    <span v-else>获取验证码</span>
+                    <small v-if="captchaCountdown > 0">{{ captchaCountdown }}s</small>
+                  </button>
                 </div>
-                <button type="button" class="captcha-button" @click="refreshCaptcha" :disabled="captchaCountdown > 0">
-                  <span v-if="captcha">{{ captcha.question }}</span>
-                  <span v-else>获取验证码</span>
-                  <small v-if="captchaCountdown > 0">{{ captchaCountdown }}s</small>
-                </button>
-              </div>
+              </label>
 
               <div v-if="loginError" class="form-alert is-error" role="alert">{{ loginError }}</div>
               <div
@@ -339,56 +345,56 @@ function resolveHome(role?: string | null) {
                   <input v-model.trim="registerForm.username" type="text" placeholder="3-20 个字符" autocomplete="username" />
                 </label>
 
-              <label class="form-control">
-                <span>邮箱</span>
-                <input v-model.trim="registerForm.email" type="email" placeholder="example@canzhipin.com" autocomplete="email" />
-              </label>
+                <label class="form-control">
+                  <span>邮箱</span>
+                  <input v-model.trim="registerForm.email" type="email" placeholder="example@canzhipin.com" autocomplete="email" />
+                </label>
 
-              <label class="form-control">
-                <span>手机号</span>
-                <input v-model.trim="registerForm.phone" type="tel" placeholder="用于接收通知" autocomplete="tel" />
-              </label>
+                <label class="form-control">
+                  <span>手机号</span>
+                  <input v-model.trim="registerForm.phone" type="tel" placeholder="用于接收通知" autocomplete="tel" />
+                </label>
 
-              <label class="form-control">
-                <span>登录密码</span>
-                <input v-model="registerForm.password" type="password" placeholder="至少 6 位" autocomplete="new-password" />
-              </label>
+                <label class="form-control">
+                  <span>登录密码</span>
+                  <input v-model="registerForm.password" type="password" placeholder="至少 6 位" autocomplete="new-password" />
+                </label>
 
-              <label class="form-control">
-                <span>确认密码</span>
-                <input
-                  v-model="registerForm.confirmPassword"
-                  type="password"
-                  placeholder="再次输入密码"
-                  autocomplete="new-password"
-                />
-              </label>
-            </div>
-
-            <fieldset class="role-selector">
-              <legend>选择用户类型</legend>
-              <div class="role-options">
-                <label
-                  v-for="role in roles"
-                  :key="role.value"
-                  :class="['role-card', { active: registerForm.userType === role.value }]"
-                >
-                  <input v-model="registerForm.userType" type="radio" :value="role.value" />
-                  <div class="role-meta">
-                    <strong>{{ role.label }}</strong>
-                    <p>{{ role.description }}</p>
-                  </div>
+                <label class="form-control">
+                  <span>确认密码</span>
+                  <input
+                    v-model="registerForm.confirmPassword"
+                    type="password"
+                    placeholder="再次输入密码"
+                    autocomplete="new-password"
+                  />
                 </label>
               </div>
-            </fieldset>
 
-            <div v-if="registerError" class="form-alert is-error" role="alert">{{ registerError }}</div>
-            <div v-if="registerSuccessBanner" class="form-alert is-success" role="status">{{ registerSuccessBanner }}</div>
+              <fieldset class="role-selector">
+                <legend>选择用户类型</legend>
+                <div class="role-options">
+                  <label
+                    v-for="role in roles"
+                    :key="role.value"
+                    :class="['role-card', { active: registerForm.userType === role.value }]"
+                  >
+                    <input v-model="registerForm.userType" type="radio" :value="role.value" />
+                    <div class="role-meta">
+                      <strong>{{ role.label }}</strong>
+                      <p>{{ role.description }}</p>
+                    </div>
+                  </label>
+                </div>
+              </fieldset>
 
-            <button class="submit-button" type="submit" :disabled="!canSubmitRegister">
-              <span v-if="registerLoading" class="loader" aria-hidden="true"></span>
-              {{ registerLoading ? '提交中…' : '提交注册' }}
-            </button>
+              <div v-if="registerError" class="form-alert is-error" role="alert">{{ registerError }}</div>
+              <div v-if="registerSuccessBanner" class="form-alert is-success" role="status">{{ registerSuccessBanner }}</div>
+
+              <button class="submit-button" type="submit" :disabled="!canSubmitRegister">
+                <span v-if="registerLoading" class="loader" aria-hidden="true"></span>
+                {{ registerLoading ? '提交中…' : '提交注册' }}
+              </button>
 
               <footer class="panel-footer">
                 <span>已有账号？</span>
@@ -550,16 +556,21 @@ function resolveHome(role?: string | null) {
   color: rgba(17, 24, 39, 0.6);
 }
 
+
 .panel-form {
   display: grid;
   gap: 1.5rem;
-  width: min(420px, 100%);
+  width: min(460px, 100%);
   padding: 1.75rem 1.75rem 2rem;
   background: rgba(255, 255, 255, 0.94);
   border: 1px solid rgba(17, 24, 39, 0.08);
   border-radius: 20px;
   box-shadow: 0 24px 45px rgba(17, 24, 39, 0.08);
   transition: transform 0.25s ease, box-shadow 0.25s ease;
+}
+
+.auth-shell.mode-register .panel-form {
+  width: min(700px, 100%);
 }
 
 .panel-body {
@@ -613,16 +624,17 @@ function resolveHome(role?: string | null) {
 }
 
 .captcha-group {
-  display: flex;
-  gap: 1rem;
-  align-items: center;
+  gap: 0.75rem;
 }
 
-.captcha-input {
-  flex: 1;
+.captcha-row {
   display: flex;
-  flex-direction: column;
-  gap: 0.6rem;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.captcha-row input {
+  flex: 1;
 }
 
 .captcha-button {
@@ -639,6 +651,7 @@ function resolveHome(role?: string | null) {
   cursor: pointer;
   transition: background 0.2s ease, transform 0.2s ease;
   min-width: 160px;
+  white-space: nowrap;
 }
 
 .captcha-button:hover:not(:disabled) {
@@ -649,6 +662,11 @@ function resolveHome(role?: string | null) {
 .captcha-button:disabled {
   opacity: 0.65;
   cursor: not-allowed;
+}
+
+.captcha-button small {
+  font-size: 0.8rem;
+  color: rgba(240, 122, 38, 0.75);
 }
 
 .form-alert {
@@ -704,7 +722,11 @@ function resolveHome(role?: string | null) {
 .form-grid {
   display: grid;
   gap: 1.2rem;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+}
+
+.auth-shell.mode-register .form-grid {
+  grid-template-columns: repeat(2, minmax(240px, 1fr));
 }
 
 .role-selector {
@@ -723,6 +745,20 @@ function resolveHome(role?: string | null) {
   display: grid;
   gap: 1rem;
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+
+.auth-shell.mode-register .role-options {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+@media (max-width: 1024px) {
+  .auth-shell.mode-register .panel-form {
+    width: min(620px, 100%);
+  }
+
+  .auth-shell.mode-register .role-options {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 .role-card {
@@ -805,7 +841,20 @@ function resolveHome(role?: string | null) {
     padding: 1.5rem 1.25rem 1.75rem;
   }
 
-  .captcha-group {
+  .form-grid,
+  .auth-shell.mode-register .form-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .auth-shell.mode-register .panel-form {
+    width: 100%;
+  }
+
+  .auth-shell.mode-register .role-options {
+    grid-template-columns: 1fr;
+  }
+
+  .captcha-row {
     flex-direction: column;
     align-items: stretch;
   }

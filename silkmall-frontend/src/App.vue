@@ -1,9 +1,10 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import { RouterLink, RouterView, useRouter } from 'vue-router'
+import { RouterLink, RouterView, useRouter, useRoute } from 'vue-router'
 import { useAuthState } from '@/services/authState'
 
 const router = useRouter()
+const route = useRoute()
 const { state, isAuthenticated, clearAuth } = useAuthState()
 
 const roleHome = computed(() => {
@@ -17,6 +18,10 @@ const roleHome = computed(() => {
     default:
       return '/auth'
   }
+})
+
+const showGuestLinks = computed(() => {
+  return !isAuthenticated.value && route.name !== 'auth'
 })
 
 function signOut() {
@@ -46,7 +51,7 @@ function signOut() {
         <RouterLink to="/about" active-class="is-active" class="nav-link">关于项目</RouterLink>
       </nav>
 
-      <div class="auth-controls">
+      <div v-if="isAuthenticated || showGuestLinks" class="auth-controls">
         <template v-if="isAuthenticated">
           <span class="user-chip">{{ state.user?.username }}</span>
           <RouterLink :to="roleHome" class="dashboard-link">我的工作台</RouterLink>
