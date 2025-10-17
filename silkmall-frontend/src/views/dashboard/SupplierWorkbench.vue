@@ -104,10 +104,42 @@ async function loadProfile() {
 
 async function loadProducts() {
   if (!state.user) return
-  const { data } = await api.get<PageResponse<ProductSummary>>(`/products/supplier/${state.user.id}`, {
-    params: { page: 0, size: 6 },
-  })
-  products.value = data.content ?? []
+
+  const aggregated: ProductSummary[] = []
+  const pageSize = 50
+  let page = 0
+  let hasMore = true
+
+  while (hasMore) {
+    const { data } = await api.get<PageResponse<ProductSummary>>(`/products/supplier/${state.user.id}`, {
+      params: { page, size: pageSize, sort: 'createdAt,desc' },
+    })
+
+    const items = Array.isArray(data?.content) ? data.content : []
+    aggregated.push(...items)
+
+    const totalPages = typeof data?.totalPages === 'number' ? data.totalPages : null
+    const totalElements = typeof data?.totalElements === 'number' ? data.totalElements : null
+    const serverPageSize = typeof data?.size === 'number' && data.size > 0 ? data.size : pageSize
+
+    page += 1
+
+    if (totalPages && totalPages > 0) {
+      hasMore = page < totalPages
+    } else {
+      if (totalElements !== null && totalElements >= 0) {
+        hasMore = aggregated.length < totalElements
+      } else {
+        hasMore = items.length === serverPageSize
+      }
+    }
+
+    if (!hasMore) {
+      break
+    }
+  }
+
+  products.value = aggregated
 }
 
 async function loadHomeContent() {
