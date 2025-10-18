@@ -1,5 +1,7 @@
 package com.example.silkmall.entity;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import jakarta.persistence.*;
 import lombok.Data;
 import java.util.Date;
@@ -8,6 +10,7 @@ import java.util.List;
 @Data
 @Entity
 @Table(name = "categories")
+@JsonIgnoreProperties({"products", "children"})
 public class Category {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -26,9 +29,11 @@ public class Category {
     private Category parent;
     
     @OneToMany(mappedBy = "parent", cascade = CascadeType.ALL)
+    @JsonIgnore
     private List<Category> children;
-    
+
     @OneToMany(mappedBy = "category", cascade = CascadeType.ALL)
+    @JsonIgnore
     private List<Product> products;
     
     public Long getId() {

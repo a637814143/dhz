@@ -1,5 +1,6 @@
 package com.example.silkmall.entity;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import jakarta.persistence.*;
 import lombok.Data;
 import java.math.BigDecimal;
@@ -9,6 +10,7 @@ import java.util.List;
 @Data
 @Entity
 @Table(name = "products")
+@JsonIgnoreProperties({"orderItems"})
 public class Product {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -33,6 +35,7 @@ public class Product {
     private Supplier supplier;
     
     @OneToMany(mappedBy = "product", cascade = CascadeType.ALL)
+    @JsonIgnoreProperties({"product"})
     private List<ProductImage> images;
     
     @OneToMany(mappedBy = "product", cascade = CascadeType.ALL)
