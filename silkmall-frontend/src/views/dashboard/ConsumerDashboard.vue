@@ -164,10 +164,10 @@ function maskIdCard(value?: string | null) {
     return '*'.repeat(normalized.length)
   }
 
-  const prefix = normalized.slice(0, 3)
-  const suffix = normalized.slice(-4)
-  const maskedMiddleLength = Math.max(0, normalized.length - prefix.length - suffix.length)
-  return `${prefix}${'*'.repeat(maskedMiddleLength)}${suffix}`
+  const prefixLength = Math.min(3, normalized.length - 4)
+  const prefix = normalized.slice(0, prefixLength)
+  const maskedLength = Math.max(0, normalized.length - prefixLength)
+  return `${prefix}${'*'.repeat(maskedLength)}`
 }
 
 async function redeemWallet() {
