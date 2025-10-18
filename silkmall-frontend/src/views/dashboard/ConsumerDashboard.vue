@@ -90,6 +90,7 @@ const profileFormError = ref<string | null>(null)
 const orderItems = computed<OrderItemDetail[]>(() => orderDetail.value?.orderItems ?? [])
 const hasRecommendations = computed(() => (homeContent.value?.recommendations?.length ?? 0) > 0)
 const hasAnnouncements = computed(() => announcements.value.length > 0)
+const maskedIdCard = computed(() => maskIdCard(profile.value?.idCard))
 
 async function loadProfile() {
   if (!state.user) return
@@ -153,6 +154,20 @@ function formatDateTime(value?: string | null) {
 function membershipBadge(level?: string | null) {
   if (!level) return '普通会员'
   return level
+}
+
+function maskIdCard(value?: string | null) {
+  if (!value) return '—'
+  const normalized = value.trim()
+  if (!normalized) return '—'
+  if (normalized.length <= 4) {
+    return '*'.repeat(normalized.length)
+  }
+
+  const prefix = normalized.slice(0, 3)
+  const suffix = normalized.slice(-4)
+  const maskedMiddleLength = Math.max(0, normalized.length - prefix.length - suffix.length)
+  return `${prefix}${'*'.repeat(maskedMiddleLength)}${suffix}`
 }
 
 async function redeemWallet() {
@@ -473,7 +488,7 @@ const shortcutLinks = [
                 </tr>
                 <tr>
                   <th scope="row">身份证号</th>
-                  <td>{{ profile?.idCard ?? '—' }}</td>
+                  <td>{{ maskedIdCard }}</td>
                 </tr>
                 <tr>
                   <th scope="row">邮箱</th>
