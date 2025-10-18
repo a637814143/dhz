@@ -6,7 +6,9 @@ import com.example.silkmall.repository.ProductRepository;
 import com.example.silkmall.service.ProductService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -36,7 +38,16 @@ public class ProductServiceImpl extends BaseServiceImpl<Product, Long> implement
     
     @Override
     public Page<Product> findBySupplierId(Long supplierId, Pageable pageable) {
-        return productRepository.findBySupplierId(supplierId, pageable);
+        Pageable effectivePageable = pageable;
+        if (effectivePageable == null || effectivePageable.getSort().isUnsorted()) {
+            int pageNumber = effectivePageable != null ? effectivePageable.getPageNumber() : 0;
+            int pageSize = effectivePageable != null ? effectivePageable.getPageSize() : 20;
+            effectivePageable = PageRequest.of(
+                    Math.max(pageNumber, 0),
+                    Math.max(pageSize, 1),
+                    Sort.by(Sort.Direction.DESC, "createdAt"));
+        }
+        return productRepository.findBySupplierId(supplierId, effectivePageable);
     }
     
     @Override
