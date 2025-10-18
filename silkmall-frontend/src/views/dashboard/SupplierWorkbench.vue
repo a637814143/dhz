@@ -654,8 +654,50 @@ const statusOptions = [
         </div>
         <p v-else class="empty">暂无商品，请尽快完成商品录入与上架。</p>
 
-        <form v-if="productDialogOpen" class="product-form" @submit.prevent="saveProduct">
-          <div class="grid">
+        <div class="category-create">
+          <h4>快速创建分类</h4>
+          <div class="category-row">
+            <input v-model="categoryNameInput" type="text" placeholder="分类名称" :disabled="categorySaving" />
+            <button type="button" @click="createCategory" :disabled="categorySaving">
+              {{ categorySaving ? '创建中…' : '添加分类' }}
+            </button>
+          </div>
+          <p v-if="categoryFeedback" class="success">{{ categoryFeedback }}</p>
+          <p v-if="categoryError" class="error">{{ categoryError }}</p>
+        </div>
+      </section>
+
+      <section class="panel promotions" aria-labelledby="promotion-list">
+        <div class="panel-title" id="promotion-list">平台促销建议</div>
+        <ul class="promotion-list">
+          <li v-for="promo in homeContent?.promotions ?? []" :key="promo.productId">
+            <div>
+              <strong>{{ promo.title }}</strong>
+              <p>{{ promo.description }}</p>
+            </div>
+            <span class="badge">{{ Math.round(promo.discountRate * 100) }}% OFF</span>
+          </li>
+        </ul>
+      </section>
+    </template>
+
+    <div v-if="productDialogOpen" class="modal-backdrop" @click.self="cancelProductForm">
+      <section
+        class="modal"
+        role="dialog"
+        aria-modal="true"
+        :aria-labelledby="productForm.id ? 'supplier-product-edit-title' : 'supplier-product-create-title'"
+      >
+        <header class="modal-header">
+          <h3 :id="productForm.id ? 'supplier-product-edit-title' : 'supplier-product-create-title'">
+            {{ productForm.id ? '编辑商品' : '新增商品' }}
+          </h3>
+          <button type="button" class="icon-button" @click="cancelProductForm" aria-label="关闭">
+            ×
+          </button>
+        </header>
+        <form class="modal-body product-modal" @submit.prevent="saveProduct">
+          <div class="modal-grid">
             <label>
               <span>商品名称</span>
               <input v-model="productForm.name" type="text" placeholder="请输入商品名称" />
@@ -670,7 +712,7 @@ const statusOptions = [
             </label>
           </div>
 
-          <div class="grid">
+          <div class="modal-grid">
             <label>
               <span>售价（CNY）</span>
               <input v-model="productForm.price" type="number" min="0" step="0.01" placeholder="如：199" />
@@ -701,45 +743,20 @@ const statusOptions = [
             <textarea v-model="productForm.description" rows="3" placeholder="介绍商品亮点"></textarea>
           </label>
 
-          <p v-if="productFormError" class="error">{{ productFormError }}</p>
-          <p v-if="productFormMessage" class="success">{{ productFormMessage }}</p>
+          <p v-if="productFormError" class="modal-error">{{ productFormError }}</p>
+          <p v-if="productFormMessage" class="modal-success">{{ productFormMessage }}</p>
 
-          <div class="form-actions">
-            <button type="submit" :disabled="savingProduct">
-              {{ savingProduct ? '保存中…' : productForm.id ? '保存修改' : '创建商品' }}
-            </button>
-            <button type="button" class="ghost" @click="cancelProductForm" :disabled="savingProduct">
+          <footer class="modal-actions">
+            <button type="button" class="ghost-button" @click="cancelProductForm" :disabled="savingProduct">
               取消
             </button>
-          </div>
-        </form>
-
-        <div class="category-create">
-          <h4>快速创建分类</h4>
-          <div class="category-row">
-            <input v-model="categoryNameInput" type="text" placeholder="分类名称" :disabled="categorySaving" />
-            <button type="button" @click="createCategory" :disabled="categorySaving">
-              {{ categorySaving ? '创建中…' : '添加分类' }}
+            <button type="submit" class="primary-button" :disabled="savingProduct">
+              {{ savingProduct ? '保存中…' : productForm.id ? '保存修改' : '创建商品' }}
             </button>
-          </div>
-          <p v-if="categoryFeedback" class="success">{{ categoryFeedback }}</p>
-          <p v-if="categoryError" class="error">{{ categoryError }}</p>
-        </div>
+          </footer>
+        </form>
       </section>
-
-      <section class="panel promotions" aria-labelledby="promotion-list">
-        <div class="panel-title" id="promotion-list">平台促销建议</div>
-        <ul class="promotion-list">
-          <li v-for="promo in homeContent?.promotions ?? []" :key="promo.productId">
-            <div>
-              <strong>{{ promo.title }}</strong>
-              <p>{{ promo.description }}</p>
-            </div>
-            <span class="badge">{{ Math.round(promo.discountRate * 100) }}% OFF</span>
-          </li>
-        </ul>
-      </section>
-    </template>
+    </div>
 
     <div v-if="profileDialogOpen" class="modal-backdrop" @click.self="closeProfileDialog">
       <section class="modal" role="dialog" aria-modal="true" aria-labelledby="supplier-profile-title">
@@ -1033,71 +1050,39 @@ const statusOptions = [
   color: #b91c1c;
 }
 
-.product-form {
+.product-modal {
   display: grid;
-  gap: 1rem;
-  margin-top: 1.5rem;
-  padding-top: 1.5rem;
-  border-top: 1px solid rgba(15, 23, 42, 0.08);
+  gap: 1.1rem;
 }
 
-.product-form .grid {
+.product-modal .modal-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
   gap: 1rem;
 }
 
-.product-form label {
-  display: grid;
-  gap: 0.4rem;
+.product-modal label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
   font-weight: 600;
 }
 
-.product-form input,
-.product-form select,
-.product-form textarea {
+.product-modal input,
+.product-modal select,
+.product-modal textarea {
   padding: 0.6rem 0.75rem;
   border-radius: 0.75rem;
-  border: 1px solid rgba(15, 23, 42, 0.12);
+  border: 1px solid rgba(15, 23, 42, 0.15);
   font-size: 0.95rem;
 }
 
-.product-form textarea {
+.product-modal textarea {
   resize: vertical;
 }
 
-.product-form .form-actions {
-  display: flex;
-  gap: 0.75rem;
-}
-
-.product-form .form-actions button {
-  padding: 0.55rem 1.4rem;
-  border-radius: 0.75rem;
-  border: none;
-  background: linear-gradient(135deg, #2563eb, #38bdf8);
-  color: #fff;
-  font-weight: 600;
-  cursor: pointer;
-}
-
-.product-form .form-actions button.ghost {
-  background: transparent;
-  color: rgba(15, 23, 42, 0.75);
-  border: 1px solid rgba(15, 23, 42, 0.15);
-}
-
-.product-form .form-actions button:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-
-.product-form .error {
-  color: #b91c1c;
-}
-
-.product-form .success {
-  color: #15803d;
+.product-modal .modal-actions {
+  margin-top: 0.25rem;
 }
 
 .category-create {
