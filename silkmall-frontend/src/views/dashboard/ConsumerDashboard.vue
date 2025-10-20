@@ -1,9 +1,11 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
+import { RouterLink } from 'vue-router'
 import api from '@/services/api'
 import { useAuthState } from '@/services/authState'
 import type {
   Announcement,
+  CartItem,
   HomepageContent,
   OrderDetail,
   OrderItemDetail,
@@ -42,6 +44,10 @@ const announcements = ref<Announcement[]>([])
 const loading = ref(true)
 const error = ref<string | null>(null)
 const walletBalance = ref<number | null>(null)
+const cartItems = ref<CartItem[]>([])
+const cartLoading = ref(false)
+const cartError = ref<string | null>(null)
+const removingCartItemId = ref<number | null>(null)
 const redeemCodeInput = ref('')
 const redeeming = ref(false)
 const redeemMessage = ref<string | null>(null)
@@ -91,6 +97,16 @@ const orderItems = computed<OrderItemDetail[]>(() => orderDetail.value?.orderIte
 const hasRecommendations = computed(() => (homeContent.value?.recommendations?.length ?? 0) > 0)
 const hasAnnouncements = computed(() => announcements.value.length > 0)
 const maskedIdCard = computed(() => maskIdCard(profile.value?.idCard))
+const hasCartItems = computed(() => cartItems.value.length > 0)
+const cartTotalQuantity = computed(() =>
+  cartItems.value.reduce((total, item) => total + (item.quantity ?? 0), 0)
+)
+const cartTotalAmount = computed(() =>
+  cartItems.value.reduce(
+    (total, item) => total + (item.subtotal ?? item.unitPrice * item.quantity),
+    0
+  )
+)
 
 async function loadProfile() {
   if (!state.user) return
@@ -123,11 +139,29 @@ async function loadWallet() {
   }
 }
 
+async function loadCart() {
+  if (!state.user) {
+    cartItems.value = []
+    return
+  }
+  cartLoading.value = true
+  cartError.value = null
+  try {
+    const { data } = await api.get<CartItem[]>('/cart')
+    cartItems.value = data ?? []
+  } catch (err) {
+    cartItems.value = []
+    cartError.value = err instanceof Error ? err.message : '加载购物车失败'
+  } finally {
+    cartLoading.value = false
+  }
+}
+
 async function bootstrap() {
   loading.value = true
   error.value = null
   try {
-    await Promise.all([loadProfile(), loadOrders(), loadHomeContent(), loadWallet()])
+    await Promise.all([loadProfile(), loadOrders(), loadHomeContent(), loadWallet(), loadCart()])
   } catch (err) {
     error.value = err instanceof Error ? err.message : '加载数据失败'
   } finally {
@@ -189,6 +223,22 @@ async function redeemWallet() {
     redeemError.value = message
   } finally {
     redeeming.value = false
+  }
+}
+
+async function removeCartItem(item: CartItem) {
+  if (!item?.id) {
+    return
+  }
+  cartError.value = null
+  removingCartItemId.value = item.id
+  try {
+    await api.delete(`/cart/${item.id}`)
+    cartItems.value = cartItems.value.filter((entry) => entry.id !== item.id)
+  } catch (err) {
+    cartError.value = err instanceof Error ? err.message : '移除购物车商品失败'
+  } finally {
+    removingCartItemId.value = null
   }
 }
 
@@ -535,6 +585,84 @@ const shortcutLinks = [
               <p v-if="redeemError" class="redeem-error">{{ redeemError }}</p>
             </div>
           </div>
+        </section>
+
+        <section class="panel cart full-row table-panel" aria-labelledby="cart-title">
+          <div class="panel-title-row">
+            <div class="panel-title" id="cart-title">我的购物车</div>
+            <div class="panel-actions">
+              <span v-if="hasCartItems" class="cart-summary">
+                共 {{ cartTotalQuantity }} 件商品，小计 {{ formatCurrency(cartTotalAmount) }}
+              </span>
+              <button type="button" class="panel-action-button" @click="loadCart" :disabled="cartLoading">
+                {{ cartLoading ? '刷新中…' : '刷新' }}
+              </button>
+            </div>
+          </div>
+          <p v-if="cartLoading" class="empty">购物车加载中…</p>
+          <p v-else-if="cartError" class="empty is-error">{{ cartError }}</p>
+          <div v-else-if="cartItems.length" class="table-container">
+            <table class="dashboard-table cart-table">
+              <thead>
+                <tr>
+                  <th scope="col" class="col-product">商品</th>
+                  <th scope="col">单价</th>
+                  <th scope="col">数量</th>
+                  <th scope="col">小计</th>
+                  <th scope="col" class="col-actions">操作</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="item in cartItems" :key="item.id">
+                  <td class="col-product">
+                    <div class="cart-product">
+                      <div class="image">
+                        <img
+                          v-if="item.product?.mainImage"
+                          :src="item.product.mainImage"
+                          :alt="item.product?.name ?? '商品图片'"
+                          loading="lazy"
+                        />
+                        <span v-else class="placeholder">{{ item.product?.name?.charAt(0)?.toUpperCase() ?? '货' }}</span>
+                      </div>
+                      <div class="info">
+                        <strong class="name">{{ item.product?.name ?? '未命名商品' }}</strong>
+                        <span v-if="item.addedAt" class="added-time">加入时间：{{ formatDateTime(item.addedAt) }}</span>
+                        <span
+                          v-if="item.product?.status && item.product.status !== 'ON_SALE'"
+                          class="status-tag"
+                        >
+                          状态：{{ item.product.status }}
+                        </span>
+                      </div>
+                    </div>
+                  </td>
+                  <td>{{ formatCurrency(item.unitPrice) }}</td>
+                  <td>{{ item.quantity }}</td>
+                  <td>{{ formatCurrency(item.subtotal) }}</td>
+                  <td class="actions-cell">
+                    <RouterLink
+                      v-if="item.product?.id"
+                      class="link-button"
+                      :to="`/product/${item.product.id}`"
+                    >
+                      查看商品
+                    </RouterLink>
+                    <span v-else class="text-muted">商品信息缺失</span>
+                    <button
+                      type="button"
+                      class="link-button danger"
+                      :disabled="removingCartItemId === item.id"
+                      @click="removeCartItem(item)"
+                    >
+                      {{ removingCartItemId === item.id ? '移除中…' : '移除' }}
+                    </button>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <p v-else class="empty">购物车空空如也，快去产品中心挑选吧。</p>
         </section>
 
         <section class="panel orders full-row table-panel" aria-labelledby="orders-title">
@@ -945,6 +1073,13 @@ const shortcutLinks = [
   gap: 1rem;
 }
 
+.panel-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
 .panel-action-button {
   border: 1px solid rgba(79, 70, 229, 0.24);
   background: rgba(79, 70, 229, 0.08);
@@ -1088,6 +1223,76 @@ const shortcutLinks = [
 
 .dashboard-table .col-actions {
   text-align: right;
+  width: 160px;
+}
+
+.cart-summary {
+  color: rgba(17, 24, 39, 0.6);
+  font-size: 0.9rem;
+}
+
+.cart-table .col-product {
+  width: 45%;
+}
+
+.cart-product {
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+}
+
+.cart-product .image {
+  width: 56px;
+  height: 56px;
+  border-radius: 14px;
+  overflow: hidden;
+  background: linear-gradient(135deg, rgba(242, 177, 66, 0.18), rgba(111, 169, 173, 0.2));
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+}
+
+.cart-product .image img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.cart-product .image .placeholder {
+  font-weight: 700;
+  color: rgba(17, 24, 39, 0.55);
+}
+
+.cart-product .info {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.cart-product .name {
+  font-weight: 600;
+  color: #111827;
+}
+
+.cart-product .added-time {
+  font-size: 0.75rem;
+  color: rgba(17, 24, 39, 0.55);
+}
+
+.cart-product .status-tag {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.15rem 0.6rem;
+  border-radius: 999px;
+  background: rgba(251, 191, 36, 0.2);
+  color: #b45309;
+  font-size: 0.75rem;
+  width: fit-content;
+}
+
+.text-muted {
+  color: rgba(17, 24, 39, 0.45);
+  font-size: 0.85rem;
 }
 
 .actions-cell {
@@ -1111,7 +1316,19 @@ const shortcutLinks = [
   transition: background 0.2s ease, transform 0.2s ease;
 }
 
-.link-button:hover {
+.link-button.danger {
+  border-color: rgba(248, 113, 113, 0.3);
+  background: rgba(248, 113, 113, 0.12);
+  color: #b91c1c;
+}
+
+.link-button.danger:hover {
+  background: rgba(248, 113, 113, 0.2);
+  color: #991b1b;
+  transform: translateY(-1px);
+}
+
+.link-button:hover:not(.danger) {
   background: rgba(79, 70, 229, 0.18);
   transform: translateY(-1px);
 }
@@ -1179,6 +1396,10 @@ const shortcutLinks = [
 
 .empty {
   color: rgba(17, 24, 39, 0.55);
+}
+
+.empty.is-error {
+  color: #b91c1c;
 }
 
 .modal-backdrop {

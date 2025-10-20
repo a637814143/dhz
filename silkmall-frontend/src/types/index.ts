@@ -44,6 +44,23 @@ export interface ProductDetail extends ProductSummary {
   } | null
 }
 
+export interface CartItemProduct {
+  id: number
+  name: string
+  mainImage?: string | null
+  price: number
+  status?: string | null
+}
+
+export interface CartItem {
+  id: number
+  quantity: number
+  unitPrice: number
+  subtotal: number
+  addedAt?: string | null
+  product: CartItemProduct
+}
+
 export interface PurchaseOrderItemPayload {
   product: {
     id: number

@@ -1,16 +1,24 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, withDefaults } from 'vue'
 import type { ProductSummary } from '@/types'
 
-const props = defineProps<{ product: ProductSummary }>()
+const props = withDefaults(defineProps<{ product: ProductSummary; addingToCart?: boolean }>(), {
+  addingToCart: false,
+})
 
 const emit = defineEmits<{
   (e: 'purchase', product: ProductSummary): void
   (e: 'view-detail', product: ProductSummary): void
+  (e: 'add-to-cart', product: ProductSummary): void
 }>()
 
 function openDetail() {
   emit('view-detail', props.product)
+}
+
+function addToCart() {
+  if (props.addingToCart) return
+  emit('add-to-cart', props.product)
 }
 
 const statusLabel = computed(() => {
@@ -34,6 +42,9 @@ const fallbackLetter = computed(() => props.product.name?.charAt(0)?.toUpperCase
 const formattedPrice = computed(() =>
   new Intl.NumberFormat('zh-CN', { style: 'currency', currency: 'CNY' }).format(props.product.price)
 )
+
+const canPurchase = computed(() => props.product.status === 'ON_SALE' && props.product.stock > 1)
+const canAddToCart = computed(() => props.product.status === 'ON_SALE' && props.product.stock > 0)
 </script>
 
 <template>
@@ -80,11 +91,19 @@ const formattedPrice = computed(() =>
       <div class="actions">
         <button
           type="button"
+          class="add-to-cart"
+          :disabled="!canAddToCart || props.addingToCart"
+          @click.stop="addToCart"
+        >
+          {{ props.addingToCart ? '加入中…' : '加入购物车' }}
+        </button>
+        <button
+          type="button"
           class="buy"
-          :disabled="product.status !== 'ON_SALE' || product.stock <= 1"
+          :disabled="!canPurchase"
           @click.stop="emit('purchase', product)"
         >
-          {{ product.status === 'ON_SALE' && product.stock > 1 ? '点击购买' : '暂不可购' }}
+          {{ canPurchase ? '点击购买' : '暂不可购' }}
         </button>
       </div>
     </div>
@@ -223,22 +242,48 @@ const formattedPrice = computed(() =>
   color: rgba(17, 24, 39, 0.65);
 }
 
+
 .actions {
   display: flex;
   justify-content: flex-end;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.actions button {
+  border-radius: 999px;
+  padding: 0.5rem 1.35rem;
+  font-size: 0.9rem;
+  font-weight: 600;
+  transition: transform 0.2s ease, box-shadow 0.2s ease, opacity 0.2s ease,
+    background-color 0.2s ease, color 0.2s ease;
+}
+
+.actions .add-to-cart {
+  border: 1px solid rgba(111, 169, 173, 0.45);
+  background: rgba(255, 255, 255, 0.85);
+  color: #0f172a;
+  cursor: pointer;
+}
+
+.actions .add-to-cart:hover:not(:disabled) {
+  background: rgba(111, 169, 173, 0.12);
+  box-shadow: 0 12px 28px rgba(111, 169, 173, 0.18);
+}
+
+.actions .add-to-cart:disabled {
+  cursor: not-allowed;
+  opacity: 0.65;
+  box-shadow: none;
 }
 
 .actions .buy {
   border: none;
-  border-radius: 999px;
-  padding: 0.55rem 1.35rem;
-  font-size: 0.9rem;
-  font-weight: 600;
-  cursor: pointer;
   background: linear-gradient(135deg, rgba(242, 177, 66, 0.85), rgba(111, 169, 173, 0.85));
   color: #fff;
   box-shadow: 0 16px 36px rgba(242, 177, 66, 0.22);
-  transition: transform 0.2s ease, box-shadow 0.2s ease, opacity 0.2s ease;
+  cursor: pointer;
 }
 
 .actions .buy:hover:not(:disabled) {

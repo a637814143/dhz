@@ -14,6 +14,10 @@ const activeImageIndex = ref(0)
 const purchaseOpen = ref(false)
 const purchaseSuccessMessage = ref<string | null>(null)
 const purchaseMessageTimer = ref<number | null>(null)
+const addingToCart = ref(false)
+const cartSuccessMessage = ref<string | null>(null)
+const cartErrorMessage = ref<string | null>(null)
+const cartMessageTimer = ref<number | null>(null)
 
 const statusLabel = computed(() => {
   const labelMap: Record<string, string> = {
@@ -66,6 +70,13 @@ const isPurchasable = computed(() => {
     return false
   }
   return product.value.status === 'ON_SALE' && product.value.stock > 1
+})
+
+const canAddToCart = computed(() => {
+  if (!product.value) {
+    return false
+  }
+  return product.value.status === 'ON_SALE' && (product.value.stock ?? 0) > 0
 })
 
 const purchaseButtonText = computed(() => {
@@ -173,6 +184,43 @@ function clearPurchaseMessageTimer() {
   }
 }
 
+function clearCartMessageTimer() {
+  if (cartMessageTimer.value) {
+    clearTimeout(cartMessageTimer.value)
+    cartMessageTimer.value = null
+  }
+}
+
+async function addToCart() {
+  if (!product.value || !canAddToCart.value || addingToCart.value) {
+    return
+  }
+  addingToCart.value = true
+  cartSuccessMessage.value = null
+  cartErrorMessage.value = null
+  try {
+    await api.post('/cart', { productId: product.value.id, quantity: 1 })
+    cartErrorMessage.value = null
+    cartSuccessMessage.value = `已将「${product.value.name}」加入购物车`
+    clearCartMessageTimer()
+    cartMessageTimer.value = window.setTimeout(() => {
+      cartSuccessMessage.value = null
+      cartMessageTimer.value = null
+    }, 4000)
+  } catch (err) {
+    const message = err instanceof Error ? err.message : '加入购物车失败'
+    cartSuccessMessage.value = null
+    cartErrorMessage.value = message
+    clearCartMessageTimer()
+    cartMessageTimer.value = window.setTimeout(() => {
+      cartErrorMessage.value = null
+      cartMessageTimer.value = null
+    }, 6000)
+  } finally {
+    addingToCart.value = false
+  }
+}
+
 async function handlePurchaseSuccess(order: PurchaseOrderResult) {
   const orderNo = order.orderNo ? `（订单号：${order.orderNo}）` : ''
   const lookup = order.consumerLookupId ? `（查询编号：${order.consumerLookupId}）` : ''
@@ -212,6 +260,7 @@ watch(
 
 onBeforeUnmount(() => {
   clearPurchaseMessageTimer()
+  clearCartMessageTimer()
 })
 </script>
 
@@ -242,6 +291,12 @@ onBeforeUnmount(() => {
           <span class="status" :class="statusClass">{{ statusLabel }}</span>
         </header>
 
+        <transition name="fade">
+          <p v-if="cartSuccessMessage" class="success-message" role="status">{{ cartSuccessMessage }}</p>
+        </transition>
+        <transition name="fade">
+          <p v-if="cartErrorMessage" class="error-message" role="alert">{{ cartErrorMessage }}</p>
+        </transition>
         <transition name="fade">
           <p v-if="purchaseSuccessMessage" class="success-message" role="status">{{ purchaseSuccessMessage }}</p>
         </transition>
@@ -315,6 +370,14 @@ onBeforeUnmount(() => {
             </div>
 
             <div class="cta">
+              <button
+                type="button"
+                class="add-to-cart"
+                :disabled="!canAddToCart || addingToCart"
+                @click="addToCart"
+              >
+                {{ addingToCart ? '加入中…' : '加入购物车' }}
+              </button>
               <button
                 type="button"
                 class="purchase"
@@ -595,6 +658,35 @@ onBeforeUnmount(() => {
   align-items: center;
 }
 
+.cta .add-to-cart {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.7rem 1.6rem;
+  border-radius: 999px;
+  border: 1px solid rgba(111, 169, 173, 0.45);
+  background: rgba(255, 255, 255, 0.9);
+  color: #0f172a;
+  font-weight: 600;
+  cursor: pointer;
+  transition: transform 0.2s ease, box-shadow 0.2s ease, background-color 0.2s ease,
+    color 0.2s ease;
+}
+
+.cta .add-to-cart:hover:not(:disabled) {
+  background: rgba(111, 169, 173, 0.12);
+  box-shadow: 0 16px 30px rgba(111, 169, 173, 0.2);
+  transform: translateY(-1px);
+}
+
+.cta .add-to-cart:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+  box-shadow: none;
+  transform: none;
+}
+
 .cta .purchase {
   display: inline-flex;
   align-items: center;
@@ -638,6 +730,14 @@ onBeforeUnmount(() => {
   border-radius: 0.9rem;
   background: rgba(34, 197, 94, 0.12);
   color: #15803d;
+  font-weight: 600;
+}
+
+.error-message {
+  padding: 0.85rem 1.25rem;
+  border-radius: 0.9rem;
+  background: rgba(248, 113, 113, 0.12);
+  color: #b91c1c;
   font-weight: 600;
 }
 

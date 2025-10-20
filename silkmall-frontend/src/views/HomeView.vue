@@ -48,6 +48,10 @@ const pageSize = ref(12)
 const purchaseTarget = ref<ProductSummary | null>(null)
 const purchaseSuccessMessage = ref<string | null>(null)
 const purchaseMessageTimer = ref<number | null>(null)
+const addingCartProductId = ref<number | null>(null)
+const cartSuccessMessage = ref<string | null>(null)
+const cartErrorMessage = ref<string | null>(null)
+const cartMessageTimer = ref<number | null>(null)
 const router = useRouter()
 
 const statusOptions = [
@@ -258,6 +262,41 @@ function handlePurchaseSuccess(order: PurchaseOrderResult) {
   fetchProducts()
 }
 
+function clearCartMessageTimer() {
+  if (cartMessageTimer.value) {
+    clearTimeout(cartMessageTimer.value)
+    cartMessageTimer.value = null
+  }
+}
+
+async function addProductToCart(product: ProductSummary) {
+  if (!product?.id) return
+  cartErrorMessage.value = null
+  cartSuccessMessage.value = null
+  addingCartProductId.value = product.id
+  try {
+    await api.post('/cart', { productId: product.id, quantity: 1 })
+    cartErrorMessage.value = null
+    cartSuccessMessage.value = `已将「${product.name}」加入购物车`
+    clearCartMessageTimer()
+    cartMessageTimer.value = window.setTimeout(() => {
+      cartSuccessMessage.value = null
+      cartMessageTimer.value = null
+    }, 4000)
+  } catch (err) {
+    const message = err instanceof Error ? err.message : '加入购物车失败'
+    cartSuccessMessage.value = null
+    cartErrorMessage.value = message
+    clearCartMessageTimer()
+    cartMessageTimer.value = window.setTimeout(() => {
+      cartErrorMessage.value = null
+      cartMessageTimer.value = null
+    }, 6000)
+  } finally {
+    addingCartProductId.value = null
+  }
+}
+
 function goToProductDetail(product: ProductSummary) {
   router.push({ name: 'product-detail', params: { id: product.id } })
 }
@@ -271,6 +310,9 @@ onMounted(async () => {
 onBeforeUnmount(() => {
   if (purchaseMessageTimer.value) {
     clearTimeout(purchaseMessageTimer.value)
+  }
+  if (cartMessageTimer.value) {
+    clearTimeout(cartMessageTimer.value)
   }
 })
 </script>
@@ -423,7 +465,13 @@ onBeforeUnmount(() => {
       </header>
 
       <transition name="fade">
-        <p v-if="purchaseSuccessMessage" class="notice">{{ purchaseSuccessMessage }}</p>
+        <p v-if="cartSuccessMessage" class="notice notice--success">{{ cartSuccessMessage }}</p>
+      </transition>
+      <transition name="fade">
+        <p v-if="cartErrorMessage" class="notice notice--error">{{ cartErrorMessage }}</p>
+      </transition>
+      <transition name="fade">
+        <p v-if="purchaseSuccessMessage" class="notice notice--success">{{ purchaseSuccessMessage }}</p>
       </transition>
 
       <p v-if="error" class="error-message">{{ error }}</p>
@@ -435,8 +483,10 @@ onBeforeUnmount(() => {
           v-for="item in products"
           :key="item.id"
           :product="item"
+          :adding-to-cart="addingCartProductId === item.id"
           @purchase="openPurchaseDialog"
           @view-detail="goToProductDetail"
+          @add-to-cart="addProductToCart"
         />
       </div>
 
@@ -878,9 +928,20 @@ onBeforeUnmount(() => {
   margin: 0;
   padding: 0.85rem 1.15rem;
   border-radius: 0.95rem;
+  font-weight: 600;
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.05);
+}
+
+.notice.notice--success {
   background: rgba(34, 197, 94, 0.12);
   color: #166534;
-  font-weight: 600;
+  box-shadow: inset 0 0 0 1px rgba(34, 197, 94, 0.22);
+}
+
+.notice.notice--error {
+  background: rgba(248, 113, 113, 0.12);
+  color: #b91c1c;
+  box-shadow: inset 0 0 0 1px rgba(248, 113, 113, 0.25);
 }
 
 .loading,
