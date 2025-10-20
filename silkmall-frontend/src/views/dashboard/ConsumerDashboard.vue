@@ -10,6 +10,7 @@ import type {
   OrderDetail,
   OrderItemDetail,
   PageResponse,
+  ProductReview,
   ProductSummary,
 } from '@/types'
 
@@ -63,6 +64,23 @@ const showReturnModal = ref(false)
 const showEditModal = ref(false)
 const showProfileModal = ref(false)
 
+const myReviews = ref<ProductReview[]>([])
+const reviewsLoading = ref(false)
+const reviewsError = ref<string | null>(null)
+const reviewListMessage = ref<string | null>(null)
+const reviewListError = ref<string | null>(null)
+
+const orderReviews = ref<ProductReview[]>([])
+const reviewMessage = ref<string | null>(null)
+const reviewError = ref<string | null>(null)
+const activeReviewItemId = ref<number | null>(null)
+const editingReviewId = ref<number | null>(null)
+const submittingReview = ref(false)
+const reviewForm = reactive({
+  rating: 5,
+  comment: '',
+})
+
 const returnSubmitting = ref(false)
 const returnMessage = ref<string | null>(null)
 const returnError = ref<string | null>(null)
@@ -107,6 +125,22 @@ const cartTotalAmount = computed(() =>
     0
   )
 )
+const reviewMap = computed(() => {
+  const map = new Map<number, ProductReview[]>()
+  orderReviews.value.forEach((review) => {
+    if (!map.has(review.orderItemId)) {
+      map.set(review.orderItemId, [])
+    }
+    map.get(review.orderItemId)!.push(review)
+  })
+  map.forEach((entries) =>
+    entries.sort(
+      (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+    )
+  )
+  return map
+})
+const hasReviews = computed(() => myReviews.value.length > 0)
 
 async function loadProfile() {
   if (!state.user) return
@@ -139,6 +173,30 @@ async function loadWallet() {
   }
 }
 
+async function loadReviews() {
+  if (!state.user) {
+    myReviews.value = []
+    reviewsError.value = null
+    reviewListMessage.value = null
+    reviewListError.value = null
+    return
+  }
+  reviewsLoading.value = true
+  reviewsError.value = null
+  reviewListMessage.value = null
+  reviewListError.value = null
+  try {
+    const { data } = await api.get<ProductReview[]>(`/reviews/consumers/${state.user.id}`)
+    myReviews.value = data ?? []
+  } catch (err) {
+    const message = err instanceof Error ? err.message : '加载评价列表失败'
+    reviewsError.value = message
+    myReviews.value = []
+  } finally {
+    reviewsLoading.value = false
+  }
+}
+
 async function loadCart() {
   if (!state.user) {
     cartItems.value = []
@@ -161,7 +219,14 @@ async function bootstrap() {
   loading.value = true
   error.value = null
   try {
-    await Promise.all([loadProfile(), loadOrders(), loadHomeContent(), loadWallet(), loadCart()])
+    await Promise.all([
+      loadProfile(),
+      loadOrders(),
+      loadHomeContent(),
+      loadWallet(),
+      loadCart(),
+      loadReviews(),
+    ])
   } catch (err) {
     error.value = err instanceof Error ? err.message : '加载数据失败'
   } finally {
@@ -242,16 +307,27 @@ async function removeCartItem(item: CartItem) {
   }
 }
 
+function toOrderSummary(detail: OrderDetail): OrderSummary {
+  return {
+    id: detail.id,
+    orderNo: detail.orderNo,
+    totalAmount: detail.totalAmount,
+    totalQuantity: detail.totalQuantity,
+    status: detail.status,
+    orderTime: detail.orderTime,
+  }
+}
+
 function syncOrderSummary(detail: OrderDetail) {
-  const index = orders.value.findIndex((item) => item.id === detail.id)
+  const summary = toOrderSummary(detail)
+  const index = orders.value.findIndex((item) => item.id === summary.id)
   if (index !== -1) {
     orders.value[index] = {
       ...orders.value[index],
-      status: detail.status,
-      totalAmount: detail.totalAmount,
-      totalQuantity: detail.totalQuantity,
-      orderTime: detail.orderTime,
+      ...summary,
     }
+  } else {
+    orders.value.unshift(summary)
   }
 }
 
@@ -262,6 +338,7 @@ async function fetchOrderDetail(orderId: number) {
     const { data } = await api.get<OrderDetail>(`/orders/${orderId}/detail`)
     orderDetail.value = data
     syncOrderSummary(data)
+    activeOrder.value = toOrderSummary(data)
     return data
   } catch (err) {
     const message = err instanceof Error ? err.message : '加载订单详情失败'
@@ -280,8 +357,273 @@ async function ensureOrderDetail(order: OrderSummary) {
   return fetchOrderDetail(order.id)
 }
 
+function resetReviewContext() {
+  reviewMessage.value = null
+  reviewError.value = null
+  activeReviewItemId.value = null
+  editingReviewId.value = null
+  submittingReview.value = false
+}
+
+async function fetchOrderReviews(orderId: number) {
+  try {
+    const { data } = await api.get<ProductReview[]>(`/reviews/orders/${orderId}`)
+    orderReviews.value = (data ?? []).slice().sort(
+      (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+    )
+    return true
+  } catch (err) {
+    const message = err instanceof Error ? err.message : '加载评价信息失败'
+    orderReviews.value = []
+    reviewError.value = message
+    return false
+  }
+}
+
+function reviewRoleLabel(role?: string | null) {
+  if (!role) return '评价人'
+  switch (role.toUpperCase()) {
+    case 'CONSUMER':
+      return '消费者'
+    case 'SUPPLIER':
+      return '商家'
+    case 'ADMIN':
+      return '管理员'
+    default:
+      return role
+  }
+}
+
+function canEditReview(review: ProductReview) {
+  if (!state.user) return false
+  const role = state.user.userType?.toUpperCase()
+  return (
+    !!role &&
+    review.authorRole?.toUpperCase() === role &&
+    review.authorId === state.user.id
+  )
+}
+
+function canDeleteReview(review: ProductReview) {
+  if (!state.user) return false
+  if (state.user.userType === 'admin') {
+    return true
+  }
+  return canEditReview(review)
+}
+
+function canCreateReviewForItem(item: OrderItemDetail) {
+  if (state.user?.userType !== 'consumer') return false
+  return !orderReviews.value.some(
+    (review) =>
+      review.orderItemId === item.id &&
+      review.authorRole?.toUpperCase() === 'CONSUMER' &&
+      review.authorId === state.user!.id
+  )
+}
+
+function findEditableReviewForItem(itemId: number) {
+  return (
+    orderReviews.value.find(
+      (review) => review.orderItemId === itemId && canEditReview(review)
+    ) ?? null
+  )
+}
+
+function startEditReviewForItem(itemId: number) {
+  const review = findEditableReviewForItem(itemId)
+  if (review) {
+    startEditExistingReview(review)
+  }
+}
+
+function openReviewForm(item: OrderItemDetail) {
+  reviewMessage.value = null
+  reviewError.value = null
+  activeReviewItemId.value = item.id
+  editingReviewId.value = null
+  reviewForm.rating = 5
+  reviewForm.comment = ''
+}
+
+function cancelReviewForm() {
+  activeReviewItemId.value = null
+  editingReviewId.value = null
+  reviewForm.rating = 5
+  reviewForm.comment = ''
+  submittingReview.value = false
+}
+
+async function submitReview() {
+  if (!activeReviewItemId.value) return
+  reviewMessage.value = null
+  reviewError.value = null
+
+  const rating = Number(reviewForm.rating)
+  if (!Number.isInteger(rating) || rating < 1 || rating > 5) {
+    reviewError.value = '请给出 1 - 5 分的评分'
+    return
+  }
+
+  submittingReview.value = true
+  const editing = !!editingReviewId.value
+  try {
+    const payload = {
+      rating,
+      comment: reviewForm.comment.trim() || null,
+    }
+    let saved: ProductReview
+    if (editingReviewId.value) {
+      const { data } = await api.put<ProductReview>(
+        `/reviews/${editingReviewId.value}`,
+        payload
+      )
+      saved = data
+    } else {
+      const { data } = await api.post<ProductReview>(
+        `/reviews/order-items/${activeReviewItemId.value}`,
+        payload
+      )
+      saved = data
+    }
+    upsertReview(saved)
+    const orderId = orderDetail.value?.id
+    let reloaded = true
+    if (orderId) {
+      reloaded = await fetchOrderReviews(orderId)
+    }
+    await loadReviews()
+    if (reloaded) {
+      reviewMessage.value = editing ? '评价已更新' : '评价提交成功'
+    }
+    cancelReviewForm()
+  } catch (err) {
+    const message = err instanceof Error ? err.message : '提交评价失败'
+    reviewError.value = message
+  } finally {
+    submittingReview.value = false
+  }
+}
+
+function startEditExistingReview(review: ProductReview) {
+  reviewMessage.value = null
+  reviewError.value = null
+  activeReviewItemId.value = review.orderItemId
+  editingReviewId.value = review.id
+  reviewForm.rating = review.rating
+  reviewForm.comment = review.comment ?? ''
+}
+
+async function deleteReview(review: ProductReview, origin: 'modal' | 'list' = 'modal') {
+  if (origin === 'modal') {
+    reviewMessage.value = null
+    reviewError.value = null
+  } else {
+    reviewListMessage.value = null
+    reviewListError.value = null
+  }
+  try {
+    await api.delete(`/reviews/${review.id}`)
+    const activeOrderId = orderDetail.value?.id
+    let reloaded = true
+    if (activeOrderId && activeOrderId === review.orderId) {
+      reloaded = await fetchOrderReviews(activeOrderId)
+    } else {
+      orderReviews.value = orderReviews.value.filter((item) => item.id !== review.id)
+    }
+    if (editingReviewId.value === review.id) {
+      cancelReviewForm()
+    }
+    await loadReviews()
+    if (origin === 'modal') {
+      if (reloaded) {
+        reviewMessage.value = '评价已删除'
+      }
+    } else {
+      reviewListMessage.value = '评价已删除'
+    }
+  } catch (err) {
+    const message = err instanceof Error ? err.message : '删除评价失败'
+    if (origin === 'modal') {
+      reviewError.value = message
+    } else {
+      reviewListError.value = message
+    }
+  }
+}
+
+function upsertReview(review: ProductReview) {
+  const index = orderReviews.value.findIndex((item) => item.id === review.id)
+  if (index >= 0) {
+    orderReviews.value.splice(index, 1, review)
+  } else {
+    orderReviews.value.push(review)
+  }
+  orderReviews.value.sort(
+    (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+  )
+}
+
+async function openOrderDetail(order: OrderSummary) {
+  activeOrder.value = order
+  resetReviewContext()
+  const detail = await ensureOrderDetail(order)
+  if (detail) {
+    await fetchOrderReviews(order.id)
+  } else {
+    orderReviews.value = []
+  }
+  showOrderDetailModal.value = true
+  return detail ?? null
+}
+
+async function openReviewDialog(order: OrderSummary) {
+  const detail = await openOrderDetail(order)
+  if (!detail) {
+    return
+  }
+  const editable = detail.orderItems
+    .map((item) => findEditableReviewForItem(item.id))
+    .find((entry) => entry !== null)
+  if (editable) {
+    startEditExistingReview(editable)
+    return
+  }
+  const candidate = detail.orderItems.find((item) => canCreateReviewForItem(item))
+  if (candidate) {
+    openReviewForm(candidate)
+  }
+}
+
+async function openOrderDetailById(orderId: number) {
+  const existing = orders.value.find((item) => item.id === orderId)
+  if (existing) {
+    return openOrderDetail(existing)
+  }
+  const placeholder: OrderSummary = {
+    id: orderId,
+    orderNo: `订单 #${orderId}`,
+    totalAmount: 0,
+    totalQuantity: 0,
+    status: '—',
+    orderTime: '',
+  }
+  return openOrderDetail(placeholder)
+}
+
+async function openReviewFromList(review: ProductReview) {
+  const detail = await openOrderDetailById(review.orderId)
+  if (!detail) {
+    return
+  }
+  const latest = orderReviews.value.find((item) => item.id === review.id) ?? review
+  startEditExistingReview(latest)
+}
+
 function closeOrderDetailModal() {
   showOrderDetailModal.value = false
+  orderReviews.value = []
+  resetReviewContext()
 }
 
 function closeReturnModal() {
@@ -392,16 +734,6 @@ async function submitProfileUpdate() {
   } finally {
     profileSubmitting.value = false
   }
-}
-
-async function openOrderDetail(order: OrderSummary) {
-  activeOrder.value = order
-  const detail = await ensureOrderDetail(order)
-  if (!detail) {
-    showOrderDetailModal.value = true
-    return
-  }
-  showOrderDetailModal.value = true
 }
 
 async function openReturnDialog(order: OrderSummary) {
@@ -690,6 +1022,9 @@ const shortcutLinks = [
                     <button type="button" class="link-button" @click="openOrderDetail(order)">
                       查看订单
                     </button>
+                    <button type="button" class="link-button" @click="openReviewDialog(order)">
+                      评价商品
+                    </button>
                     <button type="button" class="link-button" @click="openReturnDialog(order)">
                       申请退货
                     </button>
@@ -702,6 +1037,66 @@ const shortcutLinks = [
             </table>
           </div>
           <p v-else class="empty">暂无订单记录，前往首页挑选心仪商品吧。</p>
+        </section>
+
+        <section
+          id="reviews"
+          class="panel reviews full-row table-panel"
+          aria-labelledby="reviews-title"
+        >
+          <div class="panel-title-row">
+            <div class="panel-title" id="reviews-title">我的评价</div>
+          </div>
+          <div v-if="reviewsLoading" class="placeholder">正在加载评价…</div>
+          <div v-else-if="reviewsError" class="placeholder is-error">{{ reviewsError }}</div>
+          <template v-else>
+            <div v-if="hasReviews" class="table-container">
+              <table class="dashboard-table review-table">
+                <thead>
+                  <tr>
+                    <th scope="col">商品</th>
+                    <th scope="col" class="col-rating">评分</th>
+                    <th scope="col">评价内容</th>
+                    <th scope="col" class="col-time">时间</th>
+                    <th scope="col" class="col-actions">操作</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="review in myReviews" :key="review.id">
+                    <td class="col-product">
+                      <strong>{{ review.productName }}</strong>
+                      <p class="muted">订单ID：{{ review.orderId }}</p>
+                    </td>
+                    <td class="col-rating">
+                      <span class="rating-badge">{{ review.rating }} 分</span>
+                    </td>
+                    <td>
+                      {{ review.comment && review.comment.trim() ? review.comment : '（暂无文字评价）' }}
+                    </td>
+                    <td class="col-time">{{ formatDateTime(review.createdAt) }}</td>
+                    <td class="col-actions">
+                      <button type="button" class="link-button" @click="openReviewFromList(review)">
+                        编辑
+                      </button>
+                      <button type="button" class="link-button" @click="openOrderDetailById(review.orderId)">
+                        查看订单
+                      </button>
+                      <button
+                        type="button"
+                        class="link-button danger"
+                        @click="deleteReview(review, 'list')"
+                      >
+                        删除
+                      </button>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <p v-else class="empty">您还没有发布过商品评价，快去评价已完成的订单吧。</p>
+          </template>
+          <p v-if="reviewListMessage" class="panel-success">{{ reviewListMessage }}</p>
+          <p v-if="reviewListError" class="panel-error">{{ reviewListError }}</p>
         </section>
 
         <section class="panel recommendations full-row table-panel" aria-labelledby="recommend-title">
@@ -822,6 +1217,8 @@ const shortcutLinks = [
           <p v-if="orderDetailLoading" class="modal-status">正在加载订单详情…</p>
           <p v-else-if="orderDetailError" class="modal-error">{{ orderDetailError }}</p>
           <template v-else-if="orderDetail">
+            <p v-if="reviewMessage" class="modal-success">{{ reviewMessage }}</p>
+            <p v-if="reviewError" class="modal-error">{{ reviewError }}</p>
             <dl class="order-meta">
               <div>
                 <dt>订单编号</dt>
@@ -864,14 +1261,112 @@ const shortcutLinks = [
               <h4>商品列表</h4>
               <ul>
                 <li v-for="item in orderDetail.orderItems" :key="item.id">
-                  <div class="item-info">
-                    <strong>{{ item.product.name }}</strong>
-                    <span>数量：{{ item.quantity }}</span>
+                  <div class="item-head">
+                    <div class="item-info">
+                      <strong>{{ item.product.name }}</strong>
+                      <span>数量：{{ item.quantity }}</span>
+                    </div>
+                    <div class="item-prices">
+                      <span>单价：{{ formatCurrency(item.unitPrice) }}</span>
+                      <span>小计：{{ formatCurrency(item.totalPrice) }}</span>
+                    </div>
                   </div>
-                  <div class="item-prices">
-                    <span>单价：{{ formatCurrency(item.unitPrice) }}</span>
-                    <span>小计：{{ formatCurrency(item.totalPrice) }}</span>
-                  </div>
+                  <section class="review-section">
+                    <header class="review-header">
+                      <div>
+                        <strong>商品评价</strong>
+                        <span class="muted">查看或撰写对本商品的评价</span>
+                      </div>
+                      <div class="review-header-actions">
+                        <button
+                          v-if="canCreateReviewForItem(item)"
+                          type="button"
+                          class="panel-action-button"
+                          @click="openReviewForm(item)"
+                        >
+                          写评价
+                        </button>
+                        <button
+                          v-else-if="findEditableReviewForItem(item.id)"
+                          type="button"
+                          class="panel-action-button"
+                          @click="startEditReviewForItem(item.id)"
+                        >
+                          修改评价
+                        </button>
+                      </div>
+                    </header>
+                    <div v-if="reviewMap.get(item.id)?.length" class="review-list">
+                      <article
+                        v-for="review in reviewMap.get(item.id) ?? []"
+                        :key="review.id"
+                        class="review-entry"
+                      >
+                        <header>
+                          <span class="review-author">{{ review.authorName ?? review.consumerName ?? '用户' }}</span>
+                          <span class="review-role">{{ reviewRoleLabel(review.authorRole) }}</span>
+                          <span class="rating-badge">{{ review.rating }} 分</span>
+                          <span class="muted">{{ formatDateTime(review.createdAt) }}</span>
+                        </header>
+                        <p v-if="review.comment" class="review-comment">{{ review.comment }}</p>
+                        <footer class="review-entry-actions">
+                          <button
+                            v-if="canEditReview(review)"
+                            type="button"
+                            class="link-button"
+                            @click="startEditExistingReview(review)"
+                          >
+                            编辑
+                          </button>
+                          <button
+                            v-if="canDeleteReview(review)"
+                            type="button"
+                            class="link-button danger"
+                            @click="deleteReview(review, 'modal')"
+                          >
+                            删除
+                          </button>
+                        </footer>
+                      </article>
+                    </div>
+                    <p v-else class="muted">暂未有人评价此商品。</p>
+                    <form
+                      v-if="activeReviewItemId === item.id"
+                      class="review-form"
+                      @submit.prevent="submitReview"
+                    >
+                      <label>
+                        <span>评分</span>
+                        <select v-model.number="reviewForm.rating" :disabled="submittingReview">
+                          <option v-for="score in [5, 4, 3, 2, 1]" :key="score" :value="score">
+                            {{ score }} 分
+                          </option>
+                        </select>
+                      </label>
+                      <label>
+                        <span>评价内容</span>
+                        <textarea
+                          v-model="reviewForm.comment"
+                          rows="3"
+                          placeholder="分享您的使用体验"
+                          :disabled="submittingReview"
+                        ></textarea>
+                      </label>
+                      <div class="review-form-actions">
+                        <button type="submit" class="primary-button" :disabled="submittingReview">
+                          {{ editingReviewId ? '保存评价' : '提交评价' }}
+                        </button>
+                        <button
+                          type="button"
+                          class="ghost-button"
+                          @click="cancelReviewForm"
+                          :disabled="submittingReview"
+                        >
+                          取消
+                        </button>
+                      </div>
+                    </form>
+                  </section>
                 </li>
               </ul>
               <footer class="order-summary">
@@ -1150,6 +1645,29 @@ const shortcutLinks = [
 
 .dashboard-table tbody tr + tr {
   border-top: 1px solid rgba(79, 70, 229, 0.08);
+}
+
+.review-table .col-rating {
+  width: 90px;
+  white-space: nowrap;
+}
+
+.review-table .col-time {
+  width: 160px;
+  white-space: nowrap;
+}
+
+.review-table .col-actions {
+  width: 220px;
+}
+
+.review-table .col-product strong {
+  display: block;
+  margin-bottom: 0.3rem;
+}
+
+.review-table .col-product .muted {
+  margin: 0;
 }
 
 .profile-table th {
@@ -1514,6 +2032,18 @@ const shortcutLinks = [
   color: #15803d;
 }
 
+.panel-success {
+  margin-top: 0.75rem;
+  color: #15803d;
+  font-weight: 600;
+}
+
+.panel-error {
+  margin-top: 0.75rem;
+  color: #b91c1c;
+  font-weight: 600;
+}
+
 .order-meta {
   display: grid;
   gap: 0.8rem;
@@ -1567,22 +2097,149 @@ const shortcutLinks = [
   gap: 0.35rem;
 }
 
-.item-info {
+.item-head {
   display: flex;
   justify-content: space-between;
-  gap: 1rem;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.item-info {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
 }
 
 .item-info strong {
   font-weight: 700;
+  font-size: 1rem;
 }
 
 .item-prices {
   display: flex;
-  justify-content: space-between;
-  gap: 1rem;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 0.75rem;
   color: rgba(17, 24, 39, 0.68);
   font-size: 0.9rem;
+}
+
+.review-section {
+  display: grid;
+  gap: 0.65rem;
+  padding: 0.85rem;
+  border-radius: 12px;
+  border: 1px solid rgba(79, 70, 229, 0.14);
+  background: rgba(255, 255, 255, 0.92);
+}
+
+.review-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 0.85rem;
+  flex-wrap: wrap;
+}
+
+.review-header-actions {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.review-list {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.review-entry {
+  display: grid;
+  gap: 0.45rem;
+  padding: 0.75rem;
+  border-radius: 12px;
+  border: 1px solid rgba(79, 70, 229, 0.12);
+  background: rgba(79, 70, 229, 0.06);
+}
+
+.review-entry header {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1rem;
+  align-items: baseline;
+}
+
+.review-author {
+  font-weight: 600;
+}
+
+.review-role {
+  padding: 0.2rem 0.6rem;
+  border-radius: 999px;
+  background: rgba(59, 130, 246, 0.12);
+  color: #1d4ed8;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.review-comment {
+  margin: 0;
+  color: rgba(17, 24, 39, 0.7);
+  line-height: 1.5;
+}
+
+.review-entry-actions {
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.review-form {
+  display: grid;
+  gap: 0.65rem;
+  padding: 0.85rem;
+  border-radius: 12px;
+  border: 1px dashed rgba(79, 70, 229, 0.28);
+  background: rgba(79, 70, 229, 0.08);
+}
+
+.review-form label {
+  display: grid;
+  gap: 0.4rem;
+  font-weight: 600;
+  color: rgba(17, 24, 39, 0.68);
+}
+
+.review-form select,
+.review-form textarea {
+  border: 1px solid rgba(17, 24, 39, 0.16);
+  border-radius: 0.75rem;
+  padding: 0.55rem 0.7rem;
+  font-size: 0.95rem;
+  background: rgba(255, 255, 255, 0.95);
+}
+
+.review-form textarea {
+  min-height: 90px;
+  resize: vertical;
+}
+
+.review-form-actions {
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.rating-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.2rem 0.6rem;
+  border-radius: 999px;
+  background: linear-gradient(135deg, rgba(234, 179, 8, 0.16), rgba(250, 204, 21, 0.24));
+  color: #92400e;
+  font-weight: 600;
+  font-size: 0.85rem;
 }
 
 .order-summary {
@@ -1591,6 +2248,11 @@ const shortcutLinks = [
   gap: 0.35rem;
   color: rgba(17, 24, 39, 0.68);
   font-weight: 600;
+}
+
+.muted {
+  color: rgba(17, 24, 39, 0.55);
+  font-size: 0.85rem;
 }
 
 .field {

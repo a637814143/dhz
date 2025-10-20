@@ -12,4 +12,5 @@ public interface ProductReviewService extends BaseService<ProductReview, Long> {
     void deleteReview(Long reviewId, CustomUserDetails actor);
     List<ProductReview> findByProductId(Long productId);
     List<ProductReview> findByOrderId(Long orderId);
+    List<ProductReview> findByConsumerId(Long consumerId);
 }

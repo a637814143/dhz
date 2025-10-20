@@ -157,6 +157,11 @@ public class ProductReviewServiceImpl extends BaseServiceImpl<ProductReview, Lon
         return reviewRepository.findByOrderId(orderId);
     }
 
+    @Override
+    public List<ProductReview> findByConsumerId(Long consumerId) {
+        return reviewRepository.findByConsumer_IdOrderByCreatedAtDesc(consumerId);
+    }
+
     private void applyAuthorInfo(ProductReview review, Long authorId, String authorName, String role) {
         review.setAuthorId(authorId);
         review.setAuthorName(authorName);

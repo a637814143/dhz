@@ -12,6 +12,7 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import java.util.Objects;
 import java.util.stream.Collectors;
 
 @RestController
@@ -68,6 +69,20 @@ public class ProductReviewController extends BaseController {
         return success(reviews);
     }
 
+    @GetMapping("/consumers/{consumerId}")
+    @PreAuthorize("hasAnyRole('CONSUMER', 'ADMIN')")
+    public ResponseEntity<List<ProductReviewDTO>> getByConsumer(@PathVariable Long consumerId,
+                                                                @AuthenticationPrincipal CustomUserDetails currentUser) {
+        if (!isAdmin(currentUser) && (currentUser == null || !Objects.equals(currentUser.getId(), consumerId))) {
+            throw new RuntimeException("没有权限查看其他消费者的评价");
+        }
+        List<ProductReviewDTO> reviews = productReviewService.findByConsumerId(consumerId)
+                .stream()
+                .map(this::toDto)
+                .collect(Collectors.toList());
+        return success(reviews);
+    }
+
     @PutMapping("/{reviewId}")
     @PreAuthorize("hasAnyRole('CONSUMER', 'SUPPLIER', 'ADMIN')")
     public ResponseEntity<ProductReviewDTO> updateReview(@PathVariable Long reviewId,
@@ -101,5 +116,9 @@ public class ProductReviewController extends BaseController {
                 .comment(review.getComment())
                 .createdAt(review.getCreatedAt())
                 .build();
+    }
+
+    private boolean isAdmin(CustomUserDetails user) {
+        return user != null && "admin".equalsIgnoreCase(user.getUserType());
     }
 }

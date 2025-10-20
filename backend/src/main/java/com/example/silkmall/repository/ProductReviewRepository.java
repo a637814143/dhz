@@ -12,4 +12,5 @@ public interface ProductReviewRepository extends JpaRepository<ProductReview, Lo
     List<ProductReview> findByProductId(Long productId);
     List<ProductReview> findByOrderId(Long orderId);
     boolean existsByOrderItemIdAndConsumer_Id(Long orderItemId, Long consumerId);
+    List<ProductReview> findByConsumer_IdOrderByCreatedAtDesc(Long consumerId);
 }
