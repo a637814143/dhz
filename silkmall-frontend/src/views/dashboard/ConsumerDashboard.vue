@@ -182,11 +182,50 @@ async function loadProfile() {
 }
 
 async function loadOrders() {
-  if (!state.user) return
-  const { data } = await api.get<PageResponse<OrderSummary>>(`/orders/consumer/${state.user.id}`, {
-    params: { page: 0, size: 5 },
-  })
-  orders.value = data.content ?? []
+  if (!state.user) {
+    orders.value = []
+    return
+  }
+
+  const size = 20
+  const aggregated = new Map<number, OrderSummary>()
+  let page = 0
+  let totalPages = 1
+
+  const toTimestamp = (value?: string | null) => {
+    if (!value) return 0
+    const parsed = new Date(value).getTime()
+    return Number.isNaN(parsed) ? 0 : parsed
+  }
+
+  do {
+    const { data } = await api.get<PageResponse<OrderSummary>>(
+      `/orders/consumer/${state.user.id}`,
+      {
+        params: { page, size },
+      }
+    )
+
+    const content = data?.content ?? []
+    content.forEach((order) => {
+      aggregated.set(order.id, order)
+    })
+
+    const reportedTotalPages = typeof data?.totalPages === 'number' ? data.totalPages : 0
+    const inferredTotalPages =
+      reportedTotalPages > 0
+        ? reportedTotalPages
+        : content.length < size
+        ? page + 1
+        : Math.max(page + 1, Math.ceil((data?.totalElements ?? content.length) / size))
+
+    totalPages = Math.max(inferredTotalPages, page + 1)
+    page += 1
+  } while (page < totalPages)
+
+  orders.value = Array.from(aggregated.values()).sort(
+    (a, b) => toTimestamp(b.orderTime) - toTimestamp(a.orderTime)
+  )
 }
 
 async function loadHomeContent() {
@@ -1105,7 +1144,7 @@ const shortcutLinks = [
         </section>
 
         <section class="panel orders full-row table-panel" aria-labelledby="orders-title">
-          <div class="panel-title" id="orders-title">最近订单</div>
+          <div class="panel-title" id="orders-title">我的订单</div>
           <div v-if="orders.length" class="table-container">
             <table class="dashboard-table orders-table">
               <thead>
