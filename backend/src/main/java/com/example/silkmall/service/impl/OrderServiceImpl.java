@@ -14,7 +14,9 @@ import com.example.silkmall.repository.AdminRepository;
 import com.example.silkmall.service.OrderService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
@@ -56,7 +58,21 @@ public class OrderServiceImpl extends BaseServiceImpl<Order, Long> implements Or
     
     @Override
     public Page<Order> findByConsumerId(Long consumerId, Pageable pageable) {
-        return orderRepository.findByConsumerId(consumerId, pageable);
+        Pageable candidate = pageable == null ? Pageable.unpaged() : pageable;
+
+        Sort sort = candidate.getSort();
+        if (sort == null || sort.isUnsorted()) {
+            sort = Sort.by(Sort.Direction.DESC, "orderTime");
+        }
+
+        Pageable sortedPageable;
+        if (candidate.isPaged()) {
+            sortedPageable = PageRequest.of(candidate.getPageNumber(), candidate.getPageSize(), sort);
+        } else {
+            sortedPageable = PageRequest.of(0, 20, sort);
+        }
+
+        return orderRepository.findByConsumerId(consumerId, sortedPageable);
     }
     
     @Override
