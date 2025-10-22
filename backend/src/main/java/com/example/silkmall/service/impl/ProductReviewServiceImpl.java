@@ -2,6 +2,7 @@ package com.example.silkmall.service.impl;
 
 import com.example.silkmall.entity.Admin;
 import com.example.silkmall.entity.Consumer;
+import com.example.silkmall.entity.Order;
 import com.example.silkmall.entity.OrderItem;
 import com.example.silkmall.entity.Product;
 import com.example.silkmall.entity.ProductReview;
@@ -18,10 +19,19 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
+import java.util.Locale;
 import java.util.Objects;
+import java.util.Set;
 
 @Service
 public class ProductReviewServiceImpl extends BaseServiceImpl<ProductReview, Long> implements ProductReviewService {
+    private static final Set<String> REVIEWABLE_ORDER_STATUSES = Set.of(
+            "DELIVERED",
+            "RECEIVED",
+            "COMPLETED",
+            "CONFIRMED"
+    );
+
     private final ProductReviewRepository reviewRepository;
     private final OrderItemRepository orderItemRepository;
     private final ProductRepository productRepository;
@@ -48,7 +58,7 @@ public class ProductReviewServiceImpl extends BaseServiceImpl<ProductReview, Lon
         OrderItem orderItem = orderItemRepository.findById(orderItemId)
                 .orElseThrow(() -> new RuntimeException("订单项不存在"));
 
-        if (!"DELIVERED".equals(orderItem.getOrder().getStatus()) && !isAdmin(author)) {
+        if (!isAdmin(author) && !isOrderEligibleForReview(orderItem.getOrder())) {
             throw new RuntimeException("只有已收货的订单才能评价");
         }
 
@@ -193,6 +203,14 @@ public class ProductReviewServiceImpl extends BaseServiceImpl<ProductReview, Lon
 
     private boolean isAdmin(CustomUserDetails user) {
         return "admin".equalsIgnoreCase(user != null ? user.getUserType() : null);
+    }
+
+    private boolean isOrderEligibleForReview(Order order) {
+        if (order == null || order.getStatus() == null) {
+            return false;
+        }
+        String normalized = order.getStatus().trim().toUpperCase(Locale.ROOT);
+        return REVIEWABLE_ORDER_STATUSES.contains(normalized);
     }
 
     private void assertCanEdit(ProductReview review, CustomUserDetails user) {
