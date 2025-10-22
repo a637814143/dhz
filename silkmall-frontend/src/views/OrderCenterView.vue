@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, reactive, ref } from 'vue'
+import { computed, reactive, ref, watch } from 'vue'
 import api from '@/services/api'
 import type { OrderDetail, OrderItemDetail, ProductReview, ReturnRequest } from '@/types'
 import { useAuthState } from '@/services/authState'
@@ -32,6 +32,22 @@ const returnForm = reactive({
 
 const submittingReview = ref(false)
 const submittingReturn = ref(false)
+const paymentMethod = ref('WECHAT')
+const paying = ref(false)
+
+const paymentOptions = [
+  { value: 'WECHAT', label: '微信支付' },
+  { value: 'ALIPAY', label: '支付宝' },
+  { value: 'BANK', label: '银行转账' },
+  { value: 'COD', label: '货到付款' },
+]
+
+const paymentMethodLabelMap = paymentOptions.reduce<Record<string, string>>((map, option) => {
+  map[option.value] = option.label
+  return map
+}, {})
+
+const pendingPaymentStatuses = ['待付款', '未支付', '待支付'] as const
 
 const reviewMap = computed(() => {
   const map = new Map<number, ProductReview[]>()
@@ -58,6 +74,11 @@ const latestReturnMap = computed(() => {
   return map
 })
 
+const hasHoldingAmount = computed(() => {
+  const amount = orderDetail.value?.adminHoldingAmount
+  return typeof amount === 'number' && !Number.isNaN(amount)
+})
+
 const pendingReturnMap = computed(() => {
   const map = new Map<number, ReturnRequest>()
   returnRequests.value.forEach((request) => {
@@ -67,6 +88,26 @@ const pendingReturnMap = computed(() => {
   })
   return map
 })
+
+const isPendingPayment = computed(() => {
+  const status = orderDetail.value?.status?.trim()
+  if (!status) return false
+  return pendingPaymentStatuses.some((item) => item === status)
+})
+
+const canInitiatePayment = computed(() => {
+  if (!orderDetail.value) return false
+  if (currentUserRole.value !== 'consumer') return false
+  return isPendingPayment.value
+})
+
+watch(
+  () => orderDetail.value,
+  (detail) => {
+    const method = detail?.paymentMethod?.trim()
+    paymentMethod.value = method && method.length > 0 ? method : 'WECHAT'
+  }
+)
 
 const currencyFormatter = new Intl.NumberFormat('zh-CN', {
   style: 'currency',
@@ -85,9 +126,21 @@ function formatDateTime(value?: string | null) {
   return date.toLocaleString('zh-CN', { hour12: false })
 }
 
+function paymentLabel(method?: string | null) {
+  if (!method) return ''
+  return paymentMethodLabelMap[method] ?? method
+}
+
 function resetMessages() {
   actionMessage.value = null
   actionError.value = null
+}
+
+async function loadOrder(orderId: number) {
+  const { data } = await api.get<OrderDetail>(`/orders/${orderId}`)
+  orderDetail.value = data
+  await Promise.all([fetchReviews(data.id), fetchReturnRequests(data.id)])
+  return data
 }
 
 async function fetchOrder() {
@@ -107,9 +160,7 @@ async function fetchOrder() {
 
   loadingOrder.value = true
   try {
-    const { data } = await api.get<OrderDetail>(`/orders/${orderId}`)
-    orderDetail.value = data
-    await Promise.all([fetchReviews(data.id), fetchReturnRequests(data.id)])
+    await loadOrder(orderId)
     actionMessage.value = '订单信息加载成功'
   } catch (err) {
     const message = err instanceof Error ? err.message : '加载订单失败'
@@ -139,6 +190,40 @@ async function fetchReturnRequests(orderId: number) {
   } catch (err) {
     console.warn('加载退货信息失败', err)
     returnRequests.value = []
+  }
+}
+
+async function payForOrder() {
+  if (!orderDetail.value) return
+  resetMessages()
+  if (!canInitiatePayment.value) {
+    actionError.value = '当前订单状态不支持支付'
+    return
+  }
+  const orderId = orderDetail.value.id
+  const method = paymentMethod.value?.trim()
+  if (!method) {
+    actionError.value = '请选择支付方式'
+    return
+  }
+
+  paying.value = true
+  try {
+    await api.put(`/orders/${orderId}/pay`, null, {
+      params: { paymentMethod: method },
+    })
+    actionMessage.value = '支付成功，订单已进入待发货状态'
+    try {
+      await loadOrder(orderId)
+    } catch (err) {
+      const message = err instanceof Error ? err.message : '刷新订单信息失败'
+      actionError.value = `支付已完成，但刷新订单信息失败：${message}`
+    }
+  } catch (err) {
+    const message = err instanceof Error ? err.message : '支付失败'
+    actionError.value = message
+  } finally {
+    paying.value = false
   }
 }
 
@@ -357,13 +442,61 @@ function upsertReview(review: ProductReview) {
           <span class="status-tag">状态：{{ orderDetail!.status }}</span>
           <span>总金额：{{ formatCurrency(orderDetail!.totalAmount) }}</span>
           <span>商品数量：{{ orderDetail!.totalQuantity }}</span>
+          <span v-if="orderDetail!.paymentMethod">
+            支付方式：{{ paymentLabel(orderDetail!.paymentMethod) }}
+          </span>
         </div>
+        <div
+          v-if="orderDetail!.payoutStatus || hasHoldingAmount || orderDetail!.managingAdminName"
+          class="order-status order-status--secondary"
+        >
+          <span v-if="orderDetail!.payoutStatus" class="status-tag status-tag--secondary">
+            资金状态：{{ orderDetail!.payoutStatus }}
+          </span>
+          <span v-if="hasHoldingAmount">托管金额：{{ formatCurrency(orderDetail!.adminHoldingAmount) }}</span>
+          <span v-if="orderDetail!.managingAdminName">管理员：{{ orderDetail!.managingAdminName }}</span>
+        </div>
+      </div>
+
+      <div v-if="canInitiatePayment" class="payment-card">
+        <h3>订单待付款</h3>
+        <p class="muted">该订单尚未完成支付，请选择支付方式完成支付。</p>
+        <form class="inline-form payment-form" @submit.prevent="payForOrder">
+          <label>
+            <span>支付方式</span>
+            <select v-model="paymentMethod" :disabled="paying">
+              <option v-for="option in paymentOptions" :key="option.value" :value="option.value">
+                {{ option.label }}
+              </option>
+            </select>
+          </label>
+          <div class="form-actions">
+            <button type="submit" :disabled="paying">
+              {{ paying ? '支付中…' : '去付款' }}
+            </button>
+          </div>
+        </form>
       </div>
 
       <div class="address-card" v-if="orderDetail!.shippingAddress">
         <h3>收货信息</h3>
         <p>{{ orderDetail!.recipientName }} {{ orderDetail!.recipientPhone }}</p>
         <p>{{ orderDetail!.shippingAddress }}</p>
+      </div>
+
+      <div class="timeline-card">
+        <h3>物流与确认节点</h3>
+        <ul>
+          <li><span>支付时间</span><strong>{{ formatDateTime(orderDetail!.paymentTime) }}</strong></li>
+          <li><span>发货时间</span><strong>{{ formatDateTime(orderDetail!.shippingTime) }}</strong></li>
+          <li><span>运送时间</span><strong>{{ formatDateTime(orderDetail!.inTransitTime) }}</strong></li>
+          <li><span>送达时间</span><strong>{{ formatDateTime(orderDetail!.deliveryTime) }}</strong></li>
+          <li>
+            <span>确认收货</span>
+            <strong>{{ formatDateTime(orderDetail!.consumerConfirmationTime) }}</strong>
+          </li>
+          <li><span>管理员批准</span><strong>{{ formatDateTime(orderDetail!.adminApprovalTime) }}</strong></li>
+        </ul>
       </div>
 
       <section class="items-section">
@@ -625,6 +758,15 @@ function upsertReview(review: ProductReview) {
   text-align: right;
 }
 
+.order-status--secondary {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  font-size: 0.95rem;
+}
+
 .status-tag {
   padding: 0.25rem 0.75rem;
   border-radius: 999px;
@@ -633,11 +775,66 @@ function upsertReview(review: ProductReview) {
   font-weight: 600;
 }
 
+.status-tag--secondary {
+  background: rgba(37, 99, 235, 0.12);
+  color: #1d4ed8;
+}
+
 .address-card {
   padding: 1rem;
   border-radius: 1rem;
   background: rgba(242, 142, 28, 0.08);
   border: 1px solid rgba(242, 142, 28, 0.2);
+}
+
+.payment-card {
+  margin-top: 1rem;
+  padding: 1.25rem;
+  border-radius: 1rem;
+  border: 1px solid rgba(99, 102, 241, 0.15);
+  background: rgba(99, 102, 241, 0.06);
+  display: grid;
+  gap: 0.75rem;
+}
+
+.payment-form {
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  align-items: end;
+}
+
+.payment-form .form-actions {
+  justify-content: flex-start;
+}
+
+.timeline-card {
+  padding: 1.25rem;
+  border-radius: 1rem;
+  border: 1px solid rgba(0, 0, 0, 0.06);
+  background: #f9fafb;
+}
+
+.timeline-card ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  gap: 0.5rem;
+}
+
+.timeline-card li {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  font-size: 0.95rem;
+  color: #374151;
+}
+
+.timeline-card li span {
+  color: #6b7280;
+}
+
+.timeline-card li strong {
+  font-weight: 600;
 }
 
 .items-section h3,

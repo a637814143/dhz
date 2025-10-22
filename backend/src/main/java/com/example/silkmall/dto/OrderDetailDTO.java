@@ -11,6 +11,7 @@ public class OrderDetailDTO {
     private BigDecimal totalAmount;
     private Integer totalQuantity;
     private String status;
+    private String paymentMethod;
     private String shippingAddress;
     private String recipientName;
     private String recipientPhone;
@@ -18,6 +19,13 @@ public class OrderDetailDTO {
     private Date paymentTime;
     private Date shippingTime;
     private Date deliveryTime;
+    private Date inTransitTime;
+    private Date consumerConfirmationTime;
+    private Date adminApprovalTime;
+    private String payoutStatus;
+    private BigDecimal adminHoldingAmount;
+    private Long managingAdminId;
+    private String managingAdminName;
     private List<OrderItemDetailDTO> orderItems = new ArrayList<>();
 
     public Long getId() {
@@ -58,6 +66,14 @@ public class OrderDetailDTO {
 
     public void setStatus(String status) {
         this.status = status;
+    }
+
+    public String getPaymentMethod() {
+        return paymentMethod;
+    }
+
+    public void setPaymentMethod(String paymentMethod) {
+        this.paymentMethod = paymentMethod;
     }
 
     public String getShippingAddress() {
@@ -114,6 +130,62 @@ public class OrderDetailDTO {
 
     public void setDeliveryTime(Date deliveryTime) {
         this.deliveryTime = deliveryTime;
+    }
+
+    public Date getInTransitTime() {
+        return inTransitTime;
+    }
+
+    public void setInTransitTime(Date inTransitTime) {
+        this.inTransitTime = inTransitTime;
+    }
+
+    public Date getConsumerConfirmationTime() {
+        return consumerConfirmationTime;
+    }
+
+    public void setConsumerConfirmationTime(Date consumerConfirmationTime) {
+        this.consumerConfirmationTime = consumerConfirmationTime;
+    }
+
+    public Date getAdminApprovalTime() {
+        return adminApprovalTime;
+    }
+
+    public void setAdminApprovalTime(Date adminApprovalTime) {
+        this.adminApprovalTime = adminApprovalTime;
+    }
+
+    public String getPayoutStatus() {
+        return payoutStatus;
+    }
+
+    public void setPayoutStatus(String payoutStatus) {
+        this.payoutStatus = payoutStatus;
+    }
+
+    public BigDecimal getAdminHoldingAmount() {
+        return adminHoldingAmount;
+    }
+
+    public void setAdminHoldingAmount(BigDecimal adminHoldingAmount) {
+        this.adminHoldingAmount = adminHoldingAmount;
+    }
+
+    public Long getManagingAdminId() {
+        return managingAdminId;
+    }
+
+    public void setManagingAdminId(Long managingAdminId) {
+        this.managingAdminId = managingAdminId;
+    }
+
+    public String getManagingAdminName() {
+        return managingAdminName;
+    }
+
+    public void setManagingAdminName(String managingAdminName) {
+        this.managingAdminName = managingAdminName;
     }
 
     public List<OrderItemDetailDTO> getOrderItems() {

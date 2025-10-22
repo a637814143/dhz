@@ -17,6 +17,6 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
     List<Order> findByOrderNo(String orderNo);
     List<Order> findByConsumerLookupId(String consumerLookupId);
 
-    @EntityGraph(attributePaths = {"orderItems", "orderItems.product"})
+    @EntityGraph(attributePaths = {"orderItems", "orderItems.product", "managingAdmin"})
     Optional<Order> findDetailedById(Long id);
 }

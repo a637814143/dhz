@@ -1,5 +1,6 @@
 package com.example.silkmall.service.impl;
 
+import com.example.silkmall.entity.Admin;
 import com.example.silkmall.entity.Consumer;
 import com.example.silkmall.entity.Order;
 import com.example.silkmall.entity.OrderItem;
@@ -9,6 +10,7 @@ import com.example.silkmall.repository.ConsumerRepository;
 import com.example.silkmall.repository.OrderRepository;
 import com.example.silkmall.repository.ProductRepository;
 import com.example.silkmall.repository.SupplierRepository;
+import com.example.silkmall.repository.AdminRepository;
 import com.example.silkmall.service.OrderService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
@@ -21,24 +23,35 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import static com.example.silkmall.common.OrderStatuses.*;
 
 @Service
 public class OrderServiceImpl extends BaseServiceImpl<Order, Long> implements OrderService {
+
+    private static final String PAYOUT_PENDING = "待批准";
+    private static final String PAYOUT_APPROVED = "已批准";
+    private static final String PAYOUT_REFUNDED = "已退款";
+
+    private static final BigDecimal DEFAULT_WALLET_BALANCE = BigDecimal.valueOf(1000L);
+
     private final OrderRepository orderRepository;
     private final ProductRepository productRepository;
     private final ConsumerRepository consumerRepository;
     private final SupplierRepository supplierRepository;
+    private final AdminRepository adminRepository;
 
     @Autowired
     public OrderServiceImpl(OrderRepository orderRepository,
                             ProductRepository productRepository,
                             ConsumerRepository consumerRepository,
-                            SupplierRepository supplierRepository) {
+                            SupplierRepository supplierRepository,
+                            AdminRepository adminRepository) {
         super(orderRepository);
         this.orderRepository = orderRepository;
         this.productRepository = productRepository;
         this.consumerRepository = consumerRepository;
         this.supplierRepository = supplierRepository;
+        this.adminRepository = adminRepository;
     }
     
     @Override
@@ -74,9 +87,23 @@ public class OrderServiceImpl extends BaseServiceImpl<Order, Long> implements Or
         calculateOrderAmount(order);
         checkAndUpdateStock(order);
 
-        order.setStatus("PENDING_PAYMENT");
+        order.setStatus(PENDING_PAYMENT);
+        order.setPayoutStatus(null);
+        order.setManagingAdmin(null);
+        order.setAdminHoldingAmount(BigDecimal.ZERO);
+        order.setPaymentTime(null);
+        order.setShippingTime(null);
+        order.setDeliveryTime(null);
+        order.setInTransitTime(null);
+        order.setConsumerConfirmationTime(null);
+        order.setAdminApprovalTime(null);
+        Order persisted = orderRepository.save(order);
 
-        return orderRepository.save(order);
+        if (shouldAutoPay(persisted)) {
+            return processPayment(persisted, persisted.getPaymentMethod());
+        }
+
+        return persisted;
     }
     
     @Transactional
@@ -85,14 +112,20 @@ public class OrderServiceImpl extends BaseServiceImpl<Order, Long> implements Or
         Order order = findById(id)
                 .orElseThrow(() -> new RuntimeException("订单不存在"));
 
-        if (!"PENDING_PAYMENT".equals(order.getStatus())) {
+        if (!PENDING_PAYMENT.equals(order.getStatus())) {
             throw new RuntimeException("只有待支付的订单才能取消");
         }
 
         // 恢复库存
         restoreStock(order);
 
-        order.setStatus("CANCELLED");
+        order.setStatus(CANCELLED);
+        order.setPayoutStatus(null);
+        order.setManagingAdmin(null);
+        order.setAdminHoldingAmount(BigDecimal.ZERO);
+        order.setInTransitTime(null);
+        order.setConsumerConfirmationTime(null);
+        order.setAdminApprovalTime(null);
         orderRepository.save(order);
     }
 
@@ -102,11 +135,12 @@ public class OrderServiceImpl extends BaseServiceImpl<Order, Long> implements Or
         Order order = findById(id)
                 .orElseThrow(() -> new RuntimeException("订单不存在"));
 
-        if ("REVOKED".equals(order.getStatus()) || "CANCELLED".equals(order.getStatus())) {
+        if (REVOKED.equals(order.getStatus()) || CANCELLED.equals(order.getStatus())) {
             throw new RuntimeException("订单已撤销或已取消");
         }
 
         Consumer consumer = attachConsumer(order);
+        Admin admin = attachAdmin(order);
         BigDecimal totalAmount = order.getTotalAmount();
         if (totalAmount == null) {
             calculateOrderAmount(order);
@@ -115,17 +149,35 @@ public class OrderServiceImpl extends BaseServiceImpl<Order, Long> implements Or
 
         restoreStock(order);
 
+        if (PAYOUT_APPROVED.equals(order.getPayoutStatus())) {
+            rollbackSupplierDistribution(order);
+            if (admin != null && totalAmount != null) {
+                BigDecimal adminBalance = resolveBalance(admin.getWalletBalance());
+                admin.setWalletBalance(adminBalance.add(totalAmount));
+            }
+        }
+
+        if (admin != null && totalAmount != null) {
+            BigDecimal adminBalance = resolveBalance(admin.getWalletBalance());
+            BigDecimal updatedAdmin = adminBalance.subtract(totalAmount);
+            if (updatedAdmin.compareTo(BigDecimal.ZERO) < 0) {
+                updatedAdmin = BigDecimal.ZERO;
+            }
+            admin.setWalletBalance(updatedAdmin);
+            adminRepository.save(admin);
+        }
+
         if (consumer != null && totalAmount != null) {
-            BigDecimal balance = consumer.getWalletBalance() == null
-                    ? BigDecimal.valueOf(1000L)
-                    : consumer.getWalletBalance();
+            BigDecimal balance = resolveBalance(consumer.getWalletBalance());
             consumer.setWalletBalance(balance.add(totalAmount));
             consumerRepository.save(consumer);
         }
 
-        rollbackSupplierDistribution(order);
-
-        order.setStatus("REVOKED");
+        order.setPayoutStatus(PAYOUT_REFUNDED);
+        order.setAdminHoldingAmount(BigDecimal.ZERO);
+        order.setAdminApprovalTime(null);
+        order.setConsumerConfirmationTime(null);
+        order.setStatus(REVOKED);
         orderRepository.save(order);
     }
     
@@ -134,9 +186,136 @@ public class OrderServiceImpl extends BaseServiceImpl<Order, Long> implements Or
     public void payOrder(Long id, String paymentMethod) {
         Order order = findById(id)
                 .orElseThrow(() -> new RuntimeException("订单不存在"));
+        processPayment(order, paymentMethod);
+    }
+    
+    @Override
+    public void shipOrder(Long id) {
+        Order order = findById(id)
+                .orElseThrow(() -> new RuntimeException("订单不存在"));
 
-        if (!"PENDING_PAYMENT".equals(order.getStatus())) {
+        if (!PENDING_SHIPMENT.equals(order.getStatus())) {
+            throw new RuntimeException("只有待发货的订单才能发货");
+        }
+
+        order.setStatus(SHIPPED);
+        order.setShippingTime(new Date());
+
+        orderRepository.save(order);
+    }
+
+    @Override
+    public void markInTransit(Long id) {
+        Order order = findById(id)
+                .orElseThrow(() -> new RuntimeException("订单不存在"));
+
+        if (!SHIPPED.equals(order.getStatus())) {
+            throw new RuntimeException("只有已发货的订单才能更新为运送中");
+        }
+
+        order.setStatus(IN_TRANSIT);
+        order.setInTransitTime(new Date());
+
+        orderRepository.save(order);
+    }
+
+    @Override
+    public void deliverOrder(Long id) {
+        Order order = findById(id)
+                .orElseThrow(() -> new RuntimeException("订单不存在"));
+
+        if (!IN_TRANSIT.equals(order.getStatus())) {
+            throw new RuntimeException("只有运送中的订单才能更新为待收货");
+        }
+
+        order.setStatus(AWAITING_RECEIPT);
+        order.setDeliveryTime(new Date());
+
+        orderRepository.save(order);
+
+        // 订单完成后，可以增加产品销量和消费者积分
+        // 这里简化处理，实际项目中可能需要更复杂的逻辑
+    }
+
+    @Override
+    public void confirmReceipt(Long id) {
+        Order order = findById(id)
+                .orElseThrow(() -> new RuntimeException("订单不存在"));
+
+        if (!AWAITING_RECEIPT.equals(order.getStatus())) {
+            throw new RuntimeException("只有待收货的订单才能确认收货");
+        }
+
+        order.setStatus(DELIVERED);
+        order.setConsumerConfirmationTime(new Date());
+
+        orderRepository.save(order);
+    }
+
+    @Transactional
+    @Override
+    public void approvePayout(Long id) {
+        Order order = findById(id)
+                .orElseThrow(() -> new RuntimeException("订单不存在"));
+
+        if (!DELIVERED.equals(order.getStatus())) {
+            throw new RuntimeException("只有已送达的订单才能批准货款");
+        }
+
+        if (!PAYOUT_PENDING.equals(order.getPayoutStatus())) {
+            throw new RuntimeException("当前订单没有待批准的货款");
+        }
+
+        Admin admin = attachAdmin(order);
+        if (admin == null) {
+            throw new RuntimeException("订单缺少资金托管管理员");
+        }
+
+        BigDecimal totalAmount = order.getTotalAmount();
+        if (totalAmount == null) {
+            calculateOrderAmount(order);
+            totalAmount = order.getTotalAmount();
+        }
+        if (totalAmount == null) {
+            totalAmount = BigDecimal.ZERO;
+        }
+
+        BigDecimal adminBalance = resolveBalance(admin.getWalletBalance());
+        if (adminBalance.compareTo(totalAmount) < 0) {
+            throw new RuntimeException("管理员钱包余额不足，无法批准付款");
+        }
+
+        admin.setWalletBalance(adminBalance.subtract(totalAmount));
+        adminRepository.save(admin);
+
+        distributeToSuppliers(order);
+
+        order.setPayoutStatus(PAYOUT_APPROVED);
+        order.setAdminHoldingAmount(BigDecimal.ZERO);
+        order.setAdminApprovalTime(new Date());
+
+        orderRepository.save(order);
+    }
+
+    private boolean shouldAutoPay(Order order) {
+        if (order == null) {
+            return false;
+        }
+        if (order.getConsumer() == null || order.getConsumer().getId() == null) {
+            return false;
+        }
+        String method = order.getPaymentMethod();
+        return method != null && !method.trim().isEmpty();
+    }
+
+    private Order processPayment(Order order, String paymentMethod) {
+        if (!PENDING_PAYMENT.equals(order.getStatus())) {
             throw new RuntimeException("只有待支付的订单才能支付");
+        }
+
+        String normalizedMethod = paymentMethod == null ? null : paymentMethod.trim();
+        if (normalizedMethod == null || normalizedMethod.isEmpty()) {
+            throw new RuntimeException("支付方式不能为空");
         }
 
         Consumer consumer = attachConsumer(order);
@@ -149,56 +328,40 @@ public class OrderServiceImpl extends BaseServiceImpl<Order, Long> implements Or
             calculateOrderAmount(order);
             totalAmount = order.getTotalAmount();
         }
+        if (totalAmount == null) {
+            totalAmount = BigDecimal.ZERO;
+        }
 
-        BigDecimal consumerBalance = consumer.getWalletBalance() == null
-                ? BigDecimal.valueOf(1000L)
-                : consumer.getWalletBalance();
+        BigDecimal consumerBalance = resolveBalance(consumer.getWalletBalance());
         if (consumerBalance.compareTo(totalAmount) < 0) {
             throw new RuntimeException("钱包余额不足，无法完成支付");
         }
 
-        order.setStatus("PENDING_SHIPMENT");
-        order.setPaymentMethod(paymentMethod);
+        Admin admin = attachAdmin(order);
+        if (admin == null) {
+            admin = selectOrderAdmin();
+        }
+        BigDecimal adminBalance = resolveBalance(admin.getWalletBalance());
+
+        order.setStatus(PENDING_SHIPMENT);
+        order.setPaymentMethod(normalizedMethod);
         order.setPaymentTime(new Date());
+        order.setShippingTime(null);
+        order.setDeliveryTime(null);
+        order.setInTransitTime(null);
+        order.setConsumerConfirmationTime(null);
+        order.setAdminApprovalTime(null);
+        order.setManagingAdmin(admin);
+        order.setPayoutStatus(PAYOUT_PENDING);
+        order.setAdminHoldingAmount(totalAmount);
 
         consumer.setWalletBalance(consumerBalance.subtract(totalAmount));
         consumerRepository.save(consumer);
-        distributeToSuppliers(order);
 
-        orderRepository.save(order);
-    }
-    
-    @Override
-    public void shipOrder(Long id) {
-        Order order = findById(id)
-                .orElseThrow(() -> new RuntimeException("订单不存在"));
-        
-        if (!"PENDING_SHIPMENT".equals(order.getStatus())) {
-            throw new RuntimeException("只有待发货的订单才能发货");
-        }
-        
-        order.setStatus("SHIPPING");
-        order.setShippingTime(new Date());
-        
-        orderRepository.save(order);
-    }
-    
-    @Override
-    public void deliverOrder(Long id) {
-        Order order = findById(id)
-                .orElseThrow(() -> new RuntimeException("订单不存在"));
+        admin.setWalletBalance(adminBalance.add(totalAmount));
+        adminRepository.save(admin);
 
-        if (!"SHIPPING".equals(order.getStatus())) {
-            throw new RuntimeException("只有运输中的订单才能确认收货");
-        }
-
-        order.setStatus("DELIVERED");
-        order.setDeliveryTime(new Date());
-
-        orderRepository.save(order);
-
-        // 订单完成后，可以增加产品销量和消费者积分
-        // 这里简化处理，实际项目中可能需要更复杂的逻辑
+        return orderRepository.save(order);
     }
 
     @Transactional
@@ -337,10 +500,29 @@ public class OrderServiceImpl extends BaseServiceImpl<Order, Long> implements Or
         Consumer consumer = consumerRepository.findById(order.getConsumer().getId())
                 .orElseThrow(() -> new RuntimeException("消费者不存在: " + order.getConsumer().getId()));
         if (consumer.getWalletBalance() == null) {
-            consumer.setWalletBalance(BigDecimal.valueOf(1000L));
+            consumer.setWalletBalance(DEFAULT_WALLET_BALANCE);
         }
         order.setConsumer(consumer);
         return consumer;
+    }
+
+    private Admin attachAdmin(Order order) {
+        if (order.getManagingAdmin() == null || order.getManagingAdmin().getId() == null) {
+            return null;
+        }
+        Admin admin = adminRepository.findById(order.getManagingAdmin().getId())
+                .orElseThrow(() -> new RuntimeException("管理员不存在: " + order.getManagingAdmin().getId()));
+        order.setManagingAdmin(admin);
+        return admin;
+    }
+
+    private Admin selectOrderAdmin() {
+        return adminRepository.findTopByOrderByIdAsc()
+                .orElseThrow(() -> new RuntimeException("系统未配置管理员，无法处理资金"));
+    }
+
+    private BigDecimal resolveBalance(BigDecimal balance) {
+        return balance == null ? DEFAULT_WALLET_BALANCE : balance;
     }
 
     private String generateConsumerLookupId() {

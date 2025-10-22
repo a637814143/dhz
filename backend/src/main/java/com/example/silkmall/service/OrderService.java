@@ -16,6 +16,9 @@ public interface OrderService extends BaseService<Order, Long> {
     void revokeOrder(Long id);
     void shipOrder(Long id);
     void deliverOrder(Long id);
+    void markInTransit(Long id);
+    void confirmReceipt(Long id);
+    void approvePayout(Long id);
     Order findOrderDetail(Long id);
     Order updateContactInfo(Long id, String shippingAddress, String recipientName, String recipientPhone);
 }

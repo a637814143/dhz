@@ -1,5 +1,6 @@
 package com.example.silkmall.service;
 
+import com.example.silkmall.common.OrderStatuses;
 import com.example.silkmall.entity.Admin;
 import com.example.silkmall.entity.Consumer;
 import com.example.silkmall.entity.Order;
@@ -89,7 +90,7 @@ class ProductReviewServiceIntegrationTest {
 
         Order order = new Order();
         order.setOrderNo("ORD-001");
-        order.setStatus("DELIVERED");
+        order.setStatus(OrderStatuses.DELIVERED);
         order.setTotalAmount(BigDecimal.valueOf(299));
         order.setTotalQuantity(1);
         order.setConsumer(consumer);

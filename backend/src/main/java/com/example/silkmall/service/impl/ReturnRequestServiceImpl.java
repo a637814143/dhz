@@ -14,6 +14,7 @@ import java.util.Date;
 import java.util.List;
 import java.util.Set;
 import java.util.Objects;
+import static com.example.silkmall.common.OrderStatuses.DELIVERED;
 
 @Service
 public class ReturnRequestServiceImpl extends BaseServiceImpl<ReturnRequest, Long> implements ReturnRequestService {
@@ -37,7 +38,7 @@ public class ReturnRequestServiceImpl extends BaseServiceImpl<ReturnRequest, Lon
         OrderItem orderItem = orderItemRepository.findById(orderItemId)
                 .orElseThrow(() -> new RuntimeException("订单项不存在"));
 
-        if (!"DELIVERED".equals(orderItem.getOrder().getStatus())) {
+        if (!DELIVERED.equals(orderItem.getOrder().getStatus())) {
             throw new RuntimeException("只有已收货的订单才能申请退货");
         }
 

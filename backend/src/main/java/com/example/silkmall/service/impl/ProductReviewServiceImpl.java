@@ -19,6 +19,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 import java.util.Objects;
+import static com.example.silkmall.common.OrderStatuses.DELIVERED;
 
 @Service
 public class ProductReviewServiceImpl extends BaseServiceImpl<ProductReview, Long> implements ProductReviewService {
@@ -48,7 +49,7 @@ public class ProductReviewServiceImpl extends BaseServiceImpl<ProductReview, Lon
         OrderItem orderItem = orderItemRepository.findById(orderItemId)
                 .orElseThrow(() -> new RuntimeException("订单项不存在"));
 
-        if (!"DELIVERED".equals(orderItem.getOrder().getStatus()) && !isAdmin(author)) {
+        if (!DELIVERED.equals(orderItem.getOrder().getStatus()) && !isAdmin(author)) {
             throw new RuntimeException("只有已收货的订单才能评价");
         }
 
