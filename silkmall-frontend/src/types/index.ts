@@ -189,6 +189,13 @@ export interface OrderDetail {
   paymentTime?: string | null
   shippingTime?: string | null
   deliveryTime?: string | null
+  inTransitTime?: string | null
+  consumerConfirmationTime?: string | null
+  adminApprovalTime?: string | null
+  payoutStatus?: string | null
+  adminHoldingAmount?: number | null
+  managingAdminId?: number | null
+  managingAdminName?: string | null
   orderItems: OrderItemDetail[]
 }
 
