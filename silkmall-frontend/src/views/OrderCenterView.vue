@@ -58,6 +58,11 @@ const latestReturnMap = computed(() => {
   return map
 })
 
+const hasHoldingAmount = computed(() => {
+  const amount = orderDetail.value?.adminHoldingAmount
+  return typeof amount === 'number' && !Number.isNaN(amount)
+})
+
 const pendingReturnMap = computed(() => {
   const map = new Map<number, ReturnRequest>()
   returnRequests.value.forEach((request) => {
@@ -358,12 +363,37 @@ function upsertReview(review: ProductReview) {
           <span>总金额：{{ formatCurrency(orderDetail!.totalAmount) }}</span>
           <span>商品数量：{{ orderDetail!.totalQuantity }}</span>
         </div>
+        <div
+          v-if="orderDetail!.payoutStatus || hasHoldingAmount || orderDetail!.managingAdminName"
+          class="order-status order-status--secondary"
+        >
+          <span v-if="orderDetail!.payoutStatus" class="status-tag status-tag--secondary">
+            资金状态：{{ orderDetail!.payoutStatus }}
+          </span>
+          <span v-if="hasHoldingAmount">托管金额：{{ formatCurrency(orderDetail!.adminHoldingAmount) }}</span>
+          <span v-if="orderDetail!.managingAdminName">管理员：{{ orderDetail!.managingAdminName }}</span>
+        </div>
       </div>
 
       <div class="address-card" v-if="orderDetail!.shippingAddress">
         <h3>收货信息</h3>
         <p>{{ orderDetail!.recipientName }} {{ orderDetail!.recipientPhone }}</p>
         <p>{{ orderDetail!.shippingAddress }}</p>
+      </div>
+
+      <div class="timeline-card">
+        <h3>物流与确认节点</h3>
+        <ul>
+          <li><span>支付时间</span><strong>{{ formatDateTime(orderDetail!.paymentTime) }}</strong></li>
+          <li><span>发货时间</span><strong>{{ formatDateTime(orderDetail!.shippingTime) }}</strong></li>
+          <li><span>运送时间</span><strong>{{ formatDateTime(orderDetail!.inTransitTime) }}</strong></li>
+          <li><span>送达时间</span><strong>{{ formatDateTime(orderDetail!.deliveryTime) }}</strong></li>
+          <li>
+            <span>确认收货</span>
+            <strong>{{ formatDateTime(orderDetail!.consumerConfirmationTime) }}</strong>
+          </li>
+          <li><span>管理员批准</span><strong>{{ formatDateTime(orderDetail!.adminApprovalTime) }}</strong></li>
+        </ul>
       </div>
 
       <section class="items-section">
@@ -625,6 +655,15 @@ function upsertReview(review: ProductReview) {
   text-align: right;
 }
 
+.order-status--secondary {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  font-size: 0.95rem;
+}
+
 .status-tag {
   padding: 0.25rem 0.75rem;
   border-radius: 999px;
@@ -633,11 +672,47 @@ function upsertReview(review: ProductReview) {
   font-weight: 600;
 }
 
+.status-tag--secondary {
+  background: rgba(37, 99, 235, 0.12);
+  color: #1d4ed8;
+}
+
 .address-card {
   padding: 1rem;
   border-radius: 1rem;
   background: rgba(242, 142, 28, 0.08);
   border: 1px solid rgba(242, 142, 28, 0.2);
+}
+
+.timeline-card {
+  padding: 1.25rem;
+  border-radius: 1rem;
+  border: 1px solid rgba(0, 0, 0, 0.06);
+  background: #f9fafb;
+}
+
+.timeline-card ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  gap: 0.5rem;
+}
+
+.timeline-card li {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  font-size: 0.95rem;
+  color: #374151;
+}
+
+.timeline-card li span {
+  color: #6b7280;
+}
+
+.timeline-card li strong {
+  font-weight: 600;
 }
 
 .items-section h3,
