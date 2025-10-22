@@ -158,10 +158,36 @@ public class OrderController extends BaseController {
         return success();
     }
 
+    @PutMapping("/{id}/in-transit")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<Void> markInTransit(@PathVariable Long id) {
+        orderService.markInTransit(id);
+        return success();
+    }
+
     @PutMapping("/{id}/deliver")
     @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<Void> deliverOrder(@PathVariable Long id) {
         orderService.deliverOrder(id);
+        return success();
+    }
+
+    @PutMapping("/{id}/confirm")
+    @PreAuthorize("hasRole('ADMIN') or hasRole('CONSUMER')")
+    public ResponseEntity<?> confirmReceipt(@PathVariable Long id,
+                                            @AuthenticationPrincipal CustomUserDetails currentUser) {
+        Optional<Order> order = orderService.findById(id);
+        if (order.isPresent() && isOwnerOrAdmin(currentUser, order.get())) {
+            orderService.confirmReceipt(id);
+            return success();
+        }
+        return redirectForUser(currentUser);
+    }
+
+    @PutMapping("/{id}/approve-payment")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<Void> approvePayout(@PathVariable Long id) {
+        orderService.approvePayout(id);
         return success();
     }
 
@@ -217,6 +243,15 @@ public class OrderController extends BaseController {
         dto.setPaymentTime(order.getPaymentTime());
         dto.setShippingTime(order.getShippingTime());
         dto.setDeliveryTime(order.getDeliveryTime());
+        dto.setInTransitTime(order.getInTransitTime());
+        dto.setConsumerConfirmationTime(order.getConsumerConfirmationTime());
+        dto.setAdminApprovalTime(order.getAdminApprovalTime());
+        dto.setPayoutStatus(order.getPayoutStatus());
+        dto.setAdminHoldingAmount(order.getAdminHoldingAmount());
+        if (order.getManagingAdmin() != null) {
+            dto.setManagingAdminId(order.getManagingAdmin().getId());
+            dto.setManagingAdminName(order.getManagingAdmin().getUsername());
+        }
 
         List<OrderItemDetailDTO> items = Optional.ofNullable(order.getOrderItems())
                 .orElse(List.of())
