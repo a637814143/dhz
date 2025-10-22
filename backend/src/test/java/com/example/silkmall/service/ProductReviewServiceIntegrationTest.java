@@ -1,5 +1,6 @@
 package com.example.silkmall.service;
 
+import com.example.silkmall.config.ProductReviewSchemaFixer;
 import com.example.silkmall.entity.Admin;
 import com.example.silkmall.entity.Consumer;
 import com.example.silkmall.entity.Order;
@@ -16,6 +17,7 @@ import com.example.silkmall.security.CustomUserDetails;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.test.context.TestPropertySource;
 
@@ -58,6 +60,12 @@ class ProductReviewServiceIntegrationTest {
 
     @Autowired
     private OrderItemRepository orderItemRepository;
+
+    @Autowired
+    private JdbcTemplate jdbcTemplate;
+
+    @Autowired
+    private ProductReviewSchemaFixer schemaFixer;
 
     @Test
     void consumerCanSubmitReviewAfterAdminReviewForSameOrderItem() {
@@ -150,6 +158,26 @@ class ProductReviewServiceIntegrationTest {
                 .orElseThrow();
         assertThat(savedConsumerReview.getConsumer()).isNotNull();
         assertThat(savedConsumerReview.getConsumer().getId()).isEqualTo(consumer.getId());
+    }
+
+    @Test
+    void schemaFixerDropsLegacyOrderItemUniqueIndex() {
+        productReviewRepository.deleteAll();
+        productReviewRepository.flush();
+
+        jdbcTemplate.execute("CREATE UNIQUE INDEX legacy_pr_order_item ON product_reviews(order_item_id)");
+
+        Integer before = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM INFORMATION_SCHEMA.INDEXES WHERE UPPER(INDEX_NAME) = 'LEGACY_PR_ORDER_ITEM'",
+                Integer.class);
+        assertThat(before).isEqualTo(1);
+
+        schemaFixer.ensureFlexibleReviewSchema();
+
+        Integer after = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM INFORMATION_SCHEMA.INDEXES WHERE UPPER(INDEX_NAME) = 'LEGACY_PR_ORDER_ITEM'",
+                Integer.class);
+        assertThat(after).isZero();
     }
 }
 
