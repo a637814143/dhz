@@ -47,7 +47,22 @@ const paymentMethodLabelMap = paymentOptions.reduce<Record<string, string>>((map
   return map
 }, {})
 
-const pendingPaymentStatuses = ['待付款', '未支付', '待支付'] as const
+const normalizeStatusValue = (value: string) =>
+  value.trim().replace(/[\s_-]+/g, '').toUpperCase()
+
+const pendingPaymentStatusValues = [
+  '待付款',
+  '未支付',
+  '待支付',
+  'PENDING PAYMENT',
+  'AWAITING PAYMENT',
+  'UNPAID',
+  'NOT PAID',
+] as const
+
+const pendingPaymentStatusSet = new Set(
+  pendingPaymentStatusValues.map((value) => normalizeStatusValue(value))
+)
 
 const reviewMap = computed(() => {
   const map = new Map<number, ProductReview[]>()
@@ -90,9 +105,10 @@ const pendingReturnMap = computed(() => {
 })
 
 const isPendingPayment = computed(() => {
-  const status = orderDetail.value?.status?.trim()
+  const status = orderDetail.value?.status
   if (!status) return false
-  return pendingPaymentStatuses.some((item) => item === status)
+  const normalized = normalizeStatusValue(status)
+  return normalized.length > 0 && pendingPaymentStatusSet.has(normalized)
 })
 
 const canInitiatePayment = computed(() => {

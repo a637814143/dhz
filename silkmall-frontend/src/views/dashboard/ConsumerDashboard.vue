@@ -148,7 +148,22 @@ const reviewMap = computed(() => {
 })
 const hasReviews = computed(() => myReviews.value.length > 0)
 
-const pendingPaymentStatuses = ['待付款', '未支付', '待支付'] as const
+const normalizeStatusValue = (value: string) =>
+  value.trim().replace(/[\s_-]+/g, '').toUpperCase()
+
+const pendingPaymentStatusValues = [
+  '待付款',
+  '未支付',
+  '待支付',
+  'PENDING PAYMENT',
+  'AWAITING PAYMENT',
+  'UNPAID',
+  'NOT PAID',
+] as const
+
+const pendingPaymentStatusSet = new Set(
+  pendingPaymentStatusValues.map((value) => normalizeStatusValue(value))
+)
 const paymentOptions = [
   { value: 'WECHAT', label: '微信支付' },
   { value: 'ALIPAY', label: '支付宝' },
@@ -275,9 +290,8 @@ function paymentLabel(method?: string | null) {
 
 function isPendingPaymentStatus(status?: string | null) {
   if (!status) return false
-  const normalized = status.trim()
-  if (!normalized) return false
-  return pendingPaymentStatuses.some((item) => item === normalized)
+  const normalized = normalizeStatusValue(status)
+  return normalized.length > 0 && pendingPaymentStatusSet.has(normalized)
 }
 
 function membershipBadge(level?: string | null) {
