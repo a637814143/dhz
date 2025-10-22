@@ -182,6 +182,7 @@ export interface OrderDetail {
   totalAmount: number
   totalQuantity: number
   status: string
+  paymentMethod?: string | null
   shippingAddress?: string | null
   recipientName?: string | null
   recipientPhone?: string | null

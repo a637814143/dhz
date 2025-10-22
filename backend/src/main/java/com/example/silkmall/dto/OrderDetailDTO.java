@@ -11,6 +11,7 @@ public class OrderDetailDTO {
     private BigDecimal totalAmount;
     private Integer totalQuantity;
     private String status;
+    private String paymentMethod;
     private String shippingAddress;
     private String recipientName;
     private String recipientPhone;
@@ -65,6 +66,14 @@ public class OrderDetailDTO {
 
     public void setStatus(String status) {
         this.status = status;
+    }
+
+    public String getPaymentMethod() {
+        return paymentMethod;
+    }
+
+    public void setPaymentMethod(String paymentMethod) {
+        this.paymentMethod = paymentMethod;
     }
 
     public String getShippingAddress() {

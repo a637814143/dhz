@@ -60,6 +60,7 @@ const orderDetailLoading = ref(false)
 const orderDetailError = ref<string | null>(null)
 
 const showOrderDetailModal = ref(false)
+const showPaymentModal = ref(false)
 const showReturnModal = ref(false)
 const showEditModal = ref(false)
 const showProfileModal = ref(false)
@@ -111,6 +112,11 @@ const profileSubmitting = ref(false)
 const profileFormMessage = ref<string | null>(null)
 const profileFormError = ref<string | null>(null)
 
+const paymentOrder = ref<OrderSummary | null>(null)
+const paymentMethod = ref('WECHAT')
+const paymentSubmitting = ref(false)
+const paymentError = ref<string | null>(null)
+
 const orderItems = computed<OrderItemDetail[]>(() => orderDetail.value?.orderItems ?? [])
 const hasRecommendations = computed(() => (homeContent.value?.recommendations?.length ?? 0) > 0)
 const hasAnnouncements = computed(() => announcements.value.length > 0)
@@ -141,6 +147,18 @@ const reviewMap = computed(() => {
   return map
 })
 const hasReviews = computed(() => myReviews.value.length > 0)
+
+const pendingPaymentStatuses = ['待付款', '未支付', '待支付'] as const
+const paymentOptions = [
+  { value: 'WECHAT', label: '微信支付' },
+  { value: 'ALIPAY', label: '支付宝' },
+  { value: 'BANK', label: '银行转账' },
+  { value: 'COD', label: '货到付款' },
+]
+const paymentLabelMap = paymentOptions.reduce<Record<string, string>>((map, option) => {
+  map[option.value] = option.label
+  return map
+}, {})
 
 async function loadProfile() {
   if (!state.user) return
@@ -250,6 +268,18 @@ function formatDateTime(value?: string | null) {
   return date.toLocaleString('zh-CN', { hour12: false })
 }
 
+function paymentLabel(method?: string | null) {
+  if (!method) return ''
+  return paymentLabelMap[method] ?? method
+}
+
+function isPendingPaymentStatus(status?: string | null) {
+  if (!status) return false
+  const normalized = status.trim()
+  if (!normalized) return false
+  return pendingPaymentStatuses.some((item) => item === normalized)
+}
+
 function membershipBadge(level?: string | null) {
   if (!level) return '普通会员'
   return level
@@ -331,6 +361,18 @@ function syncOrderSummary(detail: OrderDetail) {
   }
 }
 
+async function fetchAndUpdateOrder(orderId: number) {
+  const { data } = await api.get<OrderDetail>(`/orders/${orderId}/detail`)
+  syncOrderSummary(data)
+  if (orderDetail.value?.id === data.id) {
+    orderDetail.value = data
+  }
+  if (activeOrder.value?.id === data.id) {
+    activeOrder.value = toOrderSummary(data)
+  }
+  return data
+}
+
 async function fetchOrderDetail(orderId: number) {
   orderDetailLoading.value = true
   orderDetailError.value = null
@@ -355,6 +397,57 @@ async function ensureOrderDetail(order: OrderSummary) {
     return orderDetail.value
   }
   return fetchOrderDetail(order.id)
+}
+
+async function openPaymentDialog(order: OrderSummary) {
+  paymentOrder.value = order
+  paymentMethod.value = 'WECHAT'
+  paymentError.value = null
+  paymentSubmitting.value = false
+  showPaymentModal.value = true
+  try {
+    const detail = await fetchAndUpdateOrder(order.id)
+    paymentOrder.value = toOrderSummary(detail)
+    if (detail.paymentMethod) {
+      paymentMethod.value = detail.paymentMethod
+    }
+  } catch (err) {
+    const message = err instanceof Error ? err.message : '加载订单支付信息失败'
+    paymentError.value = message
+  }
+}
+
+function closePaymentModal() {
+  if (paymentSubmitting.value) {
+    return
+  }
+  showPaymentModal.value = false
+  paymentOrder.value = null
+  paymentError.value = null
+}
+
+async function submitPayment() {
+  if (!paymentOrder.value) return
+  const method = paymentMethod.value?.trim()
+  if (!method) {
+    paymentError.value = '请选择支付方式'
+    return
+  }
+  paymentError.value = null
+  paymentSubmitting.value = true
+  try {
+    await api.put(`/orders/${paymentOrder.value.id}/pay`, null, {
+      params: { paymentMethod: method },
+    })
+    await fetchAndUpdateOrder(paymentOrder.value.id)
+    showPaymentModal.value = false
+    paymentOrder.value = null
+  } catch (err) {
+    const message = err instanceof Error ? err.message : '支付失败，请稍后再试'
+    paymentError.value = message
+  } finally {
+    paymentSubmitting.value = false
+  }
 }
 
 function resetReviewContext() {
@@ -1019,6 +1112,14 @@ const shortcutLinks = [
                   <td><span class="status-pill">{{ order.status }}</span></td>
                   <td>{{ formatDateTime(order.orderTime) }}</td>
                   <td class="actions-cell">
+                    <button
+                      v-if="isPendingPaymentStatus(order.status)"
+                      type="button"
+                      class="link-button"
+                      @click="openPaymentDialog(order)"
+                    >
+                      去付款
+                    </button>
                     <button type="button" class="link-button" @click="openOrderDetail(order)">
                       查看订单
                     </button>
@@ -1237,6 +1338,10 @@ const shortcutLinks = [
                 <dd>{{ formatDateTime(orderDetail.paymentTime) }}</dd>
               </div>
               <div>
+                <dt>支付方式</dt>
+                <dd>{{ orderDetail.paymentMethod ? paymentLabel(orderDetail.paymentMethod) : '—' }}</dd>
+              </div>
+              <div>
                 <dt>发货时间</dt>
                 <dd>{{ formatDateTime(orderDetail.shippingTime) }}</dd>
               </div>
@@ -1380,6 +1485,48 @@ const shortcutLinks = [
         <footer class="modal-actions">
           <button type="button" class="ghost-button" @click="closeOrderDetailModal">关闭</button>
         </footer>
+      </section>
+    </div>
+
+    <div v-if="showPaymentModal" class="modal-backdrop" @click.self="closePaymentModal">
+      <section class="modal" role="dialog" aria-modal="true" aria-labelledby="payment-title">
+        <header class="modal-header">
+          <h3 id="payment-title">订单付款</h3>
+          <button type="button" class="icon-button" aria-label="关闭" @click="closePaymentModal">
+            ×
+          </button>
+        </header>
+        <form class="modal-body" @submit.prevent="submitPayment">
+          <div class="modal-summary">
+            <p><strong>订单编号：</strong>{{ paymentOrder?.orderNo ?? '—' }}</p>
+            <p><strong>订单金额：</strong>{{ formatCurrency(paymentOrder?.totalAmount) }}</p>
+            <p><strong>商品数量：</strong>{{ paymentOrder?.totalQuantity ?? 0 }} 件</p>
+            <p><strong>当前状态：</strong>{{ paymentOrder?.status ?? '—' }}</p>
+          </div>
+          <label>
+            <span>支付方式</span>
+            <select v-model="paymentMethod" :disabled="paymentSubmitting">
+              <option v-for="option in paymentOptions" :key="option.value" :value="option.value">
+                {{ option.label }}
+              </option>
+            </select>
+          </label>
+          <p class="modal-status">确认付款后，系统将自动扣款并更新订单状态。</p>
+          <p v-if="paymentError" class="modal-error">{{ paymentError }}</p>
+          <footer class="modal-actions">
+            <button type="submit" class="primary-button" :disabled="paymentSubmitting">
+              {{ paymentSubmitting ? '支付中…' : '确认付款' }}
+            </button>
+            <button
+              type="button"
+              class="ghost-button"
+              :disabled="paymentSubmitting"
+              @click="closePaymentModal"
+            >
+              取消
+            </button>
+          </footer>
+        </form>
       </section>
     </div>
 
@@ -1954,6 +2101,18 @@ const shortcutLinks = [
   display: grid;
   gap: 1rem;
   overflow-y: auto;
+}
+
+.modal-summary {
+  display: grid;
+  gap: 0.35rem;
+  font-size: 0.95rem;
+  color: rgba(17, 24, 39, 0.7);
+}
+
+.modal-summary strong {
+  font-weight: 600;
+  color: rgba(17, 24, 39, 0.85);
 }
 
 .modal-actions {

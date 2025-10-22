@@ -236,6 +236,7 @@ public class OrderController extends BaseController {
         dto.setTotalAmount(order.getTotalAmount());
         dto.setTotalQuantity(order.getTotalQuantity());
         dto.setStatus(order.getStatus());
+        dto.setPaymentMethod(order.getPaymentMethod());
         dto.setShippingAddress(order.getShippingAddress());
         dto.setRecipientName(order.getRecipientName());
         dto.setRecipientPhone(order.getRecipientPhone());
