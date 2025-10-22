@@ -8,9 +8,7 @@ import com.example.silkmall.entity.Admin;
 import com.example.silkmall.entity.Supplier;
 
 @Entity
-@Table(name = "product_reviews", uniqueConstraints = {
-        @UniqueConstraint(columnNames = {"order_item_id"})
-})
+@Table(name = "product_reviews")
 public class ProductReview {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
