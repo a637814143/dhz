@@ -5,11 +5,11 @@ import com.example.silkmall.dto.CategoryOptionDTO;
 import com.example.silkmall.entity.Category;
 import com.example.silkmall.service.CategoryService;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.Pageable;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.dao.EmptyResultDataAccessException;
 import java.util.List;
 import java.util.Optional;
 
@@ -99,9 +99,15 @@ public class CategoryController extends BaseController {
     }
     
     @DeleteMapping("/{id}")
-    public ResponseEntity<Void> deleteCategory(@PathVariable Long id) {
-        categoryService.deleteById(id);
-        return success();
+    public ResponseEntity<?> deleteCategory(@PathVariable Long id) {
+        try {
+            categoryService.deleteById(id);
+            return success();
+        } catch (EmptyResultDataAccessException ex) {
+            return notFound("分类不存在");
+        } catch (DataIntegrityViolationException ex) {
+            return badRequest("该分类下仍有关联商品，无法删除");
+        }
     }
     
     @GetMapping

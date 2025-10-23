@@ -87,6 +87,7 @@ const categoryNameInput = ref('')
 const categorySaving = ref(false)
 const categoryFeedback = ref<string | null>(null)
 const categoryError = ref<string | null>(null)
+const categoryDeletingId = ref<number | null>(null)
 
 function extractNumericId(value: unknown): number | null {
   if (typeof value === 'number' && Number.isFinite(value)) {
@@ -604,12 +605,45 @@ async function createCategory() {
 
     mergeCategoryOption(option)
     categoryNameInput.value = ''
-    categoryFeedback.value = '分类创建成功'
+    categoryFeedback.value = `分类「${name}」创建成功`
   } catch (err) {
     const message = err instanceof Error ? err.message : '创建分类失败'
     categoryError.value = message
   } finally {
     categorySaving.value = false
+  }
+}
+
+async function removeCategory(option: CategoryOption) {
+  const id = option?.id
+  if (typeof id !== 'number') {
+    return
+  }
+
+  const name = (option.name ?? '').trim()
+  const label = name.length > 0 ? `分类「${name}」` : '该分类'
+  if (!window.confirm(`确定删除${label}吗？此操作不可撤销。`)) {
+    return
+  }
+
+  categoryFeedback.value = null
+  categoryError.value = null
+  categoryDeletingId.value = id
+
+  try {
+    await api.delete(`/categories/${id}`)
+    categories.value = categories.value.filter((item) => item.id !== id)
+    if (productForm.categoryId === id) {
+      productForm.categoryId = null
+    }
+    categoryFeedback.value = name.length > 0 ? `分类「${name}」已删除` : '分类已删除'
+  } catch (err) {
+    const message = err instanceof Error ? err.message : '删除分类失败'
+    categoryError.value = message
+  } finally {
+    if (categoryDeletingId.value === id) {
+      categoryDeletingId.value = null
+    }
   }
 }
 
@@ -735,6 +769,23 @@ const statusOptions = [
           </div>
           <p v-if="categoryFeedback" class="success">{{ categoryFeedback }}</p>
           <p v-if="categoryError" class="error">{{ categoryError }}</p>
+          <div class="category-existing">
+            <h5>已有分类</h5>
+            <p v-if="!categories.length" class="empty">暂无分类，创建后可在此管理。</p>
+            <ul v-else class="category-list">
+              <li v-for="category in categories" :key="category.id">
+                <span>{{ category.name }}</span>
+                <button
+                  type="button"
+                  class="link-button danger"
+                  @click="removeCategory(category)"
+                  :disabled="categoryDeletingId === category.id"
+                >
+                  {{ categoryDeletingId === category.id ? '删除中…' : '删除' }}
+                </button>
+              </li>
+            </ul>
+          </div>
         </div>
       </section>
 
@@ -1197,6 +1248,11 @@ const statusOptions = [
   color: #b91c1c;
 }
 
+.link-button[disabled] {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
 .product-modal {
   display: grid;
   gap: 1.1rem;
@@ -1275,6 +1331,50 @@ const statusOptions = [
 
 .category-create .error {
   color: #b91c1c;
+}
+
+.category-existing {
+  border-top: 1px solid rgba(15, 23, 42, 0.08);
+  padding-top: 1rem;
+  display: grid;
+  gap: 0.75rem;
+}
+
+.category-existing h5 {
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: rgba(15, 23, 42, 0.75);
+}
+
+.category-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.5rem;
+}
+
+.category-list li {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.55rem 0.75rem;
+  border-radius: 0.75rem;
+  background: rgba(15, 23, 42, 0.04);
+}
+
+.category-list li span {
+  font-weight: 600;
+  color: rgba(15, 23, 42, 0.8);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.category-list li button {
+  white-space: nowrap;
 }
 
 .empty {
