@@ -96,13 +96,7 @@ public class AuthController extends BaseController {
                 supplier.setRole("supplier");
                 return created(supplierService.register(supplier));
             case "admin":
-                Admin admin = new Admin();
-                admin.setUsername(registerDTO.getUsername());
-                admin.setPassword(passwordEncoder.encode(registerDTO.getPassword()));
-                admin.setEmail(registerDTO.getEmail());
-                admin.setPhone(registerDTO.getPhone());
-                admin.setRole("admin");
-                return created(adminService.register(admin));
+                return error("管理员账号仅支持登录", HttpStatus.FORBIDDEN);
             default:
                 return badRequest("不支持的角色类型");
         }

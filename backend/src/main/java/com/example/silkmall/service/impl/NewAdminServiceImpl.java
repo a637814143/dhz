@@ -27,6 +27,14 @@ public class NewAdminServiceImpl implements AdminService {
     
     @Override
     public Admin save(Admin admin) {
+        if (admin.getId() == null) {
+            throw new IllegalStateException("管理员账号不支持新建");
+        }
+
+        if (!newAdminRepository.existsById(admin.getId())) {
+            throw new IllegalStateException("管理员不存在: " + admin.getId());
+        }
+
         return newAdminRepository.save(admin);
     }
     
@@ -42,6 +50,14 @@ public class NewAdminServiceImpl implements AdminService {
     
     @Override
     public void deleteById(Long id) {
+        if (!newAdminRepository.existsById(id)) {
+            throw new IllegalStateException("管理员不存在: " + id);
+        }
+
+        if (newAdminRepository.count() <= 1) {
+            throw new IllegalStateException("系统必须保留至少一个管理员账号");
+        }
+
         newAdminRepository.deleteById(id);
     }
     
@@ -72,6 +88,10 @@ public class NewAdminServiceImpl implements AdminService {
     
     @Override
     public Admin register(Admin admin) {
+        if (newAdminRepository.count() >= 1) {
+            throw new IllegalStateException("系统已存在管理员账号，禁止创建新的管理员");
+        }
+
         if (existsByUsername(admin.getUsername())) {
             throw new RuntimeException("用户名已存在");
         }
@@ -93,6 +113,10 @@ public class NewAdminServiceImpl implements AdminService {
     
     @Override
     public Admin update(Admin admin) {
+        if (admin.getId() == null || !newAdminRepository.existsById(admin.getId())) {
+            throw new IllegalStateException("管理员不存在: " + admin.getId());
+        }
+
         // 确保密码不会被明文保存
         if (admin.getPassword() != null && !admin.getPassword().startsWith("{bcrypt}")) {
             admin.setPassword(passwordEncoder.encode(admin.getPassword()));

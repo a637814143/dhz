@@ -8,6 +8,7 @@ import com.example.silkmall.service.AdminService;
 import com.example.silkmall.service.ConsumerService;
 import com.example.silkmall.service.SupplierService;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.web.bind.annotation.*;
@@ -103,14 +104,14 @@ public class UserController extends BaseController {
     }
     
     @DeleteMapping("/{id}")
-    public ResponseEntity<Void> deleteUser(@PathVariable Long id) {
+    public ResponseEntity<?> deleteUser(@PathVariable Long id) {
         // 依次尝试删除不同类型的用户
         if (consumerService.findById(id).isPresent()) {
             consumerService.deleteById(id);
         } else if (supplierService.findById(id).isPresent()) {
             supplierService.deleteById(id);
         } else if (adminService.findById(id).isPresent()) {
-            adminService.deleteById(id);
+            return error("管理员账号不支持删除", HttpStatus.FORBIDDEN);
         } else {
             throw new RuntimeException("用户不存在");
         }
@@ -130,9 +131,8 @@ public class UserController extends BaseController {
     }
     
     @PostMapping("/admins/register")
-    public ResponseEntity<Admin> registerAdmin(@RequestBody Admin admin) {
-        admin.setRole("admin");
-        return created(adminService.register(admin));
+    public ResponseEntity<?> registerAdmin(@RequestBody Admin admin) {
+        return error("管理员账号仅支持登录，禁止注册", HttpStatus.FORBIDDEN);
     }
     
     @PostMapping("/reset-password")
@@ -173,14 +173,14 @@ public class UserController extends BaseController {
     }
     
     @PutMapping("/{id}/disable")
-    public ResponseEntity<Void> disableUser(@PathVariable Long id) {
+    public ResponseEntity<?> disableUser(@PathVariable Long id) {
         // 依次尝试禁用不同类型的用户
         if (consumerService.findById(id).isPresent()) {
             consumerService.disable(id);
         } else if (supplierService.findById(id).isPresent()) {
             supplierService.disable(id);
         } else if (adminService.findById(id).isPresent()) {
-            adminService.disable(id);
+            return error("管理员账号不支持禁用", HttpStatus.FORBIDDEN);
         } else {
             throw new RuntimeException("用户不存在");
         }

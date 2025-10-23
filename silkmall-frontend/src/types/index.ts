@@ -270,6 +270,7 @@ export interface CaptchaChallenge {
 }
 
 export type UserRole = 'consumer' | 'supplier' | 'admin'
+export type RegisterableUserRole = 'consumer' | 'supplier'
 
 export interface AuthUser {
   id: number
@@ -300,5 +301,5 @@ export interface RegisterPayload {
   confirmPassword: string
   email: string
   phone: string
-  userType: UserRole
+  userType: RegisterableUserRole
 }

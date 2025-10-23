@@ -5,7 +5,6 @@ import com.example.silkmall.dto.LoginResponseDTO;
 import com.example.silkmall.dto.RegisterDTO;
 import com.example.silkmall.dto.ResponseDTO;
 import com.example.silkmall.dto.UserProfileDTO;
-import com.example.silkmall.entity.Admin;
 import com.example.silkmall.entity.Consumer;
 import com.example.silkmall.entity.Supplier;
 import com.example.silkmall.security.CaptchaService;
@@ -146,15 +145,8 @@ public class NewAuthController extends BaseController {
                 return ResponseEntity.status(HttpStatus.CREATED)
                         .body(ResponseDTO.success());
             case "admin":
-                Admin admin = new Admin();
-                admin.setUsername(registerDTO.getUsername());
-                admin.setPassword(registerDTO.getPassword());
-                admin.setEmail(registerDTO.getEmail());
-                admin.setPhone(registerDTO.getPhone());
-                admin.setRole("admin");
-                adminService.register(admin);
-                return ResponseEntity.status(HttpStatus.CREATED)
-                        .body(ResponseDTO.success());
+                return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                        .body(ResponseDTO.error(HttpStatus.FORBIDDEN.value(), "管理员账号仅支持登录"));
             default:
                 return ResponseEntity.badRequest().body(ResponseDTO.error("不支持的角色类型"));
         }

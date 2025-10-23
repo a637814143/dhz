@@ -14,6 +14,7 @@ import type {
   CaptchaChallenge,
   LoginPayload,
   RegisterPayload,
+  RegisterableUserRole,
   UserRole,
 } from '@/types'
 
@@ -53,10 +54,9 @@ const registerLoading = ref(false)
 const registerError = ref<string | null>(null)
 const registerSuccessBanner = ref<string | null>(null)
 
-const roles: { label: string; value: UserRole; description: string }[] = [
+const roles: { label: string; value: RegisterableUserRole; description: string }[] = [
   { label: '采购/消费者', value: 'consumer', description: '浏览商城、下单、评价与售后' },
   { label: '供应商', value: 'supplier', description: '管理商品、库存、订单发货' },
-  { label: '平台管理员', value: 'admin', description: '运维管理端、配置公告与权限' },
 ]
 
 const canSubmitLogin = computed(() => {
