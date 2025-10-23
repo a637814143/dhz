@@ -200,6 +200,38 @@ export interface OrderDetail {
   orderItems: OrderItemDetail[]
 }
 
+export interface SupplierOrderItem {
+  id: number
+  quantity: number
+  unitPrice: number
+  totalPrice: number
+  createdAt: string
+  productId?: number | null
+  productName?: string | null
+  productMainImage?: string | null
+}
+
+export interface SupplierOrderSummary {
+  id: number
+  orderNo: string
+  status: string
+  totalQuantity: number
+  totalAmount: number
+  supplierTotalQuantity: number
+  supplierTotalAmount: number
+  recipientName?: string | null
+  recipientPhone?: string | null
+  shippingAddress?: string | null
+  orderTime: string
+  paymentTime?: string | null
+  shippingTime?: string | null
+  deliveryTime?: string | null
+  inTransitTime?: string | null
+  canShip: boolean
+  mixedSuppliers: boolean
+  items: SupplierOrderItem[]
+}
+
 export interface ProductReview {
   id: number
   orderId: number

@@ -79,7 +79,30 @@ public class OrderServiceImpl extends BaseServiceImpl<Order, Long> implements Or
     public Page<Order> findByStatus(String status, Pageable pageable) {
         return orderRepository.findByStatus(status, pageable);
     }
-    
+
+    @Override
+    public Page<Order> findBySupplierId(Long supplierId, Pageable pageable) {
+        if (supplierId == null) {
+            throw new RuntimeException("供应商ID不能为空");
+        }
+
+        Pageable candidate = pageable == null ? Pageable.unpaged() : pageable;
+
+        Sort sort = candidate.getSort();
+        if (sort == null || sort.isUnsorted()) {
+            sort = Sort.by(Sort.Direction.DESC, "orderTime");
+        }
+
+        Pageable sortedPageable;
+        if (candidate.isPaged()) {
+            sortedPageable = PageRequest.of(candidate.getPageNumber(), candidate.getPageSize(), sort);
+        } else {
+            sortedPageable = PageRequest.of(0, 20, sort);
+        }
+
+        return orderRepository.findDistinctByOrderItems_Product_Supplier_Id(supplierId, sortedPageable);
+    }
+
     @Override
     public List<Order> findByOrderNo(String orderNo) {
         return orderRepository.findByOrderNo(orderNo);
@@ -212,6 +235,55 @@ public class OrderServiceImpl extends BaseServiceImpl<Order, Long> implements Or
 
         if (!PENDING_SHIPMENT.equals(order.getStatus())) {
             throw new RuntimeException("只有待发货的订单才能发货");
+        }
+
+        order.setStatus(SHIPPED);
+        order.setShippingTime(new Date());
+
+        orderRepository.save(order);
+    }
+
+    @Transactional
+    @Override
+    public void supplierShipOrder(Long id, Long supplierId) {
+        if (supplierId == null) {
+            throw new RuntimeException("供应商信息缺失");
+        }
+
+        Order order = orderRepository.findDetailedById(id)
+                .orElseThrow(() -> new RuntimeException("订单不存在"));
+
+        if (!PENDING_SHIPMENT.equals(order.getStatus())) {
+            throw new RuntimeException("只有待发货的订单才能发货");
+        }
+
+        List<OrderItem> items = order.getOrderItems();
+        if (items == null || items.isEmpty()) {
+            throw new RuntimeException("订单缺少商品信息");
+        }
+
+        boolean hasSupplierItems = false;
+        for (OrderItem item : items) {
+            Product product = item.getProduct();
+            if (product == null) {
+                product = productRepository.findById(item.getProduct().getId())
+                        .orElseThrow(() -> new RuntimeException("产品不存在: " + item.getProduct().getId()));
+                item.setProduct(product);
+            }
+
+            Supplier supplier = product.getSupplier();
+            Long itemSupplierId = supplier == null ? null : supplier.getId();
+            if (itemSupplierId == null) {
+                throw new RuntimeException("商品缺少供应商信息，无法发货");
+            }
+            if (!itemSupplierId.equals(supplierId)) {
+                throw new RuntimeException("订单包含其他供应商的商品，无法确认发货");
+            }
+            hasSupplierItems = true;
+        }
+
+        if (!hasSupplierItems) {
+            throw new RuntimeException("订单中没有该供应商的商品");
         }
 
         order.setStatus(SHIPPED);

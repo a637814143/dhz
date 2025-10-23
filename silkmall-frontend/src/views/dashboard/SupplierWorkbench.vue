@@ -2,7 +2,13 @@
 import { computed, onMounted, reactive, ref } from 'vue'
 import api from '@/services/api'
 import { useAuthState } from '@/services/authState'
-import type { CategoryOption, HomepageContent, PageResponse, ProductSummary } from '@/types'
+import type {
+  CategoryOption,
+  HomepageContent,
+  PageResponse,
+  ProductSummary,
+  SupplierOrderSummary,
+} from '@/types'
 
 interface SupplierProfile {
   id: number
@@ -31,6 +37,7 @@ const { state } = useAuthState()
 
 const profile = ref<SupplierProfile | null>(null)
 const products = ref<ProductSummary[]>([])
+const soldOrders = ref<SupplierOrderSummary[]>([])
 const homeContent = ref<HomepageContent | null>(null)
 const loading = ref(true)
 const error = ref<string | null>(null)
@@ -61,6 +68,9 @@ const savingProduct = ref(false)
 const productFormError = ref<string | null>(null)
 const productFormMessage = ref<string | null>(null)
 const deletingProductId = ref<number | null>(null)
+const soldOrdersLoading = ref(false)
+const soldOrdersError = ref<string | null>(null)
+const shippingOrderId = ref<number | null>(null)
 
 const productForm = reactive({
   id: null as number | null,
@@ -108,6 +118,32 @@ async function loadProducts() {
     params: { page: 0, size: 6 },
   })
   products.value = data.content ?? []
+}
+
+async function loadSoldOrders() {
+  if (!state.user) {
+    soldOrders.value = []
+    soldOrdersError.value = null
+    soldOrdersLoading.value = false
+    return
+  }
+
+  soldOrdersLoading.value = true
+  soldOrdersError.value = null
+  try {
+    const { data } = await api.get<PageResponse<SupplierOrderSummary>>(
+      `/orders/supplier/${state.user.id}`,
+      {
+        params: { page: 0, size: 8 },
+      }
+    )
+    soldOrders.value = data.content ?? []
+  } catch (err) {
+    soldOrders.value = []
+    soldOrdersError.value = err instanceof Error ? err.message : '加载已销售订单失败'
+  } finally {
+    soldOrdersLoading.value = false
+  }
 }
 
 async function loadHomeContent() {
@@ -330,7 +366,14 @@ async function bootstrap() {
   loading.value = true
   error.value = null
   try {
-    await Promise.all([loadProfile(), loadProducts(), loadHomeContent(), loadCategories(), loadWallet()])
+    await Promise.all([
+      loadProfile(),
+      loadProducts(),
+      loadSoldOrders(),
+      loadHomeContent(),
+      loadCategories(),
+      loadWallet(),
+    ])
   } catch (err) {
     error.value = err instanceof Error ? err.message : '加载供应商数据失败'
   } finally {
@@ -349,6 +392,19 @@ const onSaleProducts = computed(() => products.value.filter((item) => item.statu
 function formatCurrency(amount?: number | null) {
   if (typeof amount !== 'number' || Number.isNaN(amount)) return '¥0.00'
   return new Intl.NumberFormat('zh-CN', { style: 'currency', currency: 'CNY' }).format(amount)
+}
+
+function formatDateTime(value?: string | null) {
+  if (!value) return '—'
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return '—'
+  return date.toLocaleString('zh-CN', { hour12: false })
+}
+
+function orderStatusLabel(status?: string | null) {
+  if (!status) return '未知状态'
+  const normalized = status.trim()
+  return normalized.length > 0 ? normalized : '未知状态'
 }
 
 function productStatus(status?: string | null) {
@@ -482,6 +538,21 @@ async function deleteProduct(productId: number) {
     window.alert(message)
   } finally {
     deletingProductId.value = null
+  }
+}
+
+async function confirmShipment(orderId: number) {
+  if (!window.confirm('确认已将该订单中的商品交付物流？')) return
+  shippingOrderId.value = orderId
+  try {
+    await api.put(`/orders/${orderId}/supplier-ship`)
+    await loadSoldOrders()
+    window.alert('发货状态已更新')
+  } catch (err) {
+    const message = err instanceof Error ? err.message : '确认发货失败'
+    window.alert(message)
+  } finally {
+    shippingOrderId.value = null
   }
 }
 
@@ -665,6 +736,82 @@ const statusOptions = [
           <p v-if="categoryFeedback" class="success">{{ categoryFeedback }}</p>
           <p v-if="categoryError" class="error">{{ categoryError }}</p>
         </div>
+      </section>
+
+      <section class="panel sold-orders" aria-labelledby="sold-orders">
+        <div class="panel-title-row">
+          <div class="panel-title" id="sold-orders">已销售商品</div>
+        </div>
+        <p v-if="soldOrdersLoading" class="empty">正在加载已销售的订单…</p>
+        <p v-else-if="soldOrdersError" class="sold-order-error">{{ soldOrdersError }}</p>
+        <ul v-else-if="soldOrders.length" class="sold-order-list">
+          <li v-for="order in soldOrders" :key="order.id" class="sold-order-card">
+            <header class="sold-order-header">
+              <div>
+                <h3>订单号：{{ order.orderNo }}</h3>
+                <p>下单时间：{{ formatDateTime(order.orderTime) }}</p>
+                <p v-if="order.paymentTime">支付时间：{{ formatDateTime(order.paymentTime) }}</p>
+              </div>
+              <div class="sold-order-status">
+                <span class="status-pill">{{ orderStatusLabel(order.status) }}</span>
+                <span v-if="order.mixedSuppliers" class="sold-order-note">含其他供应商商品</span>
+              </div>
+            </header>
+            <div class="sold-order-body">
+              <dl class="sold-order-meta">
+                <div>
+                  <dt>收货人</dt>
+                  <dd>{{ order.recipientName ?? '—' }}</dd>
+                </div>
+                <div>
+                  <dt>联系电话</dt>
+                  <dd>{{ order.recipientPhone ?? '—' }}</dd>
+                </div>
+                <div>
+                  <dt>配送地址</dt>
+                  <dd>{{ order.shippingAddress ?? '—' }}</dd>
+                </div>
+                <div>
+                  <dt>商品金额</dt>
+                  <dd>{{ formatCurrency(order.supplierTotalAmount) }}</dd>
+                </div>
+                <div>
+                  <dt>商品数量</dt>
+                  <dd>{{ order.supplierTotalQuantity }}</dd>
+                </div>
+              </dl>
+              <p v-if="!order.items.length" class="sold-order-empty-items">订单中暂无属于您的商品</p>
+              <ul v-else class="sold-order-items">
+                <li v-for="item in order.items" :key="item.id">
+                  <div>
+                    <strong>{{ item.productName ?? '商品' }}</strong>
+                    <span>数量 × {{ item.quantity }}</span>
+                  </div>
+                  <div class="sold-order-item-amount">{{ formatCurrency(item.totalPrice) }}</div>
+                </li>
+              </ul>
+            </div>
+            <footer class="sold-order-footer">
+              <button
+                v-if="order.canShip"
+                type="button"
+                class="primary-button"
+                @click="confirmShipment(order.id)"
+                :disabled="shippingOrderId === order.id"
+              >
+                {{ shippingOrderId === order.id ? '更新中…' : '确认发货' }}
+              </button>
+              <span v-else class="sold-order-hint">
+                {{
+                  order.status === '待发货'
+                    ? '订单包含其他供应商商品，需平台协调发货'
+                    : '订单当前状态无需操作'
+                }}
+              </span>
+            </footer>
+          </li>
+        </ul>
+        <p v-else class="empty">暂时没有已销售的订单。</p>
       </section>
 
       <section class="panel promotions" aria-labelledby="promotion-list">
@@ -1132,6 +1279,153 @@ const statusOptions = [
 
 .empty {
   color: rgba(15, 23, 42, 0.6);
+}
+
+.sold-orders {
+  gap: 1.75rem;
+}
+
+.sold-order-error {
+  color: #b91c1c;
+}
+
+.sold-order-list {
+  list-style: none;
+  padding: 0;
+  display: grid;
+  gap: 1.25rem;
+}
+
+.sold-order-card {
+  border: 1px solid rgba(14, 165, 233, 0.15);
+  border-radius: 18px;
+  padding: 1.5rem;
+  display: grid;
+  gap: 1rem;
+  background: rgba(240, 249, 255, 0.55);
+}
+
+.sold-order-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 1rem;
+}
+
+.sold-order-header h3 {
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 700;
+}
+
+.sold-order-header p {
+  margin: 0.15rem 0 0;
+  color: rgba(15, 23, 42, 0.6);
+  font-size: 0.9rem;
+}
+
+.sold-order-status {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.4rem;
+}
+
+.sold-order-note {
+  font-size: 0.75rem;
+  color: #92400e;
+  background: rgba(251, 191, 36, 0.2);
+  border-radius: 999px;
+  padding: 0.25rem 0.75rem;
+  font-weight: 600;
+}
+
+.sold-order-body {
+  display: grid;
+  gap: 1rem;
+}
+
+.sold-order-meta {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 0.75rem;
+  margin: 0;
+}
+
+.sold-order-meta div {
+  background: rgba(255, 255, 255, 0.8);
+  border-radius: 12px;
+  padding: 0.75rem;
+  display: grid;
+  gap: 0.35rem;
+}
+
+.sold-order-meta dt {
+  margin: 0;
+  font-size: 0.8rem;
+  color: rgba(15, 23, 42, 0.55);
+  font-weight: 600;
+}
+
+.sold-order-meta dd {
+  margin: 0;
+  font-weight: 700;
+  color: #0f172a;
+  word-break: break-word;
+}
+
+.sold-order-empty-items {
+  margin: 0;
+  padding: 0.75rem 1rem;
+  border-radius: 12px;
+  background: rgba(226, 232, 240, 0.45);
+  color: rgba(15, 23, 42, 0.6);
+  font-size: 0.9rem;
+}
+
+.sold-order-items {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  gap: 0.75rem;
+}
+
+.sold-order-items li {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  align-items: center;
+  background: rgba(14, 165, 233, 0.12);
+  padding: 0.75rem 1rem;
+  border-radius: 14px;
+}
+
+.sold-order-items strong {
+  font-size: 0.95rem;
+}
+
+.sold-order-items span {
+  font-size: 0.85rem;
+  color: rgba(15, 23, 42, 0.6);
+}
+
+.sold-order-item-amount {
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.sold-order-footer {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 1rem;
+}
+
+.sold-order-hint {
+  color: rgba(15, 23, 42, 0.6);
+  font-size: 0.9rem;
+  text-align: right;
 }
 
 .promotion-list {

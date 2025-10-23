@@ -2,9 +2,13 @@ package com.example.silkmall.controller;
 
 import com.example.silkmall.dto.OrderDetailDTO;
 import com.example.silkmall.dto.OrderItemDetailDTO;
+import com.example.silkmall.dto.SupplierOrderItemDTO;
+import com.example.silkmall.dto.SupplierOrderSummaryDTO;
 import com.example.silkmall.dto.UpdateOrderContactDTO;
 import com.example.silkmall.entity.Consumer;
 import com.example.silkmall.entity.Order;
+import com.example.silkmall.entity.OrderItem;
+import com.example.silkmall.entity.Product;
 import com.example.silkmall.service.OrderService;
 import com.example.silkmall.security.CustomUserDetails;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -16,9 +20,13 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
+import java.math.BigDecimal;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.stream.Collectors;
+
+import static com.example.silkmall.common.OrderStatuses.PENDING_SHIPMENT;
 
 @RestController
 @RequestMapping("/api/orders")
@@ -85,6 +93,15 @@ public class OrderController extends BaseController {
     @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<Page<Order>> getOrdersByStatus(@PathVariable String status, Pageable pageable) {
         return success(orderService.findByStatus(status, pageable));
+    }
+
+    @GetMapping("/supplier/{supplierId}")
+    @PreAuthorize("hasRole('ADMIN') or (hasRole('SUPPLIER') and #supplierId == principal.id)")
+    public ResponseEntity<Page<SupplierOrderSummaryDTO>> getOrdersBySupplier(@PathVariable Long supplierId,
+                                                                             Pageable pageable) {
+        Page<Order> orders = orderService.findBySupplierId(supplierId, pageable);
+        Page<SupplierOrderSummaryDTO> dtoPage = orders.map(order -> toSupplierOrderSummary(order, supplierId));
+        return success(dtoPage);
     }
 
     @GetMapping("/order-no/{orderNo}")
@@ -158,6 +175,17 @@ public class OrderController extends BaseController {
         return success();
     }
 
+    @PutMapping("/{id}/supplier-ship")
+    @PreAuthorize("hasRole('SUPPLIER')")
+    public ResponseEntity<?> supplierShipOrder(@PathVariable Long id,
+                                               @AuthenticationPrincipal CustomUserDetails currentUser) {
+        if (currentUser == null) {
+            return redirectForUser(null);
+        }
+        orderService.supplierShipOrder(id, currentUser.getId());
+        return success();
+    }
+
     @PutMapping("/{id}/in-transit")
     @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<Void> markInTransit(@PathVariable Long id) {
@@ -227,6 +255,72 @@ public class OrderController extends BaseController {
             return success(toOrderDetailDto(detail));
         }
         return redirectForUser(currentUser);
+    }
+
+    private SupplierOrderSummaryDTO toSupplierOrderSummary(Order order, Long supplierId) {
+        SupplierOrderSummaryDTO dto = new SupplierOrderSummaryDTO();
+        dto.setId(order.getId());
+        dto.setOrderNo(order.getOrderNo());
+        dto.setStatus(order.getStatus());
+        dto.setTotalAmount(order.getTotalAmount());
+        dto.setTotalQuantity(order.getTotalQuantity());
+        dto.setRecipientName(order.getRecipientName());
+        dto.setRecipientPhone(order.getRecipientPhone());
+        dto.setShippingAddress(order.getShippingAddress());
+        dto.setOrderTime(order.getOrderTime());
+        dto.setPaymentTime(order.getPaymentTime());
+        dto.setShippingTime(order.getShippingTime());
+        dto.setDeliveryTime(order.getDeliveryTime());
+        dto.setInTransitTime(order.getInTransitTime());
+
+        List<OrderItem> items = Optional.ofNullable(order.getOrderItems()).orElse(List.of());
+        List<SupplierOrderItemDTO> itemDtos = new ArrayList<>();
+        BigDecimal supplierAmount = BigDecimal.ZERO;
+        int supplierQuantity = 0;
+        boolean mixedSuppliers = false;
+
+        for (OrderItem item : items) {
+            Product product = item.getProduct();
+            Long itemSupplierId = null;
+            if (product != null && product.getSupplier() != null) {
+                itemSupplierId = product.getSupplier().getId();
+            }
+
+            if (itemSupplierId != null && itemSupplierId.equals(supplierId)) {
+                itemDtos.add(toSupplierOrderItemDto(item));
+                if (item.getQuantity() != null) {
+                    supplierQuantity += item.getQuantity();
+                }
+                if (item.getTotalPrice() != null) {
+                    supplierAmount = supplierAmount.add(item.getTotalPrice());
+                }
+            } else if (itemSupplierId != null && !itemSupplierId.equals(supplierId)) {
+                mixedSuppliers = true;
+            }
+        }
+
+        dto.setItems(itemDtos);
+        dto.setSupplierTotalQuantity(supplierQuantity);
+        dto.setSupplierTotalAmount(supplierAmount);
+        dto.setMixedSuppliers(mixedSuppliers);
+        dto.setCanShip(!mixedSuppliers && PENDING_SHIPMENT.equals(order.getStatus()) && !itemDtos.isEmpty());
+
+        return dto;
+    }
+
+    private SupplierOrderItemDTO toSupplierOrderItemDto(OrderItem item) {
+        SupplierOrderItemDTO dto = new SupplierOrderItemDTO();
+        dto.setId(item.getId());
+        dto.setQuantity(item.getQuantity());
+        dto.setUnitPrice(item.getUnitPrice());
+        dto.setTotalPrice(item.getTotalPrice());
+        dto.setCreatedAt(item.getCreatedAt());
+        if (item.getProduct() != null) {
+            dto.setProductId(item.getProduct().getId());
+            dto.setProductName(item.getProduct().getName());
+            dto.setProductMainImage(item.getProduct().getMainImage());
+        }
+        return dto;
     }
 
     private OrderDetailDTO toOrderDetailDto(Order order) {
