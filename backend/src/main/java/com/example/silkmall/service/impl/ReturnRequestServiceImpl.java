@@ -14,11 +14,17 @@ import java.util.Date;
 import java.util.List;
 import java.util.Set;
 import java.util.Objects;
+import static com.example.silkmall.common.OrderStatuses.AWAITING_RECEIPT;
 import static com.example.silkmall.common.OrderStatuses.DELIVERED;
+import static com.example.silkmall.common.OrderStatuses.IN_TRANSIT;
+import static com.example.silkmall.common.OrderStatuses.PENDING_SHIPMENT;
+import static com.example.silkmall.common.OrderStatuses.SHIPPED;
 
 @Service
 public class ReturnRequestServiceImpl extends BaseServiceImpl<ReturnRequest, Long> implements ReturnRequestService {
     private static final Set<String> ACTIVE_STATUSES = Set.of("PENDING", "APPROVED");
+    private static final Set<String> RETURNABLE_ORDER_STATUSES =
+            Set.of(PENDING_SHIPMENT, SHIPPED, IN_TRANSIT, AWAITING_RECEIPT, DELIVERED);
     private static final Set<String> PROCESSABLE_STATUSES = Set.of("APPROVED", "REJECTED", "COMPLETED");
 
     private final ReturnRequestRepository returnRequestRepository;
@@ -38,8 +44,11 @@ public class ReturnRequestServiceImpl extends BaseServiceImpl<ReturnRequest, Lon
         OrderItem orderItem = orderItemRepository.findById(orderItemId)
                 .orElseThrow(() -> new RuntimeException("订单项不存在"));
 
-        if (!DELIVERED.equals(orderItem.getOrder().getStatus())) {
-            throw new RuntimeException("只有已收货的订单才能申请退货");
+        String orderStatus = orderItem.getOrder().getStatus();
+        String normalizedStatus = orderStatus == null ? null : orderStatus.trim();
+        if (normalizedStatus == null || normalizedStatus.isEmpty()
+                || !RETURNABLE_ORDER_STATUSES.contains(normalizedStatus)) {
+            throw new RuntimeException("当前订单状态不支持退货");
         }
 
         if (returnRequestRepository.existsByOrderItemIdAndStatusIn(orderItemId, ACTIVE_STATUSES)) {
