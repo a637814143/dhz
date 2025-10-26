@@ -77,6 +77,7 @@ const productForm = reactive({
   name: '',
   description: '',
   price: '',
+  unit: '',
   stock: 0,
   categoryId: null as number | null,
   status: 'OFF_SALE',
@@ -420,6 +421,7 @@ function resetProductForm() {
   productForm.name = ''
   productForm.description = ''
   productForm.price = ''
+  productForm.unit = ''
   productForm.stock = 0
   productForm.categoryId = null
   productForm.status = 'OFF_SALE'
@@ -441,6 +443,7 @@ async function openProductForm(product?: ProductSummary) {
     productForm.name = product.name
     productForm.description = product.description ?? ''
     productForm.price = product.price?.toString() ?? ''
+    productForm.unit = (product as any).unit ?? ''
     productForm.stock = product.stock ?? 0
     const categoryRef = (product as any).categoryId ?? (product as any).category?.id ?? null
     if (typeof categoryRef === 'number') {
@@ -535,11 +538,17 @@ async function saveProduct() {
     productFormError.value = '库存必须为非负整数'
     return
   }
+  const unit = productForm.unit.trim()
+  if (!unit) {
+    productFormError.value = '请填写商品单位'
+    return
+  }
 
   const payload: Record<string, unknown> = {
     name,
     description: productForm.description.trim() || null,
     price,
+    unit,
     stock,
     status: productForm.status,
     mainImage: productForm.mainImage.trim() || null,
@@ -782,6 +791,7 @@ async function removeCategory(option: CategoryOption) {
               <tr>
                 <th scope="col">商品名称</th>
                 <th scope="col">售价</th>
+                <th scope="col">计量单位</th>
                 <th scope="col">库存</th>
                 <th scope="col">销量</th>
                 <th scope="col">状态</th>
@@ -792,6 +802,7 @@ async function removeCategory(option: CategoryOption) {
               <tr v-for="item in products" :key="item.id">
                 <td>{{ item.name }}</td>
                 <td>{{ formatCurrency(item.price) }}</td>
+                <td>{{ item.unit ?? '—' }}</td>
                 <td>{{ item.stock }}</td>
                 <td>{{ item.sales }}</td>
                 <td><span class="status-pill">{{ productStatus(item.status) }}</span></td>
@@ -968,6 +979,10 @@ async function removeCategory(option: CategoryOption) {
             <label>
               <span>售价（CNY）</span>
               <input v-model="productForm.price" type="number" min="0" step="0.01" placeholder="如：199" />
+            </label>
+            <label>
+              <span>计量单位</span>
+              <input v-model="productForm.unit" type="text" placeholder="如：件 / 箱 / kg" maxlength="20" />
             </label>
             <label>
               <span>库存数量</span>

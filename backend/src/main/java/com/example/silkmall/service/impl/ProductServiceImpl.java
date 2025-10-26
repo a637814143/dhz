@@ -188,7 +188,12 @@ public class ProductServiceImpl extends BaseServiceImpl<Product, Long> implement
         if (product.getStatus() == null) {
             product.setStatus("OFF_SALE");
         }
-        
+
+        if (product.getUnit() != null) {
+            String trimmedUnit = product.getUnit().trim();
+            product.setUnit(trimmedUnit.isEmpty() ? null : trimmedUnit);
+        }
+
         return super.save(product);
     }
 

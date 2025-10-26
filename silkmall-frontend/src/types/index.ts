@@ -10,6 +10,7 @@ export interface ProductSummary {
   name: string
   description?: string | null
   price: number
+  unit?: string | null
   stock: number
   sales: number
   mainImage?: string | null

@@ -14,6 +14,7 @@ interface ProductDetail {
   name: string
   description?: string | null
   price: number | string
+  unit?: string | null
   stock: number
   sales: number
   mainImage?: string | null
@@ -70,6 +71,7 @@ const productForm = reactive({
   name: '',
   description: '',
   price: '',
+  unit: '',
   stock: 0,
   status: 'ON_SALE',
   categoryId: 0,
@@ -115,6 +117,7 @@ function resetProductForm() {
   productForm.name = ''
   productForm.description = ''
   productForm.price = ''
+  productForm.unit = ''
   productForm.stock = 0
   productForm.status = 'ON_SALE'
   productForm.categoryId = 0
@@ -304,6 +307,8 @@ async function openProductForm(product?: ProductSummary) {
       productForm.price = Number.isFinite(parsed) ? parsed.toString() : ''
     }
     const detailRecord = data as unknown as Record<string, unknown>
+    const rawUnit = typeof detailRecord.unit === 'string' ? detailRecord.unit : data.unit
+    productForm.unit = rawUnit ?? ''
     const stockValue = Number(detailRecord.stock)
     productForm.stock = Number.isFinite(stockValue) ? stockValue : 0
     productForm.status = data.status ?? 'OFF_SALE'
@@ -335,6 +340,12 @@ async function saveProduct() {
     return
   }
 
+  const unit = productForm.unit.trim()
+  if (!unit) {
+    productFormError.value = '请填写商品单位'
+    return
+  }
+
   if (!productForm.supplierId) {
     productFormError.value = '请选择商品所属供应商'
     return
@@ -350,6 +361,7 @@ async function saveProduct() {
     name,
     description: productForm.description.trim() || null,
     price,
+    unit,
     stock,
     status: productForm.status,
     mainImage: productForm.mainImage.trim() || null,
@@ -528,6 +540,7 @@ async function changeProductStatus(productId: number, nextStatus: 'ON_SALE' | 'O
                 <th scope="col">所属分类</th>
                 <th scope="col">供应商</th>
                 <th scope="col">售价</th>
+                <th scope="col">计量单位</th>
                 <th scope="col">库存</th>
                 <th scope="col">销量</th>
                 <th scope="col">状态</th>
@@ -544,6 +557,7 @@ async function changeProductStatus(productId: number, nextStatus: 'ON_SALE' | 'O
                 <td>{{ item.categoryName ?? '—' }}</td>
                 <td>{{ item.supplierName ?? '—' }}</td>
                 <td>{{ formatCurrency(item.price) }}</td>
+                <td>{{ item.unit ?? '—' }}</td>
                 <td>{{ formatNumber(item.stock) }}</td>
                 <td>{{ formatNumber(item.sales) }}</td>
                 <td><span class="status-pill">{{ formatStatus(item.status) }}</span></td>
@@ -634,6 +648,10 @@ async function changeProductStatus(productId: number, nextStatus: 'ON_SALE' | 'O
             <input v-model="productForm.price" type="number" step="0.01" min="0" placeholder="0.00" />
           </label>
           <label>
+            <span>计量单位</span>
+            <input v-model="productForm.unit" type="text" placeholder="如：件 / 箱 / kg" maxlength="20" />
+          </label>
+          <label>
             <span>库存数量</span>
             <input v-model.number="productForm.stock" type="number" min="0" />
           </label>
@@ -681,6 +699,10 @@ async function changeProductStatus(productId: number, nextStatus: 'ON_SALE' | 'O
           <div>
             <dt>售价</dt>
             <dd>{{ formatCurrency(Number(viewingProduct?.price)) }}</dd>
+          </div>
+          <div>
+            <dt>计量单位</dt>
+            <dd>{{ viewingProduct?.unit ?? '—' }}</dd>
           </div>
           <div>
             <dt>库存</dt>

@@ -200,6 +200,7 @@ public class ProductController extends BaseController {
         dto.setName(product.getName());
         dto.setDescription(product.getDescription());
         dto.setPrice(product.getPrice());
+        dto.setUnit(product.getUnit());
         dto.setStock(product.getStock());
         dto.setSales(product.getSales());
         dto.setMainImage(product.getMainImage());
