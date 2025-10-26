@@ -6,7 +6,7 @@ public final class OrderStatuses {
     public static final String SHIPPED = "已发货";
     public static final String IN_TRANSIT = "运送中";
     public static final String AWAITING_RECEIPT = "待收货";
-    public static final String DELIVERED = "已送达";
+    public static final String DELIVERED = "已收货";
     public static final String CANCELLED = "已取消";
     public static final String REVOKED = "已撤销";
 

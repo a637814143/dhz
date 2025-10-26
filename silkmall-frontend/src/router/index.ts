@@ -9,6 +9,7 @@ const SupplierWorkbench = () => import('../views/dashboard/SupplierWorkbench.vue
 const AdminOverview = () => import('../views/dashboard/AdminOverview.vue')
 const AdminConsumerManagement = () => import('../views/dashboard/AdminConsumerManagement.vue')
 const AdminProductManagement = () => import('../views/dashboard/AdminProductManagement.vue')
+const AdminOrderManagement = () => import('../views/dashboard/AdminOrderManagement.vue')
 const ProductDetailView = () => import('../views/ProductDetailView.vue')
 
 const router = createRouter({
@@ -77,6 +78,12 @@ const router = createRouter({
       path: '/admin/products',
       name: 'admin-products',
       component: AdminProductManagement,
+      meta: { requiresAuth: true, roles: ['admin'] },
+    },
+    {
+      path: '/admin/orders',
+      name: 'admin-orders',
+      component: AdminOrderManagement,
       meta: { requiresAuth: true, roles: ['admin'] },
     },
     {

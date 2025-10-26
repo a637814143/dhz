@@ -11,6 +11,7 @@ public interface OrderService extends BaseService<Order, Long> {
     Page<Order> findBySupplierId(Long supplierId, Pageable pageable);
     List<Order> findByOrderNo(String orderNo);
     List<Order> findByConsumerLookupId(String lookupId);
+    Page<Order> findAllForAdmin(Boolean consumerConfirmed, Pageable pageable);
     Order createOrder(Order order);
     void cancelOrder(Long id);
     void payOrder(Long id, String paymentMethod);

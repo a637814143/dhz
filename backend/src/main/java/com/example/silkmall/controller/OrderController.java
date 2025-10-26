@@ -1,5 +1,7 @@
 package com.example.silkmall.controller;
 
+import com.example.silkmall.dto.AdminOrderItemDTO;
+import com.example.silkmall.dto.AdminOrderSummaryDTO;
 import com.example.silkmall.dto.OrderDetailDTO;
 import com.example.silkmall.dto.OrderItemDetailDTO;
 import com.example.silkmall.dto.SupplierOrderItemDTO;
@@ -21,17 +23,24 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
 import java.util.stream.Collectors;
 
+import static com.example.silkmall.common.OrderStatuses.DELIVERED;
 import static com.example.silkmall.common.OrderStatuses.PENDING_SHIPMENT;
 
 @RestController
 @RequestMapping("/api/orders")
 public class OrderController extends BaseController {
     private final OrderService orderService;
+    private static final BigDecimal ADMIN_COMMISSION_RATE = new BigDecimal("0.05");
+    private static final String RECEIPT_UNCONFIRMED_LABEL = "未收货";
+    private static final String RECEIPT_CONFIRMED_LABEL = "已收货";
+    private static final String PAYOUT_PENDING = "待批准";
     
     @Autowired
     public OrderController(OrderService orderService) {
@@ -93,6 +102,16 @@ public class OrderController extends BaseController {
     @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<Page<Order>> getOrdersByStatus(@PathVariable String status, Pageable pageable) {
         return success(orderService.findByStatus(status, pageable));
+    }
+
+    @GetMapping("/admin")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<Page<AdminOrderSummaryDTO>> getOrdersForAdmin(
+            @RequestParam(value = "consumerConfirmed", required = false) Boolean consumerConfirmed,
+            Pageable pageable) {
+        Page<Order> orders = orderService.findAllForAdmin(consumerConfirmed, pageable);
+        Page<AdminOrderSummaryDTO> dtoPage = orders.map(this::toAdminOrderSummary);
+        return success(dtoPage);
     }
 
     @GetMapping("/supplier/{supplierId}")
@@ -201,7 +220,7 @@ public class OrderController extends BaseController {
     }
 
     @PutMapping("/{id}/confirm")
-    @PreAuthorize("hasRole('ADMIN') or hasRole('CONSUMER')")
+    @PreAuthorize("hasRole('CONSUMER')")
     public ResponseEntity<?> confirmReceipt(@PathVariable Long id,
                                             @AuthenticationPrincipal CustomUserDetails currentUser) {
         Optional<Order> order = orderService.findById(id);
@@ -370,6 +389,100 @@ public class OrderController extends BaseController {
                 })
                 .collect(Collectors.toList());
         dto.setOrderItems(items);
+        return dto;
+    }
+
+    private AdminOrderSummaryDTO toAdminOrderSummary(Order order) {
+        AdminOrderSummaryDTO dto = new AdminOrderSummaryDTO();
+        dto.setId(order.getId());
+        dto.setOrderNo(order.getOrderNo());
+        dto.setStatus(order.getStatus());
+        dto.setTotalQuantity(order.getTotalQuantity());
+
+        BigDecimal totalAmount = Optional.ofNullable(order.getTotalAmount()).orElse(BigDecimal.ZERO);
+        if (totalAmount.compareTo(BigDecimal.ZERO) < 0) {
+            totalAmount = BigDecimal.ZERO;
+        }
+        dto.setTotalAmount(totalAmount);
+
+        BigDecimal commission = totalAmount.multiply(ADMIN_COMMISSION_RATE).setScale(2, RoundingMode.HALF_UP);
+        if (commission.compareTo(totalAmount) > 0) {
+            commission = totalAmount;
+        }
+        BigDecimal supplierAmount = totalAmount.subtract(commission).setScale(2, RoundingMode.HALF_UP);
+        if (supplierAmount.compareTo(BigDecimal.ZERO) < 0) {
+            supplierAmount = BigDecimal.ZERO;
+        }
+        dto.setCommissionAmount(commission);
+        dto.setSupplierPayoutAmount(supplierAmount);
+
+        boolean consumerConfirmed = order.getConsumerConfirmationTime() != null;
+        dto.setConsumerConfirmed(consumerConfirmed);
+        dto.setReceiptStatus(consumerConfirmed ? RECEIPT_CONFIRMED_LABEL : RECEIPT_UNCONFIRMED_LABEL);
+
+        dto.setPayoutStatus(order.getPayoutStatus());
+        dto.setAdminHoldingAmount(order.getAdminHoldingAmount());
+
+        if (order.getManagingAdmin() != null) {
+            dto.setManagingAdminName(order.getManagingAdmin().getUsername());
+        }
+        if (order.getConsumer() != null) {
+            dto.setConsumerName(order.getConsumer().getUsername());
+        }
+
+        dto.setRecipientName(order.getRecipientName());
+        dto.setRecipientPhone(order.getRecipientPhone());
+        dto.setShippingAddress(order.getShippingAddress());
+        dto.setOrderTime(order.getOrderTime());
+        dto.setPaymentTime(order.getPaymentTime());
+        dto.setShippingTime(order.getShippingTime());
+        dto.setDeliveryTime(order.getDeliveryTime());
+        dto.setInTransitTime(order.getInTransitTime());
+        dto.setConsumerConfirmationTime(order.getConsumerConfirmationTime());
+        dto.setAdminApprovalTime(order.getAdminApprovalTime());
+
+        List<OrderItem> items = Optional.ofNullable(order.getOrderItems()).orElse(List.of());
+        List<AdminOrderItemDTO> itemDtos = items.stream()
+                .map(this::toAdminOrderItemDto)
+                .sorted(Comparator.comparing(AdminOrderItemDTO::getId, Comparator.nullsLast(Long::compareTo)))
+                .collect(Collectors.toList());
+        dto.setItems(itemDtos);
+
+        String disableReason = null;
+        boolean statusAllowsApproval = DELIVERED.equals(order.getStatus());
+        if (!consumerConfirmed) {
+            disableReason = "等待消费者确认收货";
+        } else if (!statusAllowsApproval) {
+            disableReason = "订单状态暂不支持确认";
+        } else if (!PAYOUT_PENDING.equals(order.getPayoutStatus())) {
+            String payoutStatus = order.getPayoutStatus();
+            disableReason = payoutStatus == null ? "订单尚未完成支付" : "货款状态：" + payoutStatus;
+        }
+
+        dto.setCanApprove(disableReason == null);
+        dto.setApprovalDisabledReason(disableReason);
+
+        return dto;
+    }
+
+    private AdminOrderItemDTO toAdminOrderItemDto(OrderItem item) {
+        AdminOrderItemDTO dto = new AdminOrderItemDTO();
+        dto.setId(item.getId());
+        dto.setQuantity(item.getQuantity());
+        dto.setUnitPrice(item.getUnitPrice());
+        dto.setTotalPrice(item.getTotalPrice());
+
+        Product product = item.getProduct();
+        if (product != null) {
+            dto.setProductId(product.getId());
+            dto.setProductName(product.getName());
+            dto.setProductMainImage(product.getMainImage());
+            if (product.getSupplier() != null) {
+                dto.setSupplierId(product.getSupplier().getId());
+                dto.setSupplierName(product.getSupplier().getCompanyName());
+            }
+        }
+
         return dto;
     }
 

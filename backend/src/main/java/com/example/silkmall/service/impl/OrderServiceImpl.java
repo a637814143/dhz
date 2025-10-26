@@ -20,10 +20,13 @@ import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.util.Date;
-import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
+import java.util.TreeMap;
 import java.util.UUID;
 import static com.example.silkmall.common.OrderStatuses.*;
 
@@ -35,6 +38,7 @@ public class OrderServiceImpl extends BaseServiceImpl<Order, Long> implements Or
     private static final String PAYOUT_REFUNDED = "已退款";
 
     private static final BigDecimal DEFAULT_WALLET_BALANCE = BigDecimal.valueOf(1000L);
+    private static final BigDecimal ADMIN_COMMISSION_RATE = new BigDecimal("0.05");
 
     private final OrderRepository orderRepository;
     private final ProductRepository productRepository;
@@ -111,6 +115,18 @@ public class OrderServiceImpl extends BaseServiceImpl<Order, Long> implements Or
     @Override
     public List<Order> findByConsumerLookupId(String lookupId) {
         return orderRepository.findByConsumerLookupId(lookupId);
+    }
+
+    @Override
+    public Page<Order> findAllForAdmin(Boolean consumerConfirmed, Pageable pageable) {
+        Pageable resolved = resolveAdminPageable(pageable);
+        if (Boolean.TRUE.equals(consumerConfirmed)) {
+            return orderRepository.findByConsumerConfirmationTimeIsNotNull(resolved);
+        }
+        if (Boolean.FALSE.equals(consumerConfirmed)) {
+            return orderRepository.findByConsumerConfirmationTimeIsNull(resolved);
+        }
+        return orderRepository.findAllBy(resolved);
     }
 
     @Transactional
@@ -347,11 +363,15 @@ public class OrderServiceImpl extends BaseServiceImpl<Order, Long> implements Or
                 .orElseThrow(() -> new RuntimeException("订单不存在"));
 
         if (!DELIVERED.equals(order.getStatus())) {
-            throw new RuntimeException("只有已送达的订单才能批准货款");
+            throw new RuntimeException("只有已收货的订单才能批准货款");
         }
 
         if (!PAYOUT_PENDING.equals(order.getPayoutStatus())) {
             throw new RuntimeException("当前订单没有待批准的货款");
+        }
+
+        if (order.getConsumerConfirmationTime() == null) {
+            throw new RuntimeException("消费者尚未确认收货，无法结算");
         }
 
         Admin admin = attachAdmin(order);
@@ -368,12 +388,21 @@ public class OrderServiceImpl extends BaseServiceImpl<Order, Long> implements Or
             totalAmount = BigDecimal.ZERO;
         }
 
+        BigDecimal commission = totalAmount.multiply(ADMIN_COMMISSION_RATE).setScale(2, RoundingMode.HALF_UP);
+        if (commission.compareTo(totalAmount) > 0) {
+            commission = totalAmount;
+        }
+        BigDecimal payoutPool = totalAmount.subtract(commission).setScale(2, RoundingMode.HALF_UP);
+        if (payoutPool.compareTo(BigDecimal.ZERO) < 0) {
+            payoutPool = BigDecimal.ZERO;
+        }
+
         BigDecimal adminBalance = resolveBalance(admin.getWalletBalance());
-        if (adminBalance.compareTo(totalAmount) < 0) {
+        if (adminBalance.compareTo(payoutPool) < 0) {
             throw new RuntimeException("管理员钱包余额不足，无法批准付款");
         }
 
-        admin.setWalletBalance(adminBalance.subtract(totalAmount));
+        admin.setWalletBalance(adminBalance.subtract(payoutPool));
         adminRepository.save(admin);
 
         distributeToSuppliers(order);
@@ -533,8 +562,15 @@ public class OrderServiceImpl extends BaseServiceImpl<Order, Long> implements Or
     }
 
     private void distributeToSuppliers(Order order) {
-        Map<Long, BigDecimal> earnings = collectSupplierAmounts(order);
-        for (Map.Entry<Long, BigDecimal> entry : earnings.entrySet()) {
+        BigDecimal totalAmount = Optional.ofNullable(order.getTotalAmount()).orElse(BigDecimal.ZERO);
+        BigDecimal commission = totalAmount.multiply(ADMIN_COMMISSION_RATE).setScale(2, RoundingMode.HALF_UP);
+        BigDecimal payoutPool = totalAmount.subtract(commission);
+        if (payoutPool.compareTo(BigDecimal.ZERO) < 0) {
+            payoutPool = BigDecimal.ZERO;
+        }
+
+        Map<Long, BigDecimal> payouts = calculateSupplierPayouts(order, payoutPool);
+        for (Map.Entry<Long, BigDecimal> entry : payouts.entrySet()) {
             Supplier supplier = supplierRepository.findById(entry.getKey())
                     .orElseThrow(() -> new RuntimeException("供应商不存在: " + entry.getKey()));
             BigDecimal current = supplier.getWalletBalance() == null
@@ -546,8 +582,15 @@ public class OrderServiceImpl extends BaseServiceImpl<Order, Long> implements Or
     }
 
     private void rollbackSupplierDistribution(Order order) {
-        Map<Long, BigDecimal> earnings = collectSupplierAmounts(order);
-        for (Map.Entry<Long, BigDecimal> entry : earnings.entrySet()) {
+        BigDecimal totalAmount = Optional.ofNullable(order.getTotalAmount()).orElse(BigDecimal.ZERO);
+        BigDecimal commission = totalAmount.multiply(ADMIN_COMMISSION_RATE).setScale(2, RoundingMode.HALF_UP);
+        BigDecimal payoutPool = totalAmount.subtract(commission);
+        if (payoutPool.compareTo(BigDecimal.ZERO) < 0) {
+            payoutPool = BigDecimal.ZERO;
+        }
+
+        Map<Long, BigDecimal> payouts = calculateSupplierPayouts(order, payoutPool);
+        for (Map.Entry<Long, BigDecimal> entry : payouts.entrySet()) {
             Supplier supplier = supplierRepository.findById(entry.getKey())
                     .orElseThrow(() -> new RuntimeException("供应商不存在: " + entry.getKey()));
             BigDecimal current = supplier.getWalletBalance() == null
@@ -562,8 +605,54 @@ public class OrderServiceImpl extends BaseServiceImpl<Order, Long> implements Or
         }
     }
 
+    private Map<Long, BigDecimal> calculateSupplierPayouts(Order order, BigDecimal payoutPool) {
+        Map<Long, BigDecimal> baseAmounts = collectSupplierAmounts(order);
+        if (baseAmounts.isEmpty() || payoutPool.compareTo(BigDecimal.ZERO) <= 0) {
+            return Map.of();
+        }
+
+        BigDecimal totalBase = baseAmounts.values().stream()
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        if (totalBase.compareTo(BigDecimal.ZERO) <= 0) {
+            return Map.of();
+        }
+
+        LinkedHashMap<Long, BigDecimal> payouts = new LinkedHashMap<>();
+        BigDecimal distributed = BigDecimal.ZERO;
+        Long lastSupplierId = null;
+
+        for (Map.Entry<Long, BigDecimal> entry : baseAmounts.entrySet()) {
+            lastSupplierId = entry.getKey();
+            BigDecimal ratio = entry.getValue().divide(totalBase, 10, RoundingMode.HALF_UP);
+            BigDecimal share = payoutPool.multiply(ratio).setScale(2, RoundingMode.HALF_UP);
+            payouts.put(entry.getKey(), share);
+            distributed = distributed.add(share);
+        }
+
+        if (lastSupplierId != null) {
+            BigDecimal remainder = payoutPool.subtract(distributed);
+            if (remainder.compareTo(BigDecimal.ZERO) != 0) {
+                payouts.computeIfPresent(lastSupplierId, (id, amount) -> amount.add(remainder));
+            }
+        }
+
+        return payouts;
+    }
+
+    private Pageable resolveAdminPageable(Pageable pageable) {
+        Pageable candidate = pageable == null ? Pageable.unpaged() : pageable;
+        Sort sort = candidate.getSort();
+        if (sort == null || sort.isUnsorted()) {
+            sort = Sort.by(Sort.Direction.DESC, "orderTime");
+        }
+        if (candidate.isPaged()) {
+            return PageRequest.of(candidate.getPageNumber(), candidate.getPageSize(), sort);
+        }
+        return PageRequest.of(0, 20, sort);
+    }
+
     private Map<Long, BigDecimal> collectSupplierAmounts(Order order) {
-        Map<Long, BigDecimal> earnings = new HashMap<>();
+        Map<Long, BigDecimal> earnings = new LinkedHashMap<>();
         if (order.getOrderItems() == null) {
             return earnings;
         }
@@ -575,10 +664,14 @@ public class OrderServiceImpl extends BaseServiceImpl<Order, Long> implements Or
             }
             Supplier supplier = product.getSupplier();
             if (supplier != null && supplier.getId() != null && item.getTotalPrice() != null) {
-                earnings.merge(supplier.getId(), item.getTotalPrice(), BigDecimal::add);
+                BigDecimal totalPrice = item.getTotalPrice() == null ? BigDecimal.ZERO : item.getTotalPrice();
+                earnings.merge(supplier.getId(), totalPrice, BigDecimal::add);
             }
         }
-        return earnings;
+        if (earnings.isEmpty()) {
+            return earnings;
+        }
+        return new LinkedHashMap<>(new TreeMap<>(earnings));
     }
 
     private Consumer attachConsumer(Order order) {

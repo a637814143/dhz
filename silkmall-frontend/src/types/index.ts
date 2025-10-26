@@ -232,6 +232,47 @@ export interface SupplierOrderSummary {
   items: SupplierOrderItem[]
 }
 
+export interface AdminOrderItem {
+  id: number
+  quantity: number
+  unitPrice: number
+  totalPrice: number
+  productId?: number | null
+  productName?: string | null
+  productMainImage?: string | null
+  supplierId?: number | null
+  supplierName?: string | null
+}
+
+export interface AdminOrderSummary {
+  id: number
+  orderNo: string
+  totalAmount: number
+  totalQuantity: number
+  status: string
+  receiptStatus: string
+  consumerConfirmed: boolean
+  canApprove: boolean
+  approvalDisabledReason?: string | null
+  commissionAmount: number
+  supplierPayoutAmount: number
+  payoutStatus?: string | null
+  adminHoldingAmount?: number | null
+  managingAdminName?: string | null
+  consumerName?: string | null
+  recipientName?: string | null
+  recipientPhone?: string | null
+  shippingAddress?: string | null
+  orderTime: string
+  paymentTime?: string | null
+  shippingTime?: string | null
+  deliveryTime?: string | null
+  inTransitTime?: string | null
+  consumerConfirmationTime?: string | null
+  adminApprovalTime?: string | null
+  items: AdminOrderItem[]
+}
+
 export interface ProductReview {
   id: number
   orderId: number

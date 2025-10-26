@@ -22,4 +22,13 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
 
     @EntityGraph(attributePaths = {"orderItems", "orderItems.product", "orderItems.product.supplier"})
     Page<Order> findDistinctByOrderItems_Product_Supplier_Id(Long supplierId, Pageable pageable);
+
+    @EntityGraph(attributePaths = {"orderItems", "orderItems.product", "orderItems.product.supplier", "consumer", "managingAdmin"})
+    Page<Order> findAllBy(Pageable pageable);
+
+    @EntityGraph(attributePaths = {"orderItems", "orderItems.product", "orderItems.product.supplier", "consumer", "managingAdmin"})
+    Page<Order> findByConsumerConfirmationTimeIsNull(Pageable pageable);
+
+    @EntityGraph(attributePaths = {"orderItems", "orderItems.product", "orderItems.product.supplier", "consumer", "managingAdmin"})
+    Page<Order> findByConsumerConfirmationTimeIsNotNull(Pageable pageable);
 }
