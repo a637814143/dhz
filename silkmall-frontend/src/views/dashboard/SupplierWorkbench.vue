@@ -79,7 +79,7 @@ const productForm = reactive({
   price: '',
   stock: 0,
   categoryId: null as number | null,
-  status: 'ON_SALE',
+  status: 'OFF_SALE',
   mainImage: '',
 })
 const productImagePreview = ref<string | null>(null)
@@ -422,7 +422,7 @@ function resetProductForm() {
   productForm.price = ''
   productForm.stock = 0
   productForm.categoryId = null
-  productForm.status = 'ON_SALE'
+  productForm.status = 'OFF_SALE'
   productForm.mainImage = ''
   productFormError.value = null
   productFormMessage.value = null
@@ -451,7 +451,7 @@ async function openProductForm(product?: ProductSummary) {
     } else {
       productForm.categoryId = null
     }
-    productForm.status = product.status ?? 'ON_SALE'
+    productForm.status = product.status ?? 'OFF_SALE'
     productForm.mainImage = product.mainImage ?? ''
     productImagePreview.value = productForm.mainImage || null
     if (productImageInput.value) {
@@ -704,10 +704,6 @@ async function removeCategory(option: CategoryOption) {
   }
 }
 
-const statusOptions = [
-  { value: 'ON_SALE', label: '在售' },
-  { value: 'OFF_SALE', label: '未上架' },
-]
 </script>
 
 <template>
@@ -957,13 +953,14 @@ const statusOptions = [
               <span>商品名称</span>
               <input v-model="productForm.name" type="text" placeholder="请输入商品名称" />
             </label>
-            <label>
+            <label class="product-status-field">
               <span>商品状态</span>
-              <select v-model="productForm.status">
-                <option v-for="option in statusOptions" :key="option.value" :value="option.value">
-                  {{ option.label }}
-                </option>
-              </select>
+              <div class="product-status-display" role="status" aria-live="polite">
+                {{ productStatus(productForm.status) }}
+              </div>
+              <p class="field-hint status-hint">
+                新增商品将保持未上架状态，需管理员审核后才能上架并在产品中心展示。
+              </p>
             </label>
           </div>
 
@@ -1340,6 +1337,23 @@ const statusOptions = [
   flex-direction: column;
   gap: 0.45rem;
   font-weight: 600;
+}
+
+.product-status-field .product-status-display {
+  display: inline-flex;
+  align-items: center;
+  min-height: 2.75rem;
+  padding: 0.6rem 0.75rem;
+  border-radius: 0.75rem;
+  border: 1px dashed rgba(15, 23, 42, 0.2);
+  background: rgba(15, 23, 42, 0.04);
+  color: rgba(15, 23, 42, 0.85);
+}
+
+.product-status-field .status-hint {
+  font-size: 0.85rem;
+  color: rgba(15, 23, 42, 0.6);
+  margin: 0;
 }
 
 .product-image-field {
