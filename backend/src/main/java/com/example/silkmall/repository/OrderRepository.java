@@ -27,6 +27,9 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
     Page<Order> findAllBy(Pageable pageable);
 
     @EntityGraph(attributePaths = {"orderItems", "orderItems.product", "orderItems.product.supplier", "consumer", "managingAdmin"})
+    Page<Order> findByOrderNoContainingIgnoreCase(String orderNo, Pageable pageable);
+
+    @EntityGraph(attributePaths = {"orderItems", "orderItems.product", "orderItems.product.supplier", "consumer", "managingAdmin"})
     Page<Order> findByConsumerConfirmationTimeIsNull(Pageable pageable);
 
     @EntityGraph(attributePaths = {"orderItems", "orderItems.product", "orderItems.product.supplier", "consumer", "managingAdmin"})

@@ -16,6 +16,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -28,6 +29,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.TreeMap;
 import java.util.UUID;
+import java.util.stream.Collectors;
 import static com.example.silkmall.common.OrderStatuses.*;
 
 @Service
@@ -118,8 +120,21 @@ public class OrderServiceImpl extends BaseServiceImpl<Order, Long> implements Or
     }
 
     @Override
-    public Page<Order> findAllForAdmin(Boolean consumerConfirmed, Pageable pageable) {
+    public Page<Order> findAllForAdmin(Boolean consumerConfirmed, String orderNo, Pageable pageable) {
         Pageable resolved = resolveAdminPageable(pageable);
+        String trimmedOrderNo = orderNo == null ? null : orderNo.trim();
+        if (trimmedOrderNo != null && !trimmedOrderNo.isEmpty()) {
+            Page<Order> result = orderRepository.findByOrderNoContainingIgnoreCase(trimmedOrderNo, resolved);
+            if (consumerConfirmed == null) {
+                return result;
+            }
+            boolean expectedConfirmation = Boolean.TRUE.equals(consumerConfirmed);
+            List<Order> filtered = result.getContent()
+                    .stream()
+                    .filter(order -> (order.getConsumerConfirmationTime() != null) == expectedConfirmation)
+                    .collect(Collectors.toList());
+            return new PageImpl<>(filtered, resolved, filtered.size());
+        }
         if (Boolean.TRUE.equals(consumerConfirmed)) {
             return orderRepository.findByConsumerConfirmationTimeIsNotNull(resolved);
         }

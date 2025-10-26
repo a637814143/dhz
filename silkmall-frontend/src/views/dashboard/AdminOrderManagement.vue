@@ -13,6 +13,7 @@ const orders = ref<AdminOrderSummary[]>([])
 
 const filters = reactive({
   receipt: 'all' as 'all' | 'pending' | 'confirmed',
+  orderNo: '',
 })
 
 const pagination = reactive({
@@ -37,6 +38,17 @@ watch(
     pagination.page = 0
     clearFeedback()
     loadOrders()
+  }
+)
+
+watch(
+  () => filters.orderNo,
+  (newValue, oldValue) => {
+    if (newValue.trim() === '' && oldValue && oldValue.trim() !== '') {
+      pagination.page = 0
+      clearFeedback()
+      loadOrders()
+    }
   }
 )
 
@@ -81,6 +93,10 @@ async function loadOrders() {
     const consumerConfirmed = resolveConsumerConfirmedParam()
     if (typeof consumerConfirmed === 'boolean') {
       params.consumerConfirmed = consumerConfirmed
+    }
+    const orderNo = filters.orderNo.trim()
+    if (orderNo) {
+      params.orderNo = orderNo
     }
 
     const { data } = await api.get<PageResponse<AdminOrderSummary>>('/orders/admin', {
@@ -153,6 +169,18 @@ function prevPage() {
   goToPage(pagination.page - 1)
 }
 
+function submitSearch() {
+  pagination.page = 0
+  clearFeedback()
+  loadOrders()
+}
+
+function resetOrderSearch() {
+  if (!filters.orderNo) return
+  clearFeedback()
+  filters.orderNo = ''
+}
+
 function receiptTagClass(order: AdminOrderSummary) {
   return order.consumerConfirmed ? 'tag tag--success' : 'tag tag--warning'
 }
@@ -179,7 +207,7 @@ onMounted(() => {
           订单资金在消费者付款后托管于平台，消费者确认收货后由管理员结算并自动收取 5% 平台佣金。
         </p>
       </div>
-      <div class="filters">
+      <form class="filters" @submit.prevent="submitSearch">
         <label>
           <span>收货状态</span>
           <select v-model="filters.receipt">
@@ -188,7 +216,28 @@ onMounted(() => {
             </option>
           </select>
         </label>
-      </div>
+        <label class="search-field">
+          <span>订单编号</span>
+          <div class="search-field__control">
+            <input
+              v-model="filters.orderNo"
+              type="search"
+              placeholder="输入订单编号"
+              autocomplete="off"
+            />
+            <button type="submit" :disabled="loading">搜索</button>
+            <button
+              v-if="filters.orderNo"
+              type="button"
+              class="ghost"
+              @click="resetOrderSearch"
+              :disabled="loading"
+            >
+              清除
+            </button>
+          </div>
+        </label>
+      </form>
     </header>
 
     <transition name="fade">
@@ -331,6 +380,13 @@ onMounted(() => {
   max-width: 52rem;
 }
 
+.filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 1rem;
+}
+
 .filters label {
   display: grid;
   gap: 0.35rem;
@@ -343,6 +399,42 @@ onMounted(() => {
   padding: 0.4rem 0.6rem;
   border-radius: 0.75rem;
   border: 1px solid rgba(0, 0, 0, 0.12);
+}
+
+.search-field__control {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.search-field__control input {
+  min-width: 14rem;
+  padding: 0.4rem 0.6rem;
+  border-radius: 0.75rem;
+  border: 1px solid rgba(0, 0, 0, 0.12);
+}
+
+.filters button {
+  padding: 0.45rem 0.95rem;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  background: #1d4ed8;
+  color: #fff;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.2s ease;
+}
+
+.filters button.ghost {
+  background: transparent;
+  color: rgba(0, 0, 0, 0.65);
+  border-color: rgba(0, 0, 0, 0.12);
+}
+
+.filters button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 
 .feedback {
@@ -594,6 +686,10 @@ onMounted(() => {
 
   .filters select {
     min-width: auto;
+  }
+
+  .search-field__control input {
+    min-width: 10rem;
   }
 }
 </style>

@@ -108,8 +108,9 @@ public class OrderController extends BaseController {
     @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<Page<AdminOrderSummaryDTO>> getOrdersForAdmin(
             @RequestParam(value = "consumerConfirmed", required = false) Boolean consumerConfirmed,
+            @RequestParam(value = "orderNo", required = false) String orderNo,
             Pageable pageable) {
-        Page<Order> orders = orderService.findAllForAdmin(consumerConfirmed, pageable);
+        Page<Order> orders = orderService.findAllForAdmin(consumerConfirmed, orderNo, pageable);
         Page<AdminOrderSummaryDTO> dtoPage = orders.map(this::toAdminOrderSummary);
         return success(dtoPage);
     }
