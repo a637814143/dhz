@@ -476,6 +476,13 @@ function removeProductImage() {
   }
 }
 
+function triggerProductImageSelection() {
+  productFormError.value = null
+  if (productImageInput.value) {
+    productImageInput.value.click()
+  }
+}
+
 function handleProductImageChange(event: Event) {
   const target = event.target as HTMLInputElement | null
   const file = target?.files?.[0]
@@ -987,9 +994,13 @@ const statusOptions = [
               ref="productImageInput"
               type="file"
               accept="image/*"
+              class="product-image-input"
               @change="handleProductImageChange"
             />
-            <p class="field-hint">请选择商品主图，支持 JPG、PNG、WEBP 等格式，最大 5MB。</p>
+            <button type="button" class="ghost-button image-picker" @click="triggerProductImageSelection">
+              {{ productImagePreview ? '重新选择图片' : '选择图片' }}
+            </button>
+            <p class="field-hint">请选择商品主图，支持 JPG、PNG、WEBP 等格式，最大 5MB，可直接从电脑上传。</p>
             <div v-if="productImagePreview" class="product-image-preview" role="group" aria-label="商品图片预览">
               <img :src="productImagePreview" alt="商品图片预览" />
               <button type="button" class="ghost-button" @click="removeProductImage">移除图片</button>
@@ -1331,6 +1342,10 @@ const statusOptions = [
   font-weight: 600;
 }
 
+.product-image-field {
+  position: relative;
+}
+
 .product-modal input,
 .product-modal select,
 .product-modal textarea {
@@ -1344,9 +1359,20 @@ const statusOptions = [
   resize: vertical;
 }
 
-.product-image-field input[type='file'] {
+.product-image-field .product-image-input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
   padding: 0;
-  border: none;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.product-image-field .image-picker {
+  align-self: flex-start;
 }
 
 .product-image-field .field-hint {
