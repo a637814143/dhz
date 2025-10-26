@@ -628,6 +628,7 @@ function formatNumber(value?: number | null) {
       </div>
       <nav class="admin-actions">
         <RouterLink class="manage-link" to="/admin/products">商品管理</RouterLink>
+        <RouterLink class="manage-link" to="/admin/orders">订单管理</RouterLink>
         <RouterLink class="manage-link" to="/admin/consumers">采购账号管理</RouterLink>
       </nav>
     </header>
