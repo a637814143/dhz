@@ -82,6 +82,8 @@ const productForm = reactive({
   status: 'ON_SALE',
   mainImage: '',
 })
+const productImagePreview = ref<string | null>(null)
+const productImageInput = ref<HTMLInputElement | null>(null)
 
 const categoryNameInput = ref('')
 const categorySaving = ref(false)
@@ -424,6 +426,10 @@ function resetProductForm() {
   productForm.mainImage = ''
   productFormError.value = null
   productFormMessage.value = null
+  productImagePreview.value = null
+  if (productImageInput.value) {
+    productImageInput.value.value = ''
+  }
 }
 
 async function openProductForm(product?: ProductSummary) {
@@ -447,6 +453,10 @@ async function openProductForm(product?: ProductSummary) {
     }
     productForm.status = product.status ?? 'ON_SALE'
     productForm.mainImage = product.mainImage ?? ''
+    productImagePreview.value = productForm.mainImage || null
+    if (productImageInput.value) {
+      productImageInput.value.value = ''
+    }
   } else {
     resetProductForm()
   }
@@ -456,6 +466,46 @@ async function openProductForm(product?: ProductSummary) {
 function cancelProductForm() {
   productDialogOpen.value = false
   resetProductForm()
+}
+
+function removeProductImage() {
+  productForm.mainImage = ''
+  productImagePreview.value = null
+  if (productImageInput.value) {
+    productImageInput.value.value = ''
+  }
+}
+
+function handleProductImageChange(event: Event) {
+  const target = event.target as HTMLInputElement | null
+  const file = target?.files?.[0]
+  if (!file) {
+    return
+  }
+  if (!file.type.startsWith('image/')) {
+    productFormError.value = '请选择图片文件'
+    if (target) target.value = ''
+    return
+  }
+  const maxSize = 5 * 1024 * 1024
+  if (file.size > maxSize) {
+    productFormError.value = '图片大小不能超过 5MB'
+    if (target) target.value = ''
+    return
+  }
+  productFormError.value = null
+  const reader = new FileReader()
+  reader.onload = () => {
+    if (typeof reader.result === 'string') {
+      productForm.mainImage = reader.result
+      productImagePreview.value = reader.result
+    }
+  }
+  reader.onerror = () => {
+    productFormError.value = '图片读取失败，请重试'
+    if (target) target.value = ''
+  }
+  reader.readAsDataURL(file)
 }
 
 async function saveProduct() {
@@ -931,9 +981,19 @@ const statusOptions = [
             </select>
           </label>
 
-          <label>
-            <span>主图地址</span>
-            <input v-model="productForm.mainImage" type="text" placeholder="可选：图片链接" />
+          <label class="product-image-field">
+            <span>商品图片</span>
+            <input
+              ref="productImageInput"
+              type="file"
+              accept="image/*"
+              @change="handleProductImageChange"
+            />
+            <p class="field-hint">请选择商品主图，支持 JPG、PNG、WEBP 等格式，最大 5MB。</p>
+            <div v-if="productImagePreview" class="product-image-preview" role="group" aria-label="商品图片预览">
+              <img :src="productImagePreview" alt="商品图片预览" />
+              <button type="button" class="ghost-button" @click="removeProductImage">移除图片</button>
+            </div>
           </label>
 
           <label>
@@ -1282,6 +1342,34 @@ const statusOptions = [
 
 .product-modal textarea {
   resize: vertical;
+}
+
+.product-image-field input[type='file'] {
+  padding: 0;
+  border: none;
+}
+
+.product-image-field .field-hint {
+  font-size: 0.85rem;
+  color: rgba(15, 23, 42, 0.6);
+}
+
+.product-image-preview {
+  margin-top: 0.35rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.product-image-preview img {
+  max-width: 220px;
+  border-radius: 0.75rem;
+  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.12);
+  object-fit: cover;
+}
+
+.product-image-preview .ghost-button {
+  align-self: flex-start;
 }
 
 .product-modal .modal-actions {
