@@ -235,14 +235,6 @@ async function submit() {
             <section class="address-selector">
               <header class="address-selector__header">
                 <span>选择常用地址</span>
-                <a
-                  class="manage-address-link"
-                  href="/dashboard#address"
-                  target="_blank"
-                  rel="noopener"
-                >
-                  管理地址
-                </a>
               </header>
               <p v-if="addressBookLoading" class="address-hint">常用地址加载中…</p>
               <p v-else-if="addressBookError" class="address-error">{{ addressBookError }}</p>
@@ -464,19 +456,9 @@ async function submit() {
 .address-selector__header {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-start;
   font-weight: 600;
   color: rgba(15, 23, 42, 0.78);
-}
-
-.manage-address-link {
-  font-size: 0.85rem;
-  color: #4338ca;
-  text-decoration: none;
-}
-
-.manage-address-link:hover {
-  text-decoration: underline;
 }
 
 .address-hint {
