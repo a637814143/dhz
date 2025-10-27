@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import api from '@/services/api'
-import type { AdminOrderSummary, PageResponse } from '@/types'
+import type { AdminOrderSummary, PageResponse, ReturnRequest } from '@/types'
 
 const loading = ref(false)
 const error = ref<string | null>(null)
@@ -10,6 +10,13 @@ const actionError = ref<string | null>(null)
 const approvingId = ref<number | null>(null)
 
 const orders = ref<AdminOrderSummary[]>([])
+const returnApprovals = ref<ReturnRequest[]>([])
+const returnApprovalsLoading = ref(false)
+const returnApprovalsError = ref<string | null>(null)
+const returnApprovalMessage = ref<string | null>(null)
+const returnApprovalError = ref<string | null>(null)
+const processingReturnId = ref<number | null>(null)
+const adminResolutionDrafts = reactive<Record<number, string>>({})
 
 const filters = reactive({
   receipt: 'all' as 'all' | 'pending' | 'confirmed',
@@ -31,6 +38,23 @@ const receiptOptions = [
 const totalPages = computed(() =>
   pagination.total > 0 ? Math.ceil(pagination.total / pagination.size) : 0
 )
+
+const pendingReturnRequests = computed(() =>
+  returnApprovals.value.filter(
+    (item) => (item.status ?? '').toUpperCase() === 'AWAITING_ADMIN'
+  )
+)
+
+const processedReturnRequests = computed(() => {
+  return returnApprovals.value
+    .filter((item) => (item.status ?? '').toUpperCase() !== 'AWAITING_ADMIN')
+    .slice()
+    .sort((a, b) => {
+      const timeA = new Date(a.adminProcessedAt ?? a.processedAt ?? a.requestedAt ?? '').getTime()
+      const timeB = new Date(b.adminProcessedAt ?? b.processedAt ?? b.requestedAt ?? '').getTime()
+      return timeB - timeA
+    })
+})
 
 watch(
   () => filters.receipt,
@@ -82,6 +106,11 @@ function clearFeedback() {
   actionError.value = null
 }
 
+function clearReturnFeedback() {
+  returnApprovalMessage.value = null
+  returnApprovalError.value = null
+}
+
 async function loadOrders() {
   loading.value = true
   error.value = null
@@ -123,6 +152,31 @@ async function loadOrders() {
     orders.value = []
   } finally {
     loading.value = false
+  }
+}
+
+async function loadReturnApprovals(status: 'all' | 'pending' = 'all') {
+  returnApprovalsLoading.value = true
+  returnApprovalsError.value = null
+  try {
+    const params: Record<string, string> = {}
+    if (status) {
+      params.status = status
+    }
+    const { data } = await api.get<ReturnRequest[]>('/returns/admin', { params })
+    const list = Array.isArray(data) ? data : []
+    returnApprovals.value = list
+    list.forEach((item) => {
+      if (!item?.id) return
+      const existing = adminResolutionDrafts[item.id]
+      const value = typeof existing === 'string' ? existing : item.adminResolution ?? ''
+      adminResolutionDrafts[item.id] = value
+    })
+  } catch (err) {
+    returnApprovals.value = []
+    returnApprovalsError.value = err instanceof Error ? err.message : '加载退货审批失败'
+  } finally {
+    returnApprovalsLoading.value = false
   }
 }
 
@@ -194,8 +248,59 @@ function payoutTagClass(order: AdminOrderSummary) {
   return 'tag'
 }
 
+function adminResolutionDraft(id: number) {
+  const value = adminResolutionDrafts[id]
+  return typeof value === 'string' ? value : ''
+}
+
+function updateAdminResolutionDraft(id: number, value: string) {
+  adminResolutionDrafts[id] = value
+}
+
+function returnStageLabel(status?: string | null) {
+  if (!status) return '未知状态'
+  const normalized = status.trim().toUpperCase()
+  switch (normalized) {
+    case 'AWAITING_ADMIN':
+      return '待审批'
+    case 'COMPLETED':
+      return '已退款'
+    case 'REJECTED':
+      return '已拒绝'
+    case 'APPROVED':
+      return '供应商已确认'
+    case 'PENDING':
+      return '待供应商处理'
+    default:
+      return status
+  }
+}
+
+async function confirmReturnApproval(request: ReturnRequest) {
+  if (!request?.id) return
+
+  processingReturnId.value = request.id
+  returnApprovalError.value = null
+  returnApprovalMessage.value = null
+  try {
+    const note = adminResolutionDraft(request.id).trim()
+    await api.put(`/returns/${request.id}/status`, {
+      status: 'COMPLETED',
+      adminResolution: note,
+    })
+    const orderHint = request.orderId ? `订单 ${request.orderId}` : '该订单'
+    returnApprovalMessage.value = `${orderHint}的退款已完成，并返还至消费者钱包`
+    await Promise.all([loadReturnApprovals(), loadOrders()])
+  } catch (err) {
+    returnApprovalError.value = err instanceof Error ? err.message : '确认退款失败'
+  } finally {
+    processingReturnId.value = null
+  }
+}
+
 onMounted(() => {
   loadOrders()
+  loadReturnApprovals()
 })
 </script>
 
@@ -247,6 +352,142 @@ onMounted(() => {
     <transition name="fade">
       <p v-if="actionError" class="feedback feedback--error">{{ actionError }}</p>
     </transition>
+
+    <section class="return-approvals" aria-labelledby="return-approvals-title">
+      <div class="panel-title-row">
+        <div class="panel-title" id="return-approvals-title">退货审批</div>
+        <button
+          type="button"
+          class="panel-action-button"
+          @click="() => {
+            clearReturnFeedback()
+            loadReturnApprovals()
+          }"
+          :disabled="returnApprovalsLoading"
+        >
+          {{ returnApprovalsLoading ? '刷新中…' : '刷新列表' }}
+        </button>
+      </div>
+      <transition name="fade">
+        <p v-if="returnApprovalMessage" class="return-feedback return-feedback--success">
+          {{ returnApprovalMessage }}
+        </p>
+      </transition>
+      <transition name="fade">
+        <p v-if="returnApprovalError" class="return-feedback return-feedback--error">
+          {{ returnApprovalError }}
+        </p>
+      </transition>
+
+      <p v-if="returnApprovalsLoading" class="feedback feedback--info">退货记录加载中…</p>
+      <p v-else-if="returnApprovalsError" class="return-feedback return-feedback--error">
+        {{ returnApprovalsError }}
+      </p>
+      <template v-else>
+        <p
+          v-if="!pendingReturnRequests.length && !processedReturnRequests.length"
+          class="empty"
+        >
+          暂无售后退货记录。
+        </p>
+        <template v-else>
+          <section v-if="pendingReturnRequests.length" class="return-section">
+            <h2 class="section-subtitle">待审批</h2>
+            <ul class="return-list">
+              <li v-for="request in pendingReturnRequests" :key="request.id" class="return-card">
+                <header class="return-card__head">
+                  <div>
+                    <h3>{{ request.productName ?? '商品' }}</h3>
+                    <p class="return-meta">申请时间：{{ formatDateTime(request.requestedAt) }}</p>
+                    <p v-if="request.consumerName" class="return-meta">
+                      消费者：{{ request.consumerName }}
+                    </p>
+                  </div>
+                  <span class="status-pill">{{ returnStageLabel(request.status) }}</span>
+                </header>
+                <section class="return-card__body">
+                  <p>
+                    <strong>退货原因：</strong>
+                    <span>{{ request.reason?.trim() ? request.reason : '未提供' }}</span>
+                  </p>
+                  <p v-if="request.refundAmount">
+                    <strong>退款总额：</strong>
+                    <span>
+                      {{ formatCurrency(request.refundAmount) }} （平台支付
+                      {{ formatCurrency(request.commissionAmount) }}，供应商支付
+                      {{ formatCurrency(request.supplierShareAmount) }}）
+                    </span>
+                  </p>
+                  <p v-if="request.resolution">
+                    <strong>供应商说明：</strong>
+                    <span>{{ request.resolution }}</span>
+                  </p>
+                  <label>
+                    <span>管理员备注</span>
+                    <textarea
+                      :value="adminResolutionDraft(request.id)"
+                      rows="3"
+                      placeholder="可填写退款原因或沟通记录"
+                      :disabled="processingReturnId === request.id"
+                      @input="updateAdminResolutionDraft(
+                        request.id,
+                        ($event.target as HTMLTextAreaElement).value
+                      )"
+                    ></textarea>
+                  </label>
+                </section>
+                <footer class="return-card__footer">
+                  <button
+                    type="button"
+                    class="primary"
+                    :disabled="processingReturnId === request.id"
+                    @click="confirmReturnApproval(request)"
+                  >
+                    {{ processingReturnId === request.id ? '提交中…' : '确认退款' }}
+                  </button>
+                </footer>
+              </li>
+            </ul>
+          </section>
+
+          <section v-if="processedReturnRequests.length" class="return-section history">
+            <h2 class="section-subtitle">历史记录</h2>
+            <ul class="return-list return-list--compact">
+              <li v-for="request in processedReturnRequests" :key="request.id" class="return-card">
+                <header class="return-card__head">
+                  <div>
+                    <h3>{{ request.productName ?? '商品' }}</h3>
+                    <p class="return-meta">申请时间：{{ formatDateTime(request.requestedAt) }}</p>
+                    <p class="return-meta" v-if="request.adminProcessedAt">
+                      完成时间：{{ formatDateTime(request.adminProcessedAt) }}
+                    </p>
+                  </div>
+                  <span class="status-pill">{{ returnStageLabel(request.status) }}</span>
+                </header>
+                <section class="return-card__body">
+                  <p>
+                    <strong>退款总额：</strong>
+                    <span>
+                      {{ formatCurrency(request.refundAmount) }} （平台支付
+                      {{ formatCurrency(request.commissionAmount) }}，供应商支付
+                      {{ formatCurrency(request.supplierShareAmount) }}）
+                    </span>
+                  </p>
+                  <p v-if="request.resolution">
+                    <strong>供应商说明：</strong>
+                    <span>{{ request.resolution }}</span>
+                  </p>
+                  <p v-if="request.adminResolution">
+                    <strong>管理员说明：</strong>
+                    <span>{{ request.adminResolution }}</span>
+                  </p>
+                </section>
+              </li>
+            </ul>
+          </section>
+        </template>
+      </template>
+    </section>
 
     <p v-if="error" class="feedback feedback--error">{{ error }}</p>
     <p v-else-if="loading" class="feedback feedback--info">订单加载中，请稍候…</p>
@@ -470,6 +711,154 @@ onMounted(() => {
 .feedback--info {
   background: rgba(59, 130, 246, 0.12);
   color: #1d4ed8;
+}
+
+.return-approvals {
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  border-radius: 1rem;
+  padding: 1.25rem;
+  display: grid;
+  gap: 1rem;
+  background: rgba(248, 250, 252, 0.8);
+}
+
+.return-approvals .panel-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.return-approvals .panel-title {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: rgba(15, 23, 42, 0.9);
+}
+
+.return-approvals .panel-action-button {
+  border: none;
+  border-radius: 0.75rem;
+  padding: 0.5rem 1.2rem;
+  font-weight: 600;
+  cursor: pointer;
+  background: linear-gradient(135deg, #6366f1, #38bdf8);
+  color: #fff;
+}
+
+.return-feedback {
+  padding: 0.75rem 1rem;
+  border-radius: 0.75rem;
+  font-weight: 600;
+}
+
+.return-feedback--success {
+  background: rgba(16, 185, 129, 0.12);
+  color: #047857;
+}
+
+.return-feedback--error {
+  background: rgba(239, 68, 68, 0.12);
+  color: #b91c1c;
+}
+
+.return-section {
+  display: grid;
+  gap: 1rem;
+}
+
+.section-subtitle {
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: rgba(15, 23, 42, 0.85);
+}
+
+.return-list {
+  list-style: none;
+  display: grid;
+  gap: 1rem;
+  padding: 0;
+  margin: 0;
+}
+
+.return-list--compact .return-card {
+  padding: 1rem;
+}
+
+.return-card {
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  border-radius: 1rem;
+  background: rgba(241, 245, 249, 0.6);
+  padding: 1.25rem;
+  display: grid;
+  gap: 1rem;
+}
+
+.return-card__head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 1rem;
+}
+
+.return-card__head h3 {
+  margin: 0;
+  font-size: 1.1rem;
+}
+
+.status-pill {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  background: rgba(59, 130, 246, 0.12);
+  color: #1d4ed8;
+  padding: 0.35rem 0.75rem;
+  font-weight: 600;
+  font-size: 0.85rem;
+}
+
+.return-card__body {
+  display: grid;
+  gap: 0.75rem;
+  color: rgba(15, 23, 42, 0.78);
+}
+
+.return-card__body strong {
+  font-weight: 700;
+  margin-right: 0.3rem;
+}
+
+.return-card__body textarea {
+  border-radius: 0.75rem;
+  border: 1px solid rgba(15, 23, 42, 0.15);
+  padding: 0.6rem 0.75rem;
+  font-family: inherit;
+  resize: vertical;
+  min-height: 5rem;
+}
+
+.return-card__body textarea:disabled {
+  background: rgba(226, 232, 240, 0.7);
+  cursor: not-allowed;
+}
+
+.return-card__footer {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.return-card__footer .primary {
+  border: none;
+  border-radius: 0.75rem;
+  padding: 0.55rem 1.4rem;
+  background: linear-gradient(135deg, #2563eb, #38bdf8);
+  color: #fff;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.return-card__footer .primary:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 
 .order-list {

@@ -459,6 +459,8 @@ function returnStatusLabel(status?: string | null) {
   switch (normalized) {
     case 'PENDING':
       return '待处理'
+    case 'AWAITING_ADMIN':
+      return '待管理员审批'
     case 'APPROVED':
       return '已确认'
     case 'REJECTED':
@@ -500,7 +502,12 @@ async function handleReturnDecision(request: ReturnRequest, status: 'APPROVED' |
       status,
       resolution: note,
     })
-    const baseMessage = status === 'APPROVED' ? '已确认退货申请' : '已拒绝退货申请'
+    let baseMessage = '已拒绝退货申请'
+    if (status === 'APPROVED') {
+      baseMessage = request.afterReceipt
+        ? '已确认退货申请，等待管理员审批'
+        : '已确认退货申请'
+    }
     const orderNoPart = request.orderId ? `（订单 ${request.orderId}）` : ''
     returnActionMessage.value = `${baseMessage}${orderNoPart}`
     await loadReturnRequests()
@@ -1065,9 +1072,31 @@ async function removeCategory(option: CategoryOption) {
                 <strong>退货原因：</strong>
                 <span>{{ request.reason?.trim() ? request.reason : '未提供' }}</span>
               </p>
+              <p v-if="request.afterReceipt && request.refundAmount">
+                <strong>退款金额：</strong>
+                <span>
+                  {{ formatCurrency(request.refundAmount) }}
+                  <template v-if="request.supplierShareAmount || request.commissionAmount">
+                    （供应商承担 {{ formatCurrency(request.supplierShareAmount) }}，平台承担
+                    {{ formatCurrency(request.commissionAmount) }}）
+                  </template>
+                </span>
+              </p>
+              <p v-if="request.afterReceipt && request.status?.toUpperCase() === 'AWAITING_ADMIN'" class="return-hint">
+                该退货已由您确认，正等待管理员最终审批退款。
+              </p>
               <p v-if="request.resolution && !canProcessReturn(request)">
                 <strong>处理说明：</strong>
                 <span>{{ request.resolution }}</span>
+              </p>
+              <p v-if="request.adminResolution" class="return-admin-note">
+                <strong>管理员说明：</strong>
+                <span>
+                  {{ request.adminResolution }}
+                  <template v-if="request.adminProcessedAt">
+                    （{{ formatDateTime(request.adminProcessedAt) }}）
+                  </template>
+                </span>
               </p>
               <label v-if="canProcessReturn(request)">
                 <span>处理说明</span>
@@ -1913,6 +1942,15 @@ async function removeCategory(option: CategoryOption) {
 .return-card__body strong {
   font-weight: 700;
   margin-right: 0.35rem;
+}
+
+.return-hint {
+  color: #2563eb;
+  font-size: 0.9rem;
+}
+
+.return-admin-note {
+  color: rgba(15, 23, 42, 0.7);
 }
 
 .return-card__body label {

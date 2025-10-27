@@ -1,5 +1,6 @@
 package com.example.silkmall.dto;
 
+import java.math.BigDecimal;
 import java.util.Date;
 
 public class ReturnRequestDTO {
@@ -13,8 +14,16 @@ public class ReturnRequestDTO {
     private String status;
     private String reason;
     private String resolution;
+    private String adminResolution;
     private Date requestedAt;
     private Date processedAt;
+    private Date adminProcessedAt;
+    private Boolean afterReceipt;
+    private Boolean requiresAdminApproval;
+    private String adminStatus;
+    private BigDecimal refundAmount;
+    private BigDecimal supplierShareAmount;
+    private BigDecimal commissionAmount;
 
     public static Builder builder() {
         return new Builder();
@@ -100,6 +109,14 @@ public class ReturnRequestDTO {
         this.resolution = resolution;
     }
 
+    public String getAdminResolution() {
+        return adminResolution;
+    }
+
+    public void setAdminResolution(String adminResolution) {
+        this.adminResolution = adminResolution;
+    }
+
     public Date getRequestedAt() {
         return requestedAt;
     }
@@ -114,6 +131,62 @@ public class ReturnRequestDTO {
 
     public void setProcessedAt(Date processedAt) {
         this.processedAt = processedAt;
+    }
+
+    public Date getAdminProcessedAt() {
+        return adminProcessedAt;
+    }
+
+    public void setAdminProcessedAt(Date adminProcessedAt) {
+        this.adminProcessedAt = adminProcessedAt;
+    }
+
+    public Boolean getAfterReceipt() {
+        return afterReceipt;
+    }
+
+    public void setAfterReceipt(Boolean afterReceipt) {
+        this.afterReceipt = afterReceipt;
+    }
+
+    public Boolean getRequiresAdminApproval() {
+        return requiresAdminApproval;
+    }
+
+    public void setRequiresAdminApproval(Boolean requiresAdminApproval) {
+        this.requiresAdminApproval = requiresAdminApproval;
+    }
+
+    public String getAdminStatus() {
+        return adminStatus;
+    }
+
+    public void setAdminStatus(String adminStatus) {
+        this.adminStatus = adminStatus;
+    }
+
+    public BigDecimal getRefundAmount() {
+        return refundAmount;
+    }
+
+    public void setRefundAmount(BigDecimal refundAmount) {
+        this.refundAmount = refundAmount;
+    }
+
+    public BigDecimal getSupplierShareAmount() {
+        return supplierShareAmount;
+    }
+
+    public void setSupplierShareAmount(BigDecimal supplierShareAmount) {
+        this.supplierShareAmount = supplierShareAmount;
+    }
+
+    public BigDecimal getCommissionAmount() {
+        return commissionAmount;
+    }
+
+    public void setCommissionAmount(BigDecimal commissionAmount) {
+        this.commissionAmount = commissionAmount;
     }
 
     public static final class Builder {
@@ -173,6 +246,11 @@ public class ReturnRequestDTO {
             return this;
         }
 
+        public Builder adminResolution(String adminResolution) {
+            instance.setAdminResolution(adminResolution);
+            return this;
+        }
+
         public Builder requestedAt(Date requestedAt) {
             instance.setRequestedAt(requestedAt);
             return this;
@@ -180,6 +258,41 @@ public class ReturnRequestDTO {
 
         public Builder processedAt(Date processedAt) {
             instance.setProcessedAt(processedAt);
+            return this;
+        }
+
+        public Builder adminProcessedAt(Date adminProcessedAt) {
+            instance.setAdminProcessedAt(adminProcessedAt);
+            return this;
+        }
+
+        public Builder afterReceipt(Boolean afterReceipt) {
+            instance.setAfterReceipt(afterReceipt);
+            return this;
+        }
+
+        public Builder requiresAdminApproval(Boolean requiresAdminApproval) {
+            instance.setRequiresAdminApproval(requiresAdminApproval);
+            return this;
+        }
+
+        public Builder adminStatus(String adminStatus) {
+            instance.setAdminStatus(adminStatus);
+            return this;
+        }
+
+        public Builder refundAmount(BigDecimal refundAmount) {
+            instance.setRefundAmount(refundAmount);
+            return this;
+        }
+
+        public Builder supplierShareAmount(BigDecimal supplierShareAmount) {
+            instance.setSupplierShareAmount(supplierShareAmount);
+            return this;
+        }
+
+        public Builder commissionAmount(BigDecimal commissionAmount) {
+            instance.setCommissionAmount(commissionAmount);
             return this;
         }
 

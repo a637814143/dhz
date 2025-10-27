@@ -321,8 +321,16 @@ export interface ReturnRequest {
   status: string
   reason?: string | null
   resolution?: string | null
+  adminResolution?: string | null
   requestedAt: string
   processedAt?: string | null
+  adminProcessedAt?: string | null
+  afterReceipt?: boolean | null
+  requiresAdminApproval?: boolean | null
+  adminStatus?: string | null
+  refundAmount?: number | null
+  supplierShareAmount?: number | null
+  commissionAmount?: number | null
 }
 
 export interface CaptchaChallenge {

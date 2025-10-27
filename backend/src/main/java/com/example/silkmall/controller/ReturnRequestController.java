@@ -41,7 +41,12 @@ public class ReturnRequestController extends BaseController {
     public ResponseEntity<ReturnRequestDTO> processReturn(@PathVariable Long id,
                                                            @RequestBody ProcessReturnRequestDTO request,
                                                            @AuthenticationPrincipal CustomUserDetails currentUser) {
-        ReturnRequest updated = returnRequestService.processReturnRequest(id, request.getStatus(), request.getResolution(), currentUser);
+        ReturnRequest updated = returnRequestService.processReturnRequest(
+                id,
+                request.getStatus(),
+                request.getResolution(),
+                request.getAdminResolution(),
+                currentUser);
         return success(toDto(updated));
     }
 
@@ -73,6 +78,16 @@ public class ReturnRequestController extends BaseController {
         return success(requests);
     }
 
+    @GetMapping("/admin")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<List<ReturnRequestDTO>> getForAdmin(@RequestParam(value = "status", required = false) String status) {
+        List<ReturnRequestDTO> requests = returnRequestService.findAdminQueue(status)
+                .stream()
+                .map(this::toDto)
+                .collect(Collectors.toList());
+        return success(requests);
+    }
+
     private ReturnRequestDTO toDto(ReturnRequest request) {
         return ReturnRequestDTO.builder()
                 .id(request.getId())
@@ -85,8 +100,16 @@ public class ReturnRequestController extends BaseController {
                 .status(request.getStatus())
                 .reason(request.getReason())
                 .resolution(request.getResolution())
+                .adminResolution(request.getAdminResolution())
                 .requestedAt(request.getRequestedAt())
                 .processedAt(request.getProcessedAt())
+                .adminProcessedAt(request.getAdminProcessedAt())
+                .afterReceipt(request.getAfterReceipt())
+                .requiresAdminApproval(request.getRequiresAdminApproval())
+                .adminStatus(request.getAdminStatus())
+                .refundAmount(request.getRefundAmount())
+                .supplierShareAmount(request.getSupplierShareAmount())
+                .commissionAmount(request.getCommissionAmount())
                 .build();
     }
 }

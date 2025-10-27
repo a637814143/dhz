@@ -2,6 +2,7 @@ package com.example.silkmall.entity;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
+import java.math.BigDecimal;
 import java.util.Date;
 
 @Entity
@@ -20,9 +21,26 @@ public class ReturnRequest {
     @Column(length = 1000)
     private String resolution;
 
+    @Column(length = 1000)
+    private String adminResolution;
+
     private Date requestedAt;
 
     private Date processedAt;
+
+    private Date adminProcessedAt;
+
+    private Boolean afterReceipt;
+
+    private Boolean requiresAdminApproval;
+
+    private String adminStatus;
+
+    private BigDecimal refundAmount;
+
+    private BigDecimal supplierShareAmount;
+
+    private BigDecimal commissionAmount;
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "order_id")
@@ -79,6 +97,14 @@ public class ReturnRequest {
         this.resolution = resolution;
     }
 
+    public String getAdminResolution() {
+        return adminResolution;
+    }
+
+    public void setAdminResolution(String adminResolution) {
+        this.adminResolution = adminResolution;
+    }
+
     public Date getRequestedAt() {
         return requestedAt;
     }
@@ -93,6 +119,62 @@ public class ReturnRequest {
 
     public void setProcessedAt(Date processedAt) {
         this.processedAt = processedAt;
+    }
+
+    public Date getAdminProcessedAt() {
+        return adminProcessedAt;
+    }
+
+    public void setAdminProcessedAt(Date adminProcessedAt) {
+        this.adminProcessedAt = adminProcessedAt;
+    }
+
+    public Boolean getAfterReceipt() {
+        return afterReceipt;
+    }
+
+    public void setAfterReceipt(Boolean afterReceipt) {
+        this.afterReceipt = afterReceipt;
+    }
+
+    public Boolean getRequiresAdminApproval() {
+        return requiresAdminApproval;
+    }
+
+    public void setRequiresAdminApproval(Boolean requiresAdminApproval) {
+        this.requiresAdminApproval = requiresAdminApproval;
+    }
+
+    public String getAdminStatus() {
+        return adminStatus;
+    }
+
+    public void setAdminStatus(String adminStatus) {
+        this.adminStatus = adminStatus;
+    }
+
+    public BigDecimal getRefundAmount() {
+        return refundAmount;
+    }
+
+    public void setRefundAmount(BigDecimal refundAmount) {
+        this.refundAmount = refundAmount;
+    }
+
+    public BigDecimal getSupplierShareAmount() {
+        return supplierShareAmount;
+    }
+
+    public void setSupplierShareAmount(BigDecimal supplierShareAmount) {
+        this.supplierShareAmount = supplierShareAmount;
+    }
+
+    public BigDecimal getCommissionAmount() {
+        return commissionAmount;
+    }
+
+    public void setCommissionAmount(BigDecimal commissionAmount) {
+        this.commissionAmount = commissionAmount;
     }
 
     public Order getOrder() {
