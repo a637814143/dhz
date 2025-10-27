@@ -14,6 +14,8 @@ public class AdminOrderSummaryDTO {
     private boolean consumerConfirmed;
     private boolean canApprove;
     private String approvalDisabledReason;
+    private boolean cancelled;
+    private String cancellationLabel;
     private BigDecimal commissionAmount;
     private BigDecimal supplierPayoutAmount;
     private String payoutStatus;
@@ -102,6 +104,22 @@ public class AdminOrderSummaryDTO {
 
     public void setApprovalDisabledReason(String approvalDisabledReason) {
         this.approvalDisabledReason = approvalDisabledReason;
+    }
+
+    public boolean isCancelled() {
+        return cancelled;
+    }
+
+    public void setCancelled(boolean cancelled) {
+        this.cancelled = cancelled;
+    }
+
+    public String getCancellationLabel() {
+        return cancellationLabel;
+    }
+
+    public void setCancellationLabel(String cancellationLabel) {
+        this.cancellationLabel = cancellationLabel;
     }
 
     public BigDecimal getCommissionAmount() {

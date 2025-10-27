@@ -7,6 +7,7 @@ import type {
   HomepageContent,
   PageResponse,
   ProductSummary,
+  ReturnRequest,
   SupplierOrderSummary,
 } from '@/types'
 
@@ -92,6 +93,14 @@ const categoryFeedback = ref<string | null>(null)
 const categoryError = ref<string | null>(null)
 const categoryDeletingId = ref<number | null>(null)
 
+const returnRequests = ref<ReturnRequest[]>([])
+const returnRequestsLoading = ref(false)
+const returnRequestsError = ref<string | null>(null)
+const returnActionMessage = ref<string | null>(null)
+const returnActionError = ref<string | null>(null)
+const updatingReturnId = ref<number | null>(null)
+const resolutionDrafts = reactive<Record<number, string>>({})
+
 function extractNumericId(value: unknown): number | null {
   if (typeof value === 'number' && Number.isFinite(value)) {
     return value
@@ -147,6 +156,38 @@ async function loadSoldOrders() {
     soldOrdersError.value = err instanceof Error ? err.message : '加载已销售订单失败'
   } finally {
     soldOrdersLoading.value = false
+  }
+}
+
+async function loadReturnRequests() {
+  if (!state.user) {
+    returnRequests.value = []
+    returnRequestsError.value = null
+    return
+  }
+
+  returnRequestsLoading.value = true
+  returnRequestsError.value = null
+  try {
+    const { data } = await api.get<ReturnRequest[]>(`/returns/suppliers/${state.user.id}`)
+    const list = Array.isArray(data) ? data : []
+    list.sort((a, b) => {
+      const timeA = a?.requestedAt ? new Date(a.requestedAt).getTime() : 0
+      const timeB = b?.requestedAt ? new Date(b.requestedAt).getTime() : 0
+      return timeB - timeA
+    })
+    returnRequests.value = list
+    list.forEach((item) => {
+      if (!item?.id) return
+      const existing = resolutionDrafts[item.id]
+      const value = typeof existing === 'string' ? existing : item.resolution ?? ''
+      resolutionDrafts[item.id] = value
+    })
+  } catch (err) {
+    returnRequests.value = []
+    returnRequestsError.value = err instanceof Error ? err.message : '加载退货申请失败'
+  } finally {
+    returnRequestsLoading.value = false
   }
 }
 
@@ -374,6 +415,7 @@ async function bootstrap() {
       loadProfile(),
       loadProducts(),
       loadSoldOrders(),
+      loadReturnRequests(),
       loadHomeContent(),
       loadCategories(),
       loadWallet(),
@@ -409,6 +451,65 @@ function orderStatusLabel(status?: string | null) {
   if (!status) return '未知状态'
   const normalized = status.trim()
   return normalized.length > 0 ? normalized : '未知状态'
+}
+
+function returnStatusLabel(status?: string | null) {
+  if (!status) return '未知状态'
+  const normalized = status.trim().toUpperCase()
+  switch (normalized) {
+    case 'PENDING':
+      return '待处理'
+    case 'APPROVED':
+      return '已确认'
+    case 'REJECTED':
+      return '已拒绝'
+    case 'COMPLETED':
+      return '已完成'
+    default:
+      return '未知状态'
+  }
+}
+
+function canProcessReturn(request: ReturnRequest) {
+  return (request.status ?? '').toUpperCase() === 'PENDING'
+}
+
+function resolveDraft(requestId: number) {
+  const value = resolutionDrafts[requestId]
+  return typeof value === 'string' ? value : ''
+}
+
+function updateResolutionDraft(requestId: number, value: string) {
+  resolutionDrafts[requestId] = value
+}
+
+async function handleReturnDecision(request: ReturnRequest, status: 'APPROVED' | 'REJECTED') {
+  if (!request?.id) return
+
+  const note = resolveDraft(request.id).trim()
+  if (status === 'REJECTED' && !note) {
+    returnActionError.value = '请填写拒绝原因'
+    return
+  }
+
+  updatingReturnId.value = request.id
+  returnActionMessage.value = null
+  returnActionError.value = null
+  try {
+    await api.put(`/returns/${request.id}/status`, {
+      status,
+      resolution: note,
+    })
+    const baseMessage = status === 'APPROVED' ? '已确认退货申请' : '已拒绝退货申请'
+    const orderNoPart = request.orderId ? `（订单 ${request.orderId}）` : ''
+    returnActionMessage.value = `${baseMessage}${orderNoPart}`
+    await loadReturnRequests()
+    await loadSoldOrders()
+  } catch (err) {
+    returnActionError.value = err instanceof Error ? err.message : '处理退货申请失败'
+  } finally {
+    updatingReturnId.value = null
+  }
 }
 
 function productStatus(status?: string | null) {
@@ -927,6 +1028,79 @@ async function removeCategory(option: CategoryOption) {
           </li>
         </ul>
         <p v-else class="empty">暂时没有已销售的订单。</p>
+      </section>
+
+      <section class="panel returns" aria-labelledby="return-management">
+        <div class="panel-title-row">
+          <div class="panel-title" id="return-management">退货管理</div>
+        </div>
+        <transition name="fade">
+          <p v-if="returnActionMessage" class="return-feedback return-feedback--success">
+            {{ returnActionMessage }}
+          </p>
+        </transition>
+        <transition name="fade">
+          <p v-if="returnActionError" class="return-feedback return-feedback--error">
+            {{ returnActionError }}
+          </p>
+        </transition>
+        <p v-if="returnRequestsLoading" class="empty">正在加载退货申请…</p>
+        <p v-else-if="returnRequestsError" class="return-error">{{ returnRequestsError }}</p>
+        <ul v-else-if="returnRequests.length" class="return-list">
+          <li
+            v-for="request in returnRequests"
+            :key="request.id"
+            :class="['return-card', { 'return-card--resolved': !canProcessReturn(request) }]"
+          >
+            <header class="return-card__head">
+              <div>
+                <h3>{{ request.productName ?? '商品' }}</h3>
+                <p class="return-meta">申请时间：{{ formatDateTime(request.requestedAt) }}</p>
+                <p class="return-meta" v-if="request.consumerName">消费者：{{ request.consumerName }}</p>
+              </div>
+              <span class="status-pill">{{ returnStatusLabel(request.status) }}</span>
+            </header>
+            <section class="return-card__body">
+              <p>
+                <strong>退货原因：</strong>
+                <span>{{ request.reason?.trim() ? request.reason : '未提供' }}</span>
+              </p>
+              <p v-if="request.resolution && !canProcessReturn(request)">
+                <strong>处理说明：</strong>
+                <span>{{ request.resolution }}</span>
+              </p>
+              <label v-if="canProcessReturn(request)">
+                <span>处理说明</span>
+                <textarea
+                  :value="resolveDraft(request.id)"
+                  @input="updateResolutionDraft(request.id, ($event.target as HTMLTextAreaElement).value)"
+                  rows="3"
+                  placeholder="可填写退货处理备注"
+                  :disabled="updatingReturnId === request.id"
+                ></textarea>
+              </label>
+            </section>
+            <footer class="return-card__footer">
+              <button
+                type="button"
+                class="secondary"
+                :disabled="!canProcessReturn(request) || updatingReturnId === request.id"
+                @click="handleReturnDecision(request, 'REJECTED')"
+              >
+                {{ updatingReturnId === request.id ? '提交中…' : '拒绝退货' }}
+              </button>
+              <button
+                type="button"
+                class="primary"
+                :disabled="!canProcessReturn(request) || updatingReturnId === request.id"
+                @click="handleReturnDecision(request, 'APPROVED')"
+              >
+                {{ updatingReturnId === request.id ? '提交中…' : '确认退货' }}
+              </button>
+            </footer>
+          </li>
+        </ul>
+        <p v-else class="empty">暂无退货申请。</p>
       </section>
 
       <section class="panel promotions" aria-labelledby="promotion-list">
@@ -1669,6 +1843,128 @@ async function removeCategory(option: CategoryOption) {
   color: rgba(15, 23, 42, 0.6);
   font-size: 0.9rem;
   text-align: right;
+}
+
+.return-feedback {
+  padding: 0.75rem 1rem;
+  border-radius: 0.9rem;
+  font-weight: 600;
+}
+
+.return-feedback--success {
+  background: rgba(16, 185, 129, 0.1);
+  color: #047857;
+}
+
+.return-feedback--error {
+  background: rgba(239, 68, 68, 0.12);
+  color: #b91c1c;
+}
+
+.return-error {
+  color: #b91c1c;
+  font-weight: 600;
+}
+
+.return-list {
+  display: grid;
+  gap: 1.2rem;
+  list-style: none;
+  padding: 0;
+}
+
+.return-card {
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  border-radius: 1rem;
+  padding: 1.25rem;
+  display: grid;
+  gap: 1rem;
+  background: rgba(248, 250, 252, 0.8);
+}
+
+.return-card--resolved {
+  background: rgba(241, 245, 249, 0.7);
+  border-color: rgba(15, 23, 42, 0.06);
+}
+
+.return-card__head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 1rem;
+}
+
+.return-card__head h3 {
+  margin: 0;
+  font-size: 1.1rem;
+}
+
+.return-meta {
+  color: rgba(15, 23, 42, 0.55);
+  font-size: 0.85rem;
+}
+
+.return-card__body {
+  display: grid;
+  gap: 0.8rem;
+  color: rgba(15, 23, 42, 0.8);
+}
+
+.return-card__body strong {
+  font-weight: 700;
+  margin-right: 0.35rem;
+}
+
+.return-card__body label {
+  display: grid;
+  gap: 0.4rem;
+  font-weight: 600;
+}
+
+.return-card__body textarea {
+  border-radius: 0.75rem;
+  border: 1px solid rgba(15, 23, 42, 0.15);
+  padding: 0.6rem 0.75rem;
+  resize: vertical;
+  min-height: 5.5rem;
+  font-family: inherit;
+}
+
+.return-card__body textarea:disabled {
+  background: rgba(241, 245, 249, 0.6);
+  cursor: not-allowed;
+}
+
+.return-card__footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.75rem;
+}
+
+.return-card__footer .secondary {
+  border: 1px solid rgba(248, 113, 113, 0.3);
+  background: rgba(248, 113, 113, 0.12);
+  color: #991b1b;
+  border-radius: 0.75rem;
+  padding: 0.55rem 1.3rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.return-card__footer .secondary:disabled,
+.return-card__footer .primary:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.return-card__footer .primary {
+  border: none;
+  border-radius: 0.75rem;
+  padding: 0.55rem 1.5rem;
+  background: linear-gradient(135deg, #2563eb, #38bdf8);
+  color: #fff;
+  font-weight: 600;
+  cursor: pointer;
 }
 
 .promotion-list {

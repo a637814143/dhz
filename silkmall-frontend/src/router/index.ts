@@ -2,7 +2,6 @@ import { createRouter, createWebHistory } from 'vue-router'
 import HomeView from '../views/HomeView.vue'
 import { useAuthState } from '@/services/authState'
 
-const OrderCenterView = () => import('../views/OrderCenterView.vue')
 const AuthView = () => import('../views/auth/AuthView.vue')
 const ConsumerDashboard = () => import('../views/dashboard/ConsumerDashboard.vue')
 const SupplierWorkbench = () => import('../views/dashboard/SupplierWorkbench.vue')
@@ -35,12 +34,6 @@ const router = createRouter({
       name: 'product-detail',
       component: ProductDetailView,
       meta: { requiresAuth: true },
-    },
-    {
-      path: '/orders',
-      name: 'orders',
-      component: OrderCenterView,
-      meta: { requiresAuth: true, roles: ['consumer', 'admin'] },
     },
     {
       path: '/auth',

@@ -63,6 +63,16 @@ public class ReturnRequestController extends BaseController {
         return success(requests);
     }
 
+    @GetMapping("/suppliers/{supplierId}")
+    @PreAuthorize("hasRole('ADMIN') or (hasRole('SUPPLIER') and #supplierId == principal.id)")
+    public ResponseEntity<List<ReturnRequestDTO>> getBySupplier(@PathVariable Long supplierId) {
+        List<ReturnRequestDTO> requests = returnRequestService.findBySupplierId(supplierId)
+                .stream()
+                .map(this::toDto)
+                .collect(Collectors.toList());
+        return success(requests);
+    }
+
     private ReturnRequestDTO toDto(ReturnRequest request) {
         return ReturnRequestDTO.builder()
                 .id(request.getId())

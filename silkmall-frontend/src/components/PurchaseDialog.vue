@@ -1,7 +1,12 @@
 <script setup lang="ts">
 import { computed, reactive, ref, watch } from 'vue'
 import api from '@/services/api'
-import type { ProductSummary, PurchaseOrderPayload, PurchaseOrderResult } from '@/types'
+import type {
+  ConsumerAddress,
+  ProductSummary,
+  PurchaseOrderPayload,
+  PurchaseOrderResult,
+} from '@/types'
 import { useAuthState } from '@/services/authState'
 
 const props = defineProps<{
@@ -28,12 +33,17 @@ const form = reactive({
 
 const submitting = ref(false)
 const error = ref<string | null>(null)
+const addressBook = ref<ConsumerAddress[]>([])
+const addressBookLoading = ref(false)
+const addressBookError = ref<string | null>(null)
+const selectedAddressId = ref<number | 'manual'>('manual')
 
 watch(
   () => props.open,
   (open) => {
     if (open) {
       resetForm()
+      loadAddressBook()
     }
   }
 )
@@ -54,7 +64,61 @@ function resetForm() {
   form.quantity = 1
   form.remark = ''
   error.value = null
+  addressBook.value = []
+  addressBookError.value = null
+  addressBookLoading.value = false
+  selectedAddressId.value = 'manual'
 }
+
+async function loadAddressBook() {
+  if (!state.user?.id) {
+    addressBook.value = []
+    addressBookError.value = null
+    selectedAddressId.value = 'manual'
+    return
+  }
+  addressBookLoading.value = true
+  addressBookError.value = null
+  try {
+    const { data } = await api.get<ConsumerAddress[]>(`/consumers/${state.user.id}/addresses`)
+    const items = data ?? []
+    addressBook.value = items.map((item) => ({
+      ...item,
+      isDefault: Boolean(item.isDefault),
+    }))
+    if (addressBook.value.length > 0) {
+      const preferred =
+        addressBook.value.find((entry) => entry.isDefault) ?? addressBook.value[0]
+      selectedAddressId.value = preferred.id
+      applyAddress(preferred)
+    } else {
+      selectedAddressId.value = 'manual'
+    }
+  } catch (err) {
+    addressBook.value = []
+    selectedAddressId.value = 'manual'
+    addressBookError.value = err instanceof Error ? err.message : '加载常用地址失败'
+  } finally {
+    addressBookLoading.value = false
+  }
+}
+
+function applyAddress(address: ConsumerAddress | null) {
+  if (!address) return
+  form.recipientName = address.recipientName ?? ''
+  form.recipientPhone = address.recipientPhone ?? ''
+  form.shippingAddress = address.shippingAddress ?? ''
+}
+
+watch(selectedAddressId, (value) => {
+  if (value === 'manual') {
+    return
+  }
+  const match = addressBook.value.find((item) => item.id === value)
+  if (match) {
+    applyAddress(match)
+  }
+})
 
 function generateConsumerLookupId() {
   const random = Math.random().toString(36).slice(2, 10).toUpperCase()
@@ -167,6 +231,53 @@ async function submit() {
               <input v-model="form.consumerLookupId" type="text" readonly />
               <small class="hint">系统已为您生成订单查询编号</small>
             </label>
+
+            <section class="address-selector">
+              <header class="address-selector__header">
+                <span>选择常用地址</span>
+              </header>
+              <p v-if="addressBookLoading" class="address-hint">常用地址加载中…</p>
+              <p v-else-if="addressBookError" class="address-error">{{ addressBookError }}</p>
+              <ul v-else-if="addressBook.length" class="address-options">
+                <li v-for="item in addressBook" :key="item.id">
+                  <label
+                    class="address-option"
+                    :class="{ 'is-selected': selectedAddressId === item.id }"
+                  >
+                    <input
+                      v-model="selectedAddressId"
+                      type="radio"
+                      name="saved-address"
+                      :value="item.id"
+                    />
+                    <div class="address-option__body">
+                      <div class="address-option__title">
+                        <strong>{{ item.recipientName }}</strong>
+                        <span>{{ item.recipientPhone }}</span>
+                        <span v-if="item.isDefault" class="address-option__badge">默认</span>
+                      </div>
+                      <p>{{ item.shippingAddress }}</p>
+                    </div>
+                  </label>
+                </li>
+              </ul>
+              <p v-else class="address-hint">暂无常用地址，您可以先添加或直接填写。</p>
+              <label
+                class="address-option manual-option"
+                :class="{ 'is-selected': selectedAddressId === 'manual' }"
+              >
+                <input
+                  v-model="selectedAddressId"
+                  type="radio"
+                  name="saved-address"
+                  value="manual"
+                />
+                <div class="address-option__body">
+                  <strong>使用其他地址</strong>
+                  <p>手动填写新的收货信息</p>
+                </div>
+              </label>
+            </section>
 
             <div class="grid">
               <label>
@@ -332,6 +443,109 @@ async function submit() {
   gap: 0.35rem;
   font-size: 0.9rem;
   color: rgba(15, 23, 42, 0.75);
+}
+
+.address-selector {
+  display: grid;
+  gap: 0.75rem;
+  padding: 1rem;
+  border-radius: 1rem;
+  background: rgba(79, 70, 229, 0.06);
+}
+
+.address-selector__header {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  font-weight: 600;
+  color: rgba(15, 23, 42, 0.78);
+}
+
+.address-hint {
+  margin: 0;
+  font-size: 0.85rem;
+  color: rgba(15, 23, 42, 0.6);
+}
+
+.address-error {
+  margin: 0;
+  font-size: 0.85rem;
+  color: #b91c1c;
+}
+
+.address-options {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.75rem;
+}
+
+.address-option {
+  display: flex;
+  gap: 0.75rem;
+  align-items: flex-start;
+  padding: 0.75rem;
+  border-radius: 0.9rem;
+  border: 1px solid rgba(79, 70, 229, 0.2);
+  background: #fff;
+  transition: border 0.2s ease, box-shadow 0.2s ease;
+}
+
+.address-option input {
+  width: 1rem;
+  height: 1rem;
+  margin-top: 0.2rem;
+}
+
+.address-option__body {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.address-option__title {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.address-option__title strong {
+  font-size: 0.95rem;
+  color: rgba(15, 23, 42, 0.85);
+}
+
+.address-option__title span {
+  font-size: 0.85rem;
+  color: rgba(15, 23, 42, 0.55);
+}
+
+.address-option__body p {
+  margin: 0;
+  font-size: 0.85rem;
+  color: rgba(15, 23, 42, 0.72);
+  line-height: 1.4;
+}
+
+.address-option__badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.1rem 0.45rem;
+  border-radius: 999px;
+  background: rgba(34, 197, 94, 0.16);
+  color: #15803d;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.address-option.is-selected {
+  border-color: rgba(79, 70, 229, 0.55);
+  box-shadow: 0 6px 18px rgba(79, 70, 229, 0.12);
+}
+
+.manual-option {
+  border-style: dashed;
+  background: rgba(79, 70, 229, 0.04);
 }
 
 .purchase-form .hint {

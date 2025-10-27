@@ -10,4 +10,5 @@ public interface ReturnRequestService extends BaseService<ReturnRequest, Long> {
     ReturnRequest processReturnRequest(Long id, String status, String resolution, CustomUserDetails actor);
     List<ReturnRequest> findByConsumerId(Long consumerId);
     List<ReturnRequest> findByOrderId(Long orderId);
+    List<ReturnRequest> findBySupplierId(Long supplierId);
 }
