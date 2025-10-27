@@ -186,10 +186,11 @@ function receiptTagClass(order: AdminOrderSummary) {
 }
 
 function payoutTagClass(order: AdminOrderSummary) {
+  if (order.cancelled) return 'tag tag--danger'
   if (!order.payoutStatus) return 'tag'
   if (order.payoutStatus === '待批准') return 'tag tag--info'
   if (order.payoutStatus === '已批准') return 'tag tag--success'
-  if (order.payoutStatus === '已退款') return 'tag tag--danger'
+  if (order.payoutStatus === '已退款' || order.payoutStatus === '账单已取消') return 'tag tag--danger'
   return 'tag'
 }
 
@@ -251,7 +252,11 @@ onMounted(() => {
     <p v-else-if="loading" class="feedback feedback--info">订单加载中，请稍候…</p>
 
     <ul v-if="!loading && orders.length" class="order-list">
-      <li v-for="order in orders" :key="order.id" class="order-card">
+      <li
+        v-for="order in orders"
+        :key="order.id"
+        :class="['order-card', { 'order-card--cancelled': order.cancelled }]"
+      >
         <header class="order-card__head">
           <div>
             <h2>订单编号：{{ order.orderNo }}</h2>
@@ -261,7 +266,13 @@ onMounted(() => {
           </div>
           <div class="status-block">
             <span :class="receiptTagClass(order)">收货状态：{{ order.receiptStatus }}</span>
-            <span :class="payoutTagClass(order)" v-if="order.payoutStatus">资金状态：{{ order.payoutStatus }}</span>
+            <span v-if="order.cancellationLabel" class="cancellation-tag">{{ order.cancellationLabel }}</span>
+            <span
+              :class="payoutTagClass(order)"
+              v-if="order.payoutStatus && !order.cancellationLabel"
+            >
+              资金状态：{{ order.payoutStatus }}
+            </span>
           </div>
         </header>
 
@@ -328,6 +339,9 @@ onMounted(() => {
 
         <footer class="order-card__footer">
           <div class="footer-notes">
+            <p v-if="order.cancellationLabel" class="muted cancellation-note">
+              该订单已取消并完成退款处理
+            </p>
             <p v-if="order.approvalDisabledReason" class="muted">
               {{ order.approvalDisabledReason }}
             </p>
@@ -474,6 +488,41 @@ onMounted(() => {
   display: flex;
   flex-direction: column;
   gap: 1.5rem;
+  position: relative;
+  overflow: hidden;
+}
+
+.order-card > * {
+  position: relative;
+  z-index: 1;
+}
+
+.order-card--cancelled::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.08);
+  pointer-events: none;
+}
+
+.order-card--cancelled {
+  border-color: rgba(15, 23, 42, 0.12);
+  box-shadow: none;
+}
+
+.cancellation-tag {
+  background: rgba(239, 68, 68, 0.18);
+  color: #991b1b;
+  border: 1px solid rgba(239, 68, 68, 0.35);
+  border-radius: 999px;
+  padding: 0.25rem 0.75rem;
+  font-weight: 700;
+  font-size: 0.8rem;
+  letter-spacing: 0.02em;
+}
+
+.cancellation-note {
+  font-weight: 600;
 }
 
 .order-card__head {

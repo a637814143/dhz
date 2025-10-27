@@ -12,4 +12,5 @@ public interface ReturnRequestRepository extends JpaRepository<ReturnRequest, Lo
     boolean existsByOrderItemIdAndStatusIn(Long orderItemId, Collection<String> statuses);
     List<ReturnRequest> findByConsumerId(Long consumerId);
     List<ReturnRequest> findByOrderId(Long orderId);
+    List<ReturnRequest> findByProduct_Supplier_Id(Long supplierId);
 }

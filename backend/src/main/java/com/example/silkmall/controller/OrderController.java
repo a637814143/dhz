@@ -30,6 +30,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.stream.Collectors;
 
+import static com.example.silkmall.common.OrderStatuses.CANCELLED;
 import static com.example.silkmall.common.OrderStatuses.DELIVERED;
 import static com.example.silkmall.common.OrderStatuses.PENDING_SHIPMENT;
 
@@ -41,6 +42,8 @@ public class OrderController extends BaseController {
     private static final String RECEIPT_UNCONFIRMED_LABEL = "未收货";
     private static final String RECEIPT_CONFIRMED_LABEL = "已收货";
     private static final String PAYOUT_PENDING = "待批准";
+    private static final String CANCELLED_ORDER_REASON = "订单已取消";
+    private static final String CANCELLED_BILL_LABEL = "账单已取消";
     
     @Autowired
     public OrderController(OrderService orderService) {
@@ -421,6 +424,12 @@ public class OrderController extends BaseController {
         dto.setConsumerConfirmed(consumerConfirmed);
         dto.setReceiptStatus(consumerConfirmed ? RECEIPT_CONFIRMED_LABEL : RECEIPT_UNCONFIRMED_LABEL);
 
+        boolean cancelled = CANCELLED.equals(order.getStatus());
+        dto.setCancelled(cancelled);
+        if (cancelled) {
+            dto.setCancellationLabel(CANCELLED_BILL_LABEL);
+        }
+
         dto.setPayoutStatus(order.getPayoutStatus());
         dto.setAdminHoldingAmount(order.getAdminHoldingAmount());
 
@@ -451,7 +460,9 @@ public class OrderController extends BaseController {
 
         String disableReason = null;
         boolean statusAllowsApproval = DELIVERED.equals(order.getStatus());
-        if (!consumerConfirmed) {
+        if (cancelled) {
+            disableReason = CANCELLED_ORDER_REASON;
+        } else if (!consumerConfirmed) {
             disableReason = "等待消费者确认收货";
         } else if (!statusAllowsApproval) {
             disableReason = "订单状态暂不支持确认";

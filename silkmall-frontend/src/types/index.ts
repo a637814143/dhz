@@ -273,6 +273,8 @@ export interface AdminOrderSummary {
   consumerConfirmed: boolean
   canApprove: boolean
   approvalDisabledReason?: string | null
+  cancelled: boolean
+  cancellationLabel?: string | null
   commissionAmount: number
   supplierPayoutAmount: number
   payoutStatus?: string | null
