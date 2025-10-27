@@ -201,6 +201,24 @@ export interface OrderDetail {
   orderItems: OrderItemDetail[]
 }
 
+export interface ConsumerAddress {
+  id: number
+  consumerId?: number | null
+  recipientName: string
+  recipientPhone: string
+  shippingAddress: string
+  isDefault: boolean
+  createdAt: string
+  updatedAt: string
+}
+
+export interface ConsumerAddressPayload {
+  recipientName: string
+  recipientPhone: string
+  shippingAddress: string
+  isDefault?: boolean
+}
+
 export interface SupplierOrderItem {
   id: number
   quantity: number

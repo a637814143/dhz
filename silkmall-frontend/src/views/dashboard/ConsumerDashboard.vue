@@ -6,6 +6,7 @@ import { useAuthState } from '@/services/authState'
 import type {
   Announcement,
   CartItem,
+  ConsumerAddress,
   HomepageContent,
   OrderDetail,
   OrderItemDetail,
@@ -117,10 +118,29 @@ const paymentMethod = ref('WECHAT')
 const paymentSubmitting = ref(false)
 const paymentError = ref<string | null>(null)
 
+const addresses = ref<ConsumerAddress[]>([])
+const addressLoading = ref(false)
+const addressError = ref<string | null>(null)
+const addressActionError = ref<string | null>(null)
+const addressMessage = ref<string | null>(null)
+const showAddressModal = ref(false)
+const addressSubmitting = ref(false)
+const addressFormError = ref<string | null>(null)
+const editingAddressId = ref<number | null>(null)
+const deletingAddressId = ref<number | null>(null)
+const addressForm = reactive({
+  recipientName: '',
+  recipientPhone: '',
+  shippingAddress: '',
+  isDefault: false,
+})
+
 const orderItems = computed<OrderItemDetail[]>(() => orderDetail.value?.orderItems ?? [])
 const hasRecommendations = computed(() => (homeContent.value?.recommendations?.length ?? 0) > 0)
 const hasAnnouncements = computed(() => announcements.value.length > 0)
 const maskedIdCard = computed(() => maskIdCard(profile.value?.idCard))
+const defaultAddress = computed(() => addresses.value.find((item) => item.isDefault))
+const hasAddresses = computed(() => addresses.value.length > 0)
 const hasCartItems = computed(() => cartItems.value.length > 0)
 const cartTotalQuantity = computed(() =>
   cartItems.value.reduce((total, item) => total + (item.quantity ?? 0), 0)
@@ -287,6 +307,31 @@ async function loadCart() {
   }
 }
 
+async function loadAddresses() {
+  if (!state.user) {
+    addresses.value = []
+    return
+  }
+  addressLoading.value = true
+  addressError.value = null
+  try {
+    const { data } = await api.get<ConsumerAddress[]>(`/consumers/${state.user.id}/addresses`)
+    const items = data ?? []
+    addresses.value = items.map((item) => ({
+      ...item,
+      isDefault: Boolean(item.isDefault),
+    }))
+    addressActionError.value = null
+  } catch (err) {
+    addresses.value = []
+    const message = err instanceof Error ? err.message : '加载地址列表失败'
+    addressError.value = message
+    addressActionError.value = message
+  } finally {
+    addressLoading.value = false
+  }
+}
+
 async function bootstrap() {
   loading.value = true
   error.value = null
@@ -298,6 +343,7 @@ async function bootstrap() {
       loadWallet(),
       loadCart(),
       loadReviews(),
+      loadAddresses(),
     ])
   } catch (err) {
     error.value = err instanceof Error ? err.message : '加载数据失败'
@@ -371,6 +417,103 @@ async function redeemWallet() {
     redeemError.value = message
   } finally {
     redeeming.value = false
+  }
+}
+
+function fillAddressForm(address: ConsumerAddress | null) {
+  addressForm.recipientName = address?.recipientName ?? ''
+  addressForm.recipientPhone = address?.recipientPhone ?? ''
+  addressForm.shippingAddress = address?.shippingAddress ?? ''
+  addressForm.isDefault = address ? Boolean(address.isDefault) : !addresses.value.length
+}
+
+function openAddressModal(address?: ConsumerAddress) {
+  if (addressSubmitting.value) return
+  editingAddressId.value = address?.id ?? null
+  addressFormError.value = null
+  fillAddressForm(address ?? null)
+  showAddressModal.value = true
+}
+
+function closeAddressModal() {
+  if (addressSubmitting.value) return
+  showAddressModal.value = false
+  editingAddressId.value = null
+  addressFormError.value = null
+  fillAddressForm(null)
+}
+
+async function submitAddressForm() {
+  if (!state.user) return
+  const payload = {
+    recipientName: addressForm.recipientName.trim(),
+    recipientPhone: addressForm.recipientPhone.trim(),
+    shippingAddress: addressForm.shippingAddress.trim(),
+    isDefault: addressForm.isDefault,
+  }
+  if (!payload.recipientName) {
+    addressFormError.value = '请填写收货人姓名'
+    return
+  }
+  if (!payload.recipientPhone) {
+    addressFormError.value = '请填写联系电话'
+    return
+  }
+  if (!payload.shippingAddress) {
+    addressFormError.value = '请填写收货地址'
+    return
+  }
+  addressSubmitting.value = true
+  addressFormError.value = null
+  addressMessage.value = null
+  try {
+    if (editingAddressId.value) {
+      await api.put(`/consumers/${state.user.id}/addresses/${editingAddressId.value}`, payload)
+      addressMessage.value = '地址已更新'
+    } else {
+      await api.post(`/consumers/${state.user.id}/addresses`, payload)
+      addressMessage.value = '地址已添加'
+    }
+    addressActionError.value = null
+    closeAddressModal()
+    await loadAddresses()
+  } catch (err) {
+    addressFormError.value = err instanceof Error ? err.message : '保存地址失败'
+  } finally {
+    addressSubmitting.value = false
+  }
+}
+
+async function deleteAddress(address: ConsumerAddress) {
+  if (!state.user) return
+  const confirmed = window.confirm('确定删除该收货地址吗？')
+  if (!confirmed) {
+    return
+  }
+  deletingAddressId.value = address.id
+  addressActionError.value = null
+  addressMessage.value = null
+  try {
+    await api.delete(`/consumers/${state.user.id}/addresses/${address.id}`)
+    addressMessage.value = '地址已删除'
+    await loadAddresses()
+  } catch (err) {
+    addressActionError.value = err instanceof Error ? err.message : '删除地址失败'
+  } finally {
+    deletingAddressId.value = null
+  }
+}
+
+async function setDefaultAddress(address: ConsumerAddress) {
+  if (!state.user) return
+  addressActionError.value = null
+  addressMessage.value = null
+  try {
+    await api.post(`/consumers/${state.user.id}/addresses/${address.id}/default`)
+    addressMessage.value = '默认地址已更新'
+    await loadAddresses()
+  } catch (err) {
+    addressActionError.value = err instanceof Error ? err.message : '设置默认地址失败'
   }
 }
 
@@ -1028,7 +1171,7 @@ const shortcutLinks = [
                 </tr>
                 <tr>
                   <th scope="row">收货地址</th>
-                  <td>{{ profile?.address ?? '尚未填写' }}</td>
+                  <td>{{ defaultAddress?.shippingAddress ?? profile?.address ?? '尚未填写' }}</td>
                 </tr>
                 <tr>
                   <th scope="row">会员等级</th>
@@ -1063,6 +1206,71 @@ const shortcutLinks = [
               <p v-if="redeemError" class="redeem-error">{{ redeemError }}</p>
             </div>
           </div>
+        </section>
+
+        <section
+          id="address"
+          class="panel address-management full-row table-panel"
+          aria-labelledby="address-title"
+        >
+          <div class="panel-title-row">
+            <div class="panel-title" id="address-title">地址管理</div>
+            <button type="button" class="panel-action-button" @click="openAddressModal()">
+              新增地址
+            </button>
+          </div>
+          <p v-if="addressLoading" class="placeholder">地址加载中…</p>
+          <p v-else-if="addressError && !hasAddresses" class="placeholder is-error">
+            {{ addressError }}
+          </p>
+          <div v-else-if="hasAddresses" class="table-container">
+            <table class="dashboard-table address-table">
+              <thead>
+                <tr>
+                  <th scope="col">收货人</th>
+                  <th scope="col">联系电话</th>
+                  <th scope="col">收货地址</th>
+                  <th scope="col">默认</th>
+                  <th scope="col" class="col-actions">操作</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="item in addresses" :key="item.id">
+                  <td>{{ item.recipientName }}</td>
+                  <td>{{ item.recipientPhone }}</td>
+                  <td class="address-cell">{{ item.shippingAddress }}</td>
+                  <td>
+                    <span v-if="item.isDefault" class="default-badge">默认</span>
+                    <span v-else class="muted">—</span>
+                  </td>
+                  <td class="actions-cell">
+                    <button type="button" class="link-button" @click="openAddressModal(item)">
+                      编辑
+                    </button>
+                    <button
+                      v-if="!item.isDefault"
+                      type="button"
+                      class="link-button"
+                      @click="setDefaultAddress(item)"
+                    >
+                      设为默认
+                    </button>
+                    <button
+                      type="button"
+                      class="link-button danger"
+                      :disabled="deletingAddressId === item.id"
+                      @click="deleteAddress(item)"
+                    >
+                      {{ deletingAddressId === item.id ? '删除中…' : '删除' }}
+                    </button>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <p v-else class="empty">您还没有保存收货地址，请添加一个常用地址。</p>
+          <p v-if="addressMessage" class="panel-success">{{ addressMessage }}</p>
+          <p v-if="addressActionError" class="panel-error">{{ addressActionError }}</p>
         </section>
 
         <section class="panel cart full-row table-panel" aria-labelledby="cart-title">
@@ -1310,6 +1518,64 @@ const shortcutLinks = [
         </section>
       </div>
     </template>
+
+    <div v-if="showAddressModal" class="modal-backdrop" @click.self="closeAddressModal">
+      <section class="modal" role="dialog" aria-modal="true" aria-labelledby="address-modal-title">
+        <header class="modal-header">
+          <h3 id="address-modal-title">{{ editingAddressId ? '编辑收货地址' : '新增收货地址' }}</h3>
+          <button type="button" class="icon-button" aria-label="关闭" @click="closeAddressModal">
+            ×
+          </button>
+        </header>
+        <form class="modal-body" @submit.prevent="submitAddressForm">
+          <label class="field">
+            <span>收货人姓名</span>
+            <input
+              v-model="addressForm.recipientName"
+              type="text"
+              placeholder="如：张三"
+              :disabled="addressSubmitting"
+            />
+          </label>
+          <label class="field">
+            <span>联系电话</span>
+            <input
+              v-model="addressForm.recipientPhone"
+              type="tel"
+              placeholder="请输入联系电话"
+              :disabled="addressSubmitting"
+            />
+          </label>
+          <label class="field">
+            <span>详细收货地址</span>
+            <textarea
+              v-model="addressForm.shippingAddress"
+              rows="3"
+              placeholder="请填写详细地址信息"
+              :disabled="addressSubmitting"
+            ></textarea>
+          </label>
+          <label class="checkbox-field">
+            <input type="checkbox" v-model="addressForm.isDefault" :disabled="addressSubmitting" />
+            <span>设为默认地址</span>
+          </label>
+          <p v-if="addressFormError" class="modal-error">{{ addressFormError }}</p>
+          <footer class="modal-actions">
+            <button type="submit" class="primary-button" :disabled="addressSubmitting">
+              {{ addressSubmitting ? '保存中…' : '保存地址' }}
+            </button>
+            <button
+              type="button"
+              class="ghost-button"
+              :disabled="addressSubmitting"
+              @click="closeAddressModal"
+            >
+              取消
+            </button>
+          </footer>
+        </form>
+      </section>
+    </div>
 
     <div v-if="showProfileModal" class="modal-backdrop" @click.self="closeProfileDialog">
       <section class="modal" role="dialog" aria-modal="true" aria-labelledby="profile-edit-title">
@@ -1878,6 +2144,40 @@ const shortcutLinks = [
 
 .profile-table td {
   color: rgba(17, 24, 39, 0.85);
+}
+
+.address-table .address-cell {
+  max-width: 32rem;
+  word-break: break-word;
+  line-height: 1.5;
+}
+
+.address-table .col-actions {
+  width: 220px;
+}
+
+.default-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.2rem 0.65rem;
+  border-radius: 999px;
+  background: rgba(34, 197, 94, 0.16);
+  color: #15803d;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.checkbox-field {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.95rem;
+  color: rgba(17, 24, 39, 0.78);
+}
+
+.checkbox-field input {
+  width: 1rem;
+  height: 1rem;
 }
 
 .redeem-box {
