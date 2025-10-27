@@ -22,7 +22,7 @@ type AuthMode = 'login' | 'register'
 
 const router = useRouter()
 const route = useRoute()
-const { setAuth, state } = useAuthState()
+const { setAuth, state, isGuestSession, enterGuestMode } = useAuthState()
 
 const mode = ref<AuthMode>((route.query.mode as AuthMode) === 'register' ? 'register' : 'login')
 
@@ -37,6 +37,7 @@ const loginLoading = ref(false)
 const loginError = ref<string | null>(null)
 const loginSuccessMessage = ref<string | null>(null)
 const registrationSuccessMessage = ref<string | null>(null)
+const guestLoading = ref(false)
 
 const captchaCountdown = ref(0)
 let countdownTimer: number | null = null
@@ -172,6 +173,18 @@ async function submitLogin() {
   }
 }
 
+function navigateAsGuest() {
+  guestLoading.value = true
+  loginError.value = null
+  registerError.value = null
+  registrationSuccessMessage.value = null
+  loginSuccessMessage.value = null
+  enterGuestMode()
+  router.replace({ name: 'home' }).finally(() => {
+    guestLoading.value = false
+  })
+}
+
 function handleLoginKey(event: KeyboardEvent) {
   if (event.key === 'Enter' && canSubmitLogin.value) {
     submitLogin()
@@ -275,6 +288,7 @@ function resolveHome(role?: string | null) {
           </div>
           <p v-if="mode === 'login'">请输入账号、密码及验证码完成身份验证。</p>
           <p v-else>完善账户信息，选择角色即可加入蚕制品销售。</p>
+          <p v-if="isGuestSession" class="guest-tip">当前处于游客模式，仅支持浏览商品信息。</p>
         </div>
 
         <div class="panel-body">
@@ -336,6 +350,18 @@ function resolveHome(role?: string | null) {
                 <span>还没有账号？</span>
                 <button type="button" class="link-button" @click="updateMode('register')">立即注册</button>
               </footer>
+
+              <div class="guest-entry" role="group" aria-label="游客模式入口">
+                <span>想先了解平台？</span>
+                <button
+                  type="button"
+                  class="guest-button"
+                  @click="navigateAsGuest"
+                  :disabled="guestLoading"
+                >
+                  {{ guestLoading ? '进入中…' : '以游客模式浏览' }}
+                </button>
+              </div>
             </form>
 
             <form v-else key="register" class="panel-form" @submit.prevent="submitRegister">
@@ -523,6 +549,12 @@ function resolveHome(role?: string | null) {
   justify-items: center;
   text-align: center;
   max-width: 520px;
+}
+
+.guest-tip {
+  margin: 0;
+  font-size: 0.9rem;
+  color: rgba(17, 24, 39, 0.6);
 }
 
 .panel-tabs {
@@ -800,6 +832,37 @@ function resolveHome(role?: string | null) {
   font-size: 0.95rem;
   color: rgba(17, 24, 39, 0.65);
   justify-content: center;
+}
+
+.guest-entry {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.65rem;
+  margin-top: 0.75rem;
+  font-size: 0.95rem;
+  color: rgba(17, 24, 39, 0.65);
+}
+
+.guest-button {
+  border: none;
+  border-radius: 999px;
+  padding: 0.5rem 1.1rem;
+  font-weight: 600;
+  background: linear-gradient(135deg, rgba(79, 70, 229, 0.14), rgba(59, 130, 246, 0.18));
+  color: #1d4ed8;
+  cursor: pointer;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.guest-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.guest-button:not(:disabled):hover {
+  transform: translateY(-1px);
+  box-shadow: 0 10px 24px rgba(59, 130, 246, 0.2);
 }
 
 .link-button {

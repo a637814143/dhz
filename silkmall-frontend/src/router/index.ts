@@ -18,7 +18,7 @@ const router = createRouter({
       path: '/',
       name: 'home',
       component: HomeView,
-      meta: { requiresAuth: true },
+      meta: { requiresAuth: true, allowGuest: true },
     },
     {
       path: '/about',
@@ -27,13 +27,13 @@ const router = createRouter({
       // this generates a separate chunk (About.[hash].js) for this route
       // which is lazy-loaded when the route is visited.
       component: () => import('../views/AboutView.vue'),
-      meta: { requiresAuth: true },
+      meta: { requiresAuth: true, allowGuest: true },
     },
     {
       path: '/product/:id',
       name: 'product-detail',
       component: ProductDetailView,
-      meta: { requiresAuth: true },
+      meta: { requiresAuth: true, allowGuest: true },
     },
     {
       path: '/auth',
@@ -102,11 +102,14 @@ function resolveHome(role?: string | null) {
 }
 
 router.beforeEach((to) => {
-  const { isAuthenticated, state } = useAuthState()
+  const { isAuthenticated, state, isGuestSession } = useAuthState()
 
   const requiresAuth = to.meta?.requiresAuth !== false
 
   if (requiresAuth && !isAuthenticated.value && to.name !== 'auth') {
+    if (isGuestSession.value && to.meta?.allowGuest) {
+      return true
+    }
     return { name: 'auth', query: { ...to.query, redirect: to.fullPath, mode: 'login' } }
   }
 

@@ -4,6 +4,7 @@ import { useRoute, useRouter, RouterLink } from 'vue-router'
 import api from '@/services/api'
 import PurchaseDialog from '@/components/PurchaseDialog.vue'
 import type { ProductDetail, ProductSummary, PurchaseOrderResult } from '@/types'
+import { useAuthState } from '@/services/authState'
 
 const route = useRoute()
 const router = useRouter()
@@ -18,6 +19,9 @@ const addingToCart = ref(false)
 const cartSuccessMessage = ref<string | null>(null)
 const cartErrorMessage = ref<string | null>(null)
 const cartMessageTimer = ref<number | null>(null)
+const authPromptMessage = ref<string | null>(null)
+const authPromptTimer = ref<number | null>(null)
+const { isAuthenticated } = useAuthState()
 
 const statusLabel = computed(() => {
   const labelMap: Record<string, string> = {
@@ -166,8 +170,23 @@ function goBack() {
   router.back()
 }
 
+function showLoginPrompt(message = '请登录后再操作') {
+  authPromptMessage.value = message
+  if (authPromptTimer.value) {
+    clearTimeout(authPromptTimer.value)
+  }
+  authPromptTimer.value = window.setTimeout(() => {
+    authPromptMessage.value = null
+    authPromptTimer.value = null
+  }, 5000)
+}
+
 function openPurchaseDialog() {
   if (!isPurchasable.value) {
+    return
+  }
+  if (!isAuthenticated.value) {
+    showLoginPrompt('请登录后再购买商品')
     return
   }
   purchaseOpen.value = true
@@ -193,6 +212,10 @@ function clearCartMessageTimer() {
 
 async function addToCart() {
   if (!product.value || !canAddToCart.value || addingToCart.value) {
+    return
+  }
+  if (!isAuthenticated.value) {
+    showLoginPrompt('请登录后再加入购物车')
     return
   }
   addingToCart.value = true
@@ -261,6 +284,9 @@ watch(
 onBeforeUnmount(() => {
   clearPurchaseMessageTimer()
   clearCartMessageTimer()
+  if (authPromptTimer.value) {
+    clearTimeout(authPromptTimer.value)
+  }
 })
 </script>
 
@@ -291,6 +317,9 @@ onBeforeUnmount(() => {
           <span class="status" :class="statusClass">{{ statusLabel }}</span>
         </header>
 
+        <transition name="fade">
+          <p v-if="authPromptMessage" class="info-message" role="status">{{ authPromptMessage }}</p>
+        </transition>
         <transition name="fade">
           <p v-if="cartSuccessMessage" class="success-message" role="status">{{ cartSuccessMessage }}</p>
         </transition>
@@ -733,6 +762,14 @@ onBeforeUnmount(() => {
   font-weight: 600;
 }
 
+.info-message {
+  padding: 0.85rem 1.25rem;
+  border-radius: 0.9rem;
+  background: rgba(59, 130, 246, 0.12);
+  color: #1d4ed8;
+  font-weight: 600;
+}
+
 .error-message {
   padding: 0.85rem 1.25rem;
   border-radius: 0.9rem;
@@ -792,6 +829,11 @@ onBeforeUnmount(() => {
   .success-message {
     background: rgba(34, 197, 94, 0.25);
     color: #bbf7d0;
+  }
+
+  .info-message {
+    background: rgba(59, 130, 246, 0.22);
+    color: #bfdbfe;
   }
 
   .info h1,

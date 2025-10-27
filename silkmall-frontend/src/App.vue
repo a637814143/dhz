@@ -5,7 +5,7 @@ import { useAuthState } from '@/services/authState'
 
 const router = useRouter()
 const route = useRoute()
-const { state, isAuthenticated, clearAuth } = useAuthState()
+const { state, isAuthenticated, clearAuth, isGuestSession, exitGuestMode } = useAuthState()
 
 const roleHome = computed(() => {
   switch (state.user?.userType) {
@@ -21,11 +21,21 @@ const roleHome = computed(() => {
 })
 
 const showGuestLinks = computed(() => {
-  return !isAuthenticated.value && route.name !== 'auth'
+  if (isAuthenticated.value || isGuestSession.value) {
+    return true
+  }
+  return route.name !== 'auth'
 })
+
+const showPrimaryNav = computed(() => isAuthenticated.value || isGuestSession.value)
 
 function signOut() {
   clearAuth()
+  router.push({ name: 'auth', query: { mode: 'login' } })
+}
+
+function leaveGuestMode() {
+  exitGuestMode()
   router.push({ name: 'auth', query: { mode: 'login' } })
 }
 </script>
@@ -41,16 +51,22 @@ function signOut() {
         </div>
       </RouterLink>
 
-      <nav v-if="isAuthenticated" class="primary-nav" aria-label="主导航">
+      <nav v-if="showPrimaryNav" class="primary-nav" aria-label="主导航">
         <RouterLink to="/" active-class="is-active" class="nav-link">产品中心</RouterLink>
         <RouterLink to="/about" active-class="is-active" class="nav-link">关于项目</RouterLink>
       </nav>
 
-      <div v-if="isAuthenticated || showGuestLinks" class="auth-controls">
+      <div v-if="showGuestLinks" class="auth-controls">
         <template v-if="isAuthenticated">
           <span class="user-chip">{{ state.user?.username }}</span>
           <RouterLink :to="roleHome" class="dashboard-link">我的工作台</RouterLink>
           <button type="button" class="logout-button" @click="signOut">退出</button>
+        </template>
+        <template v-else-if="isGuestSession">
+          <span class="user-chip is-guest">游客模式</span>
+          <button type="button" class="logout-button" @click="leaveGuestMode">退出游客</button>
+          <RouterLink :to="{ name: 'auth', query: { mode: 'login' } }" class="login-link">登录</RouterLink>
+          <RouterLink :to="{ name: 'auth', query: { mode: 'register' } }" class="register-link">注册</RouterLink>
         </template>
         <template v-else>
           <RouterLink :to="{ name: 'auth', query: { mode: 'login' } }" class="login-link">登录</RouterLink>
@@ -181,6 +197,11 @@ function signOut() {
   background: rgba(79, 70, 229, 0.12);
   color: #4338ca;
   font-weight: 600;
+}
+
+.user-chip.is-guest {
+  background: rgba(59, 130, 246, 0.14);
+  color: #1d4ed8;
 }
 
 .logout-button {

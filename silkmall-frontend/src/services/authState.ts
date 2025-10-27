@@ -6,15 +6,18 @@ interface AuthState {
   user: AuthUser | null
   expiresAt: number | null
   redirectUrl: string | null
+  guest: boolean
 }
 
 const STORAGE_KEY = 'silkmall.auth'
+const GUEST_STORAGE_KEY = 'silkmall.guest-mode'
 
 const state = reactive<AuthState>({
   token: null,
   user: null,
   expiresAt: null,
   redirectUrl: null,
+  guest: false,
 })
 
 function loadFromStorage() {
@@ -34,6 +37,14 @@ function loadFromStorage() {
     console.warn('无法解析本地认证信息', error)
     localStorage.removeItem(STORAGE_KEY)
   }
+
+  try {
+    const guestFlag = sessionStorage.getItem(GUEST_STORAGE_KEY)
+    state.guest = guestFlag === '1'
+  } catch (error) {
+    console.warn('无法读取游客模式状态', error)
+    state.guest = false
+  }
 }
 
 loadFromStorage()
@@ -45,12 +56,35 @@ const isAuthenticated = computed(() => {
 
 const token = computed(() => (isAuthenticated.value ? state.token : null))
 
+const isGuestSession = computed(() => !isAuthenticated.value && state.guest)
+
+function persistGuestState(enabled: boolean) {
+  state.guest = enabled
+  try {
+    if (enabled) {
+      sessionStorage.setItem(GUEST_STORAGE_KEY, '1')
+    } else {
+      sessionStorage.removeItem(GUEST_STORAGE_KEY)
+    }
+  } catch (error) {
+    console.warn('无法保存游客模式状态', error)
+  }
+}
+
+function resetAuthState() {
+  state.token = null
+  state.user = null
+  state.expiresAt = null
+  state.redirectUrl = null
+}
+
 function setAuth(response: LoginResponse) {
   const expiresAt = response.issuedAt + response.expiresIn * 1000
   state.token = response.token
   state.user = response.user
   state.expiresAt = expiresAt
   state.redirectUrl = response.redirectUrl
+  persistGuestState(false)
   localStorage.setItem(
     STORAGE_KEY,
     JSON.stringify({
@@ -63,11 +97,20 @@ function setAuth(response: LoginResponse) {
 }
 
 function clearAuth() {
-  state.token = null
-  state.user = null
-  state.expiresAt = null
-  state.redirectUrl = null
+  resetAuthState()
+  persistGuestState(false)
   localStorage.removeItem(STORAGE_KEY)
+}
+
+function enterGuestMode() {
+  localStorage.removeItem(STORAGE_KEY)
+  resetAuthState()
+  persistGuestState(true)
+}
+
+function exitGuestMode() {
+  if (!state.guest) return
+  persistGuestState(false)
 }
 
 function hasRole(role: UserRole) {
@@ -82,5 +125,8 @@ export function useAuthState() {
     setAuth,
     clearAuth,
     hasRole,
+    isGuestSession,
+    enterGuestMode,
+    exitGuestMode,
   }
 }
