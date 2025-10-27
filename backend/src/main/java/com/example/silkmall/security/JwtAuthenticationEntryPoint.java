@@ -19,8 +19,9 @@ public class JwtAuthenticationEntryPoint implements AuthenticationEntryPoint {
         String accept = request.getHeader("Accept");
         boolean isAjax = "XMLHttpRequest".equalsIgnoreCase(requestedWith);
         boolean expectsJson = accept != null && accept.contains("application/json");
+        boolean apiRequest = request.getRequestURI() != null && request.getRequestURI().startsWith("/api/");
 
-        if (isAjax || expectsJson) {
+        if (apiRequest || isAjax || expectsJson) {
             response.sendError(HttpServletResponse.SC_UNAUTHORIZED, "未授权访问");
         } else {
             response.setStatus(HttpServletResponse.SC_FOUND);
