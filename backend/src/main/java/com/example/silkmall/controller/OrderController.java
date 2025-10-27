@@ -2,6 +2,7 @@ package com.example.silkmall.controller;
 
 import com.example.silkmall.dto.AdminOrderItemDTO;
 import com.example.silkmall.dto.AdminOrderSummaryDTO;
+import com.example.silkmall.dto.ConsumerOrderSummaryDTO;
 import com.example.silkmall.dto.OrderDetailDTO;
 import com.example.silkmall.dto.OrderItemDetailDTO;
 import com.example.silkmall.dto.SupplierOrderItemDTO;
@@ -97,8 +98,10 @@ public class OrderController extends BaseController {
 
     @GetMapping("/consumer/{consumerId}")
     @PreAuthorize("hasRole('ADMIN') or (hasRole('CONSUMER') and #consumerId == principal.id)")
-    public ResponseEntity<Page<Order>> getOrdersByConsumerId(@PathVariable Long consumerId, Pageable pageable) {
-        return success(orderService.findByConsumerId(consumerId, pageable));
+    public ResponseEntity<Page<ConsumerOrderSummaryDTO>> getOrdersByConsumerId(@PathVariable Long consumerId, Pageable pageable) {
+        Page<Order> orders = orderService.findByConsumerId(consumerId, pageable);
+        Page<ConsumerOrderSummaryDTO> dtoPage = orders.map(this::toConsumerOrderSummary);
+        return success(dtoPage);
     }
 
     @GetMapping("/status/{status}")
@@ -327,6 +330,26 @@ public class OrderController extends BaseController {
         dto.setSupplierTotalAmount(supplierAmount);
         dto.setMixedSuppliers(mixedSuppliers);
         dto.setCanShip(!mixedSuppliers && PENDING_SHIPMENT.equals(order.getStatus()) && !itemDtos.isEmpty());
+
+        return dto;
+    }
+
+    private ConsumerOrderSummaryDTO toConsumerOrderSummary(Order order) {
+        ConsumerOrderSummaryDTO dto = new ConsumerOrderSummaryDTO();
+        dto.setId(order.getId());
+        dto.setOrderNo(order.getOrderNo());
+        dto.setTotalAmount(order.getTotalAmount());
+        dto.setTotalQuantity(order.getTotalQuantity());
+        dto.setStatus(order.getStatus());
+        dto.setOrderTime(order.getOrderTime());
+
+        List<String> productNames = Optional.ofNullable(order.getOrderItems()).orElse(List.of()).stream()
+                .map(OrderItem::getProduct)
+                .filter(product -> product != null && product.getName() != null && !product.getName().isBlank())
+                .map(Product::getName)
+                .distinct()
+                .collect(Collectors.toList());
+        dto.setProductNames(productNames);
 
         return dto;
     }

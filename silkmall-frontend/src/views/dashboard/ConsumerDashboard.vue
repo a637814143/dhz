@@ -22,6 +22,7 @@ interface OrderSummary {
   totalQuantity: number
   status: string
   orderTime: string
+  productNames?: string[]
 }
 
 interface ConsumerProfile {
@@ -194,6 +195,34 @@ const paymentLabelMap = paymentOptions.reduce<Record<string, string>>((map, opti
   map[option.value] = option.label
   return map
 }, {})
+
+function formatOrderProductNames(names?: readonly string[] | null): string {
+  if (!names || names.length === 0) {
+    return ''
+  }
+
+  const cleaned = names
+    .map((name) => (typeof name === 'string' ? name.trim() : ''))
+    .filter((name): name is string => name.length > 0)
+
+  if (cleaned.length === 0) {
+    return ''
+  }
+
+  const maxVisible = 3
+  const displayed = cleaned.slice(0, maxVisible)
+  let result = displayed.join('、')
+
+  if (cleaned.length > maxVisible) {
+    result += ' 等'
+  }
+
+  return result
+}
+
+function getOrderProductSummary(order: OrderSummary): string {
+  return formatOrderProductNames(order.productNames)
+}
 
 async function loadProfile() {
   if (!state.user) return
@@ -1367,7 +1396,15 @@ const shortcutLinks = [
               </thead>
               <tbody>
                 <tr v-for="order in orders" :key="order.id">
-                  <td class="col-order-no">{{ order.orderNo }}</td>
+                  <td class="col-order-no">
+                    <span class="order-no">{{ order.orderNo }}</span>
+                    <span
+                      v-if="getOrderProductSummary(order)"
+                      class="order-products"
+                    >
+                      （{{ getOrderProductSummary(order) }}）
+                    </span>
+                  </td>
                   <td>{{ formatCurrency(order.totalAmount) }}</td>
                   <td>{{ order.totalQuantity }}</td>
                   <td><span class="status-pill">{{ order.status }}</span></td>
@@ -2237,6 +2274,17 @@ const shortcutLinks = [
   line-height: 1.45;
   overflow-wrap: anywhere;
   word-break: break-word;
+}
+
+.orders-table .order-no {
+  font-weight: 600;
+}
+
+.orders-table .order-products {
+  display: inline-block;
+  margin-left: 0.35rem;
+  color: rgba(17, 24, 39, 0.68);
+  font-size: 0.85rem;
 }
 
 .dashboard-table .col-actions {
