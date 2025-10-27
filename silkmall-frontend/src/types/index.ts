@@ -247,6 +247,7 @@ export interface SupplierOrderSummary {
   deliveryTime?: string | null
   inTransitTime?: string | null
   canShip: boolean
+  canMarkDelivered: boolean
   mixedSuppliers: boolean
   items: SupplierOrderItem[]
 }

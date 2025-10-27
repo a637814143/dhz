@@ -72,6 +72,7 @@ const deletingProductId = ref<number | null>(null)
 const soldOrdersLoading = ref(false)
 const soldOrdersError = ref<string | null>(null)
 const shippingOrderId = ref<number | null>(null)
+const deliveredOrderId = ref<number | null>(null)
 
 const productForm = reactive({
   id: null as number | null,
@@ -731,6 +732,21 @@ async function confirmShipment(orderId: number) {
   }
 }
 
+async function markOrderDelivered(orderId: number) {
+  if (!window.confirm('确认该订单的商品已经送达消费者？')) return
+  deliveredOrderId.value = orderId
+  try {
+    await api.put(`/orders/${orderId}/supplier-deliver`)
+    await loadSoldOrders()
+    window.alert('订单状态已更新为待收货')
+  } catch (err) {
+    const message = err instanceof Error ? err.message : '更新送达状态失败'
+    window.alert(message)
+  } finally {
+    deliveredOrderId.value = null
+  }
+}
+
 async function redeemWallet() {
   redeemMessage.value = null
   redeemError.value = null
@@ -1023,6 +1039,15 @@ async function removeCategory(option: CategoryOption) {
                 :disabled="shippingOrderId === order.id"
               >
                 {{ shippingOrderId === order.id ? '更新中…' : '确认发货' }}
+              </button>
+              <button
+                v-else-if="order.canMarkDelivered"
+                type="button"
+                class="primary-button"
+                @click="markOrderDelivered(order.id)"
+                :disabled="deliveredOrderId === order.id"
+              >
+                {{ deliveredOrderId === order.id ? '更新中…' : '商品已送达' }}
               </button>
               <span v-else class="sold-order-hint">
                 {{
