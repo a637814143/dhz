@@ -42,6 +42,9 @@ const { state } = useAuthState()
 
 const profile = ref<ConsumerProfile | null>(null)
 const orders = ref<OrderSummary[]>([])
+const orderActionMessage = ref<string | null>(null)
+const orderActionError = ref<string | null>(null)
+const confirmingReceiptOrderId = ref<number | null>(null)
 const homeContent = ref<HomepageContent | null>(null)
 const announcements = ref<Announcement[]>([])
 const loading = ref(true)
@@ -185,6 +188,43 @@ const pendingPaymentStatusValues = [
 const pendingPaymentStatusSet = new Set(
   pendingPaymentStatusValues.map((value) => normalizeStatusValue(value))
 )
+
+const awaitingReceiptStatusValues = [
+  '待收货',
+  'AWAITING RECEIPT',
+] as const
+
+const deliveredStatusValues = [
+  '已收货',
+  'DELIVERED',
+] as const
+
+const editLockedStatusValues = [
+  '已发货',
+  '运送中',
+  '待收货',
+  '已收货',
+  '已取消',
+  '已撤销',
+  'SHIPPED',
+  'IN TRANSIT',
+  'AWAITING RECEIPT',
+  'DELIVERED',
+  'CANCELLED',
+  'REVOKED',
+] as const
+
+const awaitingReceiptStatusSet = new Set(
+  awaitingReceiptStatusValues.map((value) => normalizeStatusValue(value))
+)
+
+const deliveredStatusSet = new Set(
+  deliveredStatusValues.map((value) => normalizeStatusValue(value))
+)
+
+const editLockedStatusSet = new Set(
+  editLockedStatusValues.map((value) => normalizeStatusValue(value))
+)
 const paymentOptions = [
   { value: 'WECHAT', label: '微信支付' },
   { value: 'ALIPAY', label: '支付宝' },
@@ -222,6 +262,25 @@ function formatOrderProductNames(names?: readonly string[] | null): string {
 
 function getOrderProductSummary(order: OrderSummary): string {
   return formatOrderProductNames(order.productNames)
+}
+
+function isStatusInSet(status: string | null | undefined, set: ReadonlySet<string>): boolean {
+  if (!status) {
+    return false
+  }
+  return set.has(normalizeStatusValue(status))
+}
+
+function canConfirmReceipt(order: OrderSummary): boolean {
+  return isStatusInSet(order.status, awaitingReceiptStatusSet)
+}
+
+function canReviewOrder(order: OrderSummary): boolean {
+  return isStatusInSet(order.status, deliveredStatusSet)
+}
+
+function canEditOrder(order: OrderSummary): boolean {
+  return !isStatusInSet(order.status, editLockedStatusSet)
 }
 
 async function loadProfile() {
@@ -698,6 +757,32 @@ async function fetchOrderReviews(orderId: number) {
   }
 }
 
+async function confirmReceipt(order: OrderSummary) {
+  if (!canConfirmReceipt(order)) {
+    return
+  }
+  if (confirmingReceiptOrderId.value !== null) {
+    return
+  }
+  const confirmed = window.confirm('确认已收到商品吗？')
+  if (!confirmed) {
+    return
+  }
+  confirmingReceiptOrderId.value = order.id
+  orderActionMessage.value = null
+  orderActionError.value = null
+  try {
+    await api.put(`/orders/${order.id}/confirm`)
+    await fetchAndUpdateOrder(order.id)
+    orderActionMessage.value = '确认收货成功，感谢您的使用'
+  } catch (err) {
+    const message = err instanceof Error ? err.message : '确认收货失败'
+    orderActionError.value = message
+  } finally {
+    confirmingReceiptOrderId.value = null
+  }
+}
+
 function reviewRoleLabel(role?: string | null) {
   if (!role) return '评价人'
   switch (role.toUpperCase()) {
@@ -896,6 +981,9 @@ async function openOrderDetail(order: OrderSummary) {
 }
 
 async function openReviewDialog(order: OrderSummary) {
+  if (!canReviewOrder(order)) {
+    return
+  }
   const detail = await openOrderDetail(order)
   if (!detail) {
     return
@@ -1070,6 +1158,9 @@ async function openReturnDialog(order: OrderSummary) {
 }
 
 async function openEditDialog(order: OrderSummary) {
+  if (!canEditOrder(order)) {
+    return
+  }
   activeOrder.value = order
   updateMessage.value = null
   updateError.value = null
@@ -1421,13 +1512,31 @@ const shortcutLinks = [
                     <button type="button" class="link-button" @click="openOrderDetail(order)">
                       查看订单
                     </button>
-                    <button type="button" class="link-button" @click="openReviewDialog(order)">
+                    <button
+                      type="button"
+                      class="link-button"
+                      :disabled="!canConfirmReceipt(order) || confirmingReceiptOrderId === order.id"
+                      @click="confirmReceipt(order)"
+                    >
+                      {{ confirmingReceiptOrderId === order.id ? '确认中…' : '确认收货' }}
+                    </button>
+                    <button
+                      type="button"
+                      class="link-button"
+                      :disabled="!canReviewOrder(order)"
+                      @click="openReviewDialog(order)"
+                    >
                       评价商品
                     </button>
                     <button type="button" class="link-button" @click="openReturnDialog(order)">
                       申请退货
                     </button>
-                    <button type="button" class="link-button" @click="openEditDialog(order)">
+                    <button
+                      type="button"
+                      class="link-button"
+                      :disabled="!canEditOrder(order)"
+                      @click="openEditDialog(order)"
+                    >
                       更改信息
                     </button>
                   </td>
@@ -1436,6 +1545,8 @@ const shortcutLinks = [
             </table>
           </div>
           <p v-else class="empty">暂无订单记录，前往首页挑选心仪商品吧。</p>
+          <p v-if="orderActionMessage" class="panel-success">{{ orderActionMessage }}</p>
+          <p v-if="orderActionError" class="panel-error">{{ orderActionError }}</p>
         </section>
 
         <section
