@@ -21,7 +21,8 @@ const cartErrorMessage = ref<string | null>(null)
 const cartMessageTimer = ref<number | null>(null)
 const authPromptMessage = ref<string | null>(null)
 const authPromptTimer = ref<number | null>(null)
-const { isAuthenticated } = useAuthState()
+const { isAuthenticated, hasRole } = useAuthState()
+const isConsumerAccount = computed(() => hasRole('consumer'))
 
 const statusLabel = computed(() => {
   const labelMap: Record<string, string> = {
@@ -189,6 +190,10 @@ function openPurchaseDialog() {
     showLoginPrompt('请登录后再购买商品')
     return
   }
+  if (!isConsumerAccount.value) {
+    showLoginPrompt('请注册并登录消费者账户后即可购买')
+    return
+  }
   purchaseOpen.value = true
 }
 
@@ -216,6 +221,10 @@ async function addToCart() {
   }
   if (!isAuthenticated.value) {
     showLoginPrompt('请登录后再加入购物车')
+    return
+  }
+  if (!isConsumerAccount.value) {
+    showLoginPrompt('请注册并登录消费者账户后即可购买')
     return
   }
   addingToCart.value = true

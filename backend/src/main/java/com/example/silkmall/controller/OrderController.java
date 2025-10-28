@@ -69,7 +69,7 @@ public class OrderController extends BaseController {
     }
 
     @PostMapping
-    @PreAuthorize("hasRole('ADMIN') or hasRole('CONSUMER')")
+    @PreAuthorize("hasRole('CONSUMER')")
     public ResponseEntity<?> createOrder(@RequestBody Order order,
                                          @AuthenticationPrincipal CustomUserDetails currentUser) {
         if (order.getConsumer() == null && currentUser != null

@@ -56,7 +56,8 @@ const cartMessageTimer = ref<number | null>(null)
 const authPromptMessage = ref<string | null>(null)
 const authPromptTimer = ref<number | null>(null)
 const router = useRouter()
-const { isAuthenticated } = useAuthState()
+const { isAuthenticated, hasRole } = useAuthState()
+const isConsumerAccount = computed(() => hasRole('consumer'))
 
 const statusOptions = [
   { label: '全部状态', value: 'all' },
@@ -257,6 +258,10 @@ function openPurchaseDialog(product: ProductSummary) {
     showLoginPrompt('请登录后再购买商品')
     return
   }
+  if (!isConsumerAccount.value) {
+    showLoginPrompt('请注册并登录消费者账户后即可购买')
+    return
+  }
   purchaseTarget.value = product
 }
 
@@ -292,6 +297,10 @@ async function addProductToCart(product: ProductSummary) {
   if (!product?.id) return
   if (!isAuthenticated.value) {
     showLoginPrompt('请登录后再加入购物车')
+    return
+  }
+  if (!isConsumerAccount.value) {
+    showLoginPrompt('请注册并登录消费者账户后即可购买')
     return
   }
   cartErrorMessage.value = null

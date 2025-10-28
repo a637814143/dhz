@@ -142,6 +142,11 @@ function validate() {
     return false
   }
 
+  if (state.user?.userType !== 'consumer') {
+    error.value = '请注册并登录消费者账户后即可购买'
+    return false
+  }
+
   if (!form.recipientName.trim()) {
     error.value = '请填写收货人姓名'
     return false
