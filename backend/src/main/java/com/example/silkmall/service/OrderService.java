@@ -18,7 +18,6 @@ public interface OrderService extends BaseService<Order, Long> {
     void revokeOrder(Long id);
     void shipOrder(Long id);
     void supplierShipOrder(Long id, Long supplierId);
-    void supplierDeliverOrder(Long id, Long supplierId);
     void deliverOrder(Long id);
     void markInTransit(Long id);
     void confirmReceipt(Long id);

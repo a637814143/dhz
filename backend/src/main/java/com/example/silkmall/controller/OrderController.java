@@ -214,17 +214,6 @@ public class OrderController extends BaseController {
         return success();
     }
 
-    @PutMapping("/{id}/supplier-deliver")
-    @PreAuthorize("hasRole('SUPPLIER')")
-    public ResponseEntity<?> supplierDeliverOrder(@PathVariable Long id,
-                                                  @AuthenticationPrincipal CustomUserDetails currentUser) {
-        if (currentUser == null) {
-            return redirectForUser(null);
-        }
-        orderService.supplierDeliverOrder(id, currentUser.getId());
-        return success();
-    }
-
     @PutMapping("/{id}/in-transit")
     @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<Void> markInTransit(@PathVariable Long id) {
@@ -344,9 +333,6 @@ public class OrderController extends BaseController {
         dto.setMixedSuppliers(mixedSuppliers);
         boolean supplierOwnsAllItems = !mixedSuppliers && !itemDtos.isEmpty();
         dto.setCanShip(supplierOwnsAllItems && PENDING_SHIPMENT.equals(order.getStatus()));
-        dto.setCanMarkDelivered(
-                supplierOwnsAllItems && (SHIPPED.equals(order.getStatus()) || IN_TRANSIT.equals(order.getStatus()))
-        );
 
         return dto;
     }
