@@ -219,16 +219,16 @@ public class OrderServiceImpl extends BaseServiceImpl<Order, Long> implements Or
 
         restoreStock(order);
 
+        BigDecimal recoveredFromSuppliers = BigDecimal.ZERO;
         if (PAYOUT_APPROVED.equals(order.getPayoutStatus())) {
-            rollbackSupplierDistribution(order);
-            if (admin != null && totalAmount != null) {
-                BigDecimal adminBalance = resolveBalance(admin.getWalletBalance());
-                admin.setWalletBalance(adminBalance.add(totalAmount));
-            }
+            recoveredFromSuppliers = rollbackSupplierDistribution(order);
         }
 
         if (admin != null && totalAmount != null) {
             BigDecimal adminBalance = resolveBalance(admin.getWalletBalance());
+            if (recoveredFromSuppliers.compareTo(BigDecimal.ZERO) > 0) {
+                adminBalance = adminBalance.add(recoveredFromSuppliers);
+            }
             BigDecimal updatedAdmin = adminBalance.subtract(totalAmount);
             if (updatedAdmin.compareTo(BigDecimal.ZERO) < 0) {
                 updatedAdmin = BigDecimal.ZERO;
@@ -625,7 +625,7 @@ public class OrderServiceImpl extends BaseServiceImpl<Order, Long> implements Or
         }
     }
 
-    private void rollbackSupplierDistribution(Order order) {
+    private BigDecimal rollbackSupplierDistribution(Order order) {
         BigDecimal totalAmount = Optional.ofNullable(order.getTotalAmount()).orElse(BigDecimal.ZERO);
         BigDecimal commission = totalAmount.multiply(ADMIN_COMMISSION_RATE).setScale(2, RoundingMode.HALF_UP);
         BigDecimal payoutPool = totalAmount.subtract(commission);
@@ -634,6 +634,7 @@ public class OrderServiceImpl extends BaseServiceImpl<Order, Long> implements Or
         }
 
         Map<Long, BigDecimal> payouts = calculateSupplierPayouts(order, payoutPool);
+        BigDecimal recovered = BigDecimal.ZERO;
         for (Map.Entry<Long, BigDecimal> entry : payouts.entrySet()) {
             Supplier supplier = supplierRepository.findById(entry.getKey())
                     .orElseThrow(() -> new RuntimeException("供应商不存在: " + entry.getKey()));
@@ -646,7 +647,9 @@ public class OrderServiceImpl extends BaseServiceImpl<Order, Long> implements Or
             }
             supplier.setWalletBalance(updated);
             supplierRepository.save(supplier);
+            recovered = recovered.add(entry.getValue());
         }
+        return recovered;
     }
 
     private Map<Long, BigDecimal> calculateSupplierPayouts(Order order, BigDecimal payoutPool) {
