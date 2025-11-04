@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue'
+import { onMounted, reactive, ref } from 'vue'
 import api from '@/services/api'
 import type {
   CategoryOption,
@@ -51,12 +51,6 @@ const filters = reactive({
   status: '',
 })
 
-const pagination = reactive({
-  page: 0,
-  size: 10,
-  total: 0,
-})
-
 const productDialogOpen = ref(false)
 const productFormError = ref<string | null>(null)
 const productFormMessage = ref<string | null>(null)
@@ -85,10 +79,6 @@ const statusOptions = [
 ]
 
 const unitOptions = ['件', '条', '个', '箱']
-
-const totalPages = computed(() =>
-  pagination.total > 0 ? Math.ceil(pagination.total / pagination.size) : 0
-)
 
 function formatCurrency(amount?: number | null) {
   if (typeof amount !== 'number' || Number.isNaN(amount)) {
@@ -203,8 +193,8 @@ async function loadProducts() {
   tableLoading.value = true
   try {
     const params: Record<string, unknown> = {
-      page: pagination.page,
-      size: pagination.size,
+      page: 0,
+      size: 1000,
       sortBy: 'createdAt',
       sortDirection: 'DESC',
     }
@@ -219,7 +209,6 @@ async function loadProducts() {
     })
 
     products.value = Array.isArray(data?.content) ? data.content : []
-    pagination.total = typeof data?.totalElements === 'number' ? data.totalElements : 0
   } catch (err) {
     const message = err instanceof Error ? err.message : '加载商品失败'
     if (loading.value) {
@@ -271,15 +260,7 @@ onMounted(() => {
   bootstrap()
 })
 
-function changePage(target: number) {
-  if (target < 0 || target === pagination.page) return
-  if (totalPages.value && target >= totalPages.value) return
-  pagination.page = target
-  loadProducts()
-}
-
 function applyFilters() {
-  pagination.page = 0
   loadProducts()
 }
 
@@ -288,7 +269,6 @@ function resetFilters() {
   filters.categoryId = 0
   filters.supplierId = 0
   filters.status = ''
-  pagination.page = 0
   loadProducts()
 }
 
@@ -534,7 +514,7 @@ async function changeProductStatus(productId: number, nextStatus: 'ON_SALE' | 'O
           <div class="panel-title" id="product-table">商品列表</div>
           <span v-if="tableLoading" class="table-status">数据刷新中…</span>
         </div>
-        <div v-if="products.length" class="table-wrapper">
+        <div v-if="products.length" class="table-wrapper scrollable-table">
           <table>
             <thead>
               <tr>
@@ -590,20 +570,6 @@ async function changeProductStatus(productId: number, nextStatus: 'ON_SALE' | 'O
           </table>
         </div>
         <p v-else class="empty">暂无商品记录，请尝试调整筛选条件或新增商品。</p>
-
-        <nav v-if="totalPages > 1" class="pagination" aria-label="分页导航">
-          <button type="button" :disabled="pagination.page === 0" @click="changePage(pagination.page - 1)">
-            上一页
-          </button>
-          <span>第 {{ pagination.page + 1 }} / {{ totalPages }} 页</span>
-          <button
-            type="button"
-            :disabled="totalPages > 0 && pagination.page + 1 >= totalPages"
-            @click="changePage(pagination.page + 1)"
-          >
-            下一页
-          </button>
-        </nav>
       </section>
     </template>
 
@@ -898,6 +864,35 @@ async function changeProductStatus(productId: number, nextStatus: 'ON_SALE' | 'O
 
 .table-wrapper {
   overflow-x: auto;
+  border: 1px solid rgba(37, 99, 235, 0.12);
+  border-radius: 18px;
+  background: rgba(240, 249, 255, 0.7);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.5);
+}
+
+.table-wrapper.scrollable-table {
+  --admin-visible-rows: 3;
+  --admin-row-height: 4.6rem;
+  --admin-header-height: 3.2rem;
+  max-height: calc(
+    var(--admin-visible-rows) * var(--admin-row-height) +
+      var(--admin-header-height)
+  );
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.table-wrapper.scrollable-table::-webkit-scrollbar {
+  width: 6px;
+}
+
+.table-wrapper.scrollable-table::-webkit-scrollbar-thumb {
+  background: rgba(37, 99, 235, 0.35);
+  border-radius: 999px;
+}
+
+.table-wrapper.scrollable-table::-webkit-scrollbar-track {
+  background: transparent;
 }
 
 table {
@@ -1027,27 +1022,6 @@ tbody tr:nth-child(odd) {
   padding: 1.5rem 0;
   text-align: center;
   color: rgba(15, 23, 42, 0.5);
-}
-
-.pagination {
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  gap: 1rem;
-  margin-top: 1.25rem;
-}
-
-.pagination button {
-  padding: 0.45rem 1.2rem;
-  border-radius: 999px;
-  border: 1px solid rgba(15, 23, 42, 0.18);
-  background: rgba(226, 232, 240, 0.4);
-  cursor: pointer;
-}
-
-.pagination button:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
 }
 
 .product-form {

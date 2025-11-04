@@ -59,18 +59,6 @@ const productFilters = reactive({
   status: '',
 })
 
-const productPagination = reactive({
-  page: 0,
-  size: 8,
-  total: 0,
-})
-
-const totalProductPages = computed(() =>
-  productPagination.total > 0
-    ? Math.ceil(productPagination.total / productPagination.size)
-    : 0
-)
-
 const PRODUCT_EVENT_NAME = 'silkmall:products:changed'
 
 type ProductChangeAction = 'created' | 'updated' | 'deleted' | 'status-changed'
@@ -273,8 +261,8 @@ async function loadProducts(withSpinner = true) {
   productError.value = null
   try {
     const params: Record<string, unknown> = {
-      page: productPagination.page,
-      size: productPagination.size,
+      page: 0,
+      size: 1000,
       sortBy: 'createdAt',
       sortDirection: 'DESC',
     }
@@ -289,11 +277,6 @@ async function loadProducts(withSpinner = true) {
 
     const page = resolvePage<ProductSummary>(response.data)
     productRows.value = Array.isArray(page.content) ? page.content : []
-    productPagination.total =
-      typeof page.totalElements === 'number' ? page.totalElements : productRows.value.length
-    if (typeof page.number === 'number' && Number.isFinite(page.number)) {
-      productPagination.page = page.number
-    }
   } catch (err) {
     const message = err instanceof Error ? err.message : '加载商品列表失败'
     productError.value = message
@@ -482,19 +465,10 @@ function resetProductFilters() {
   productFilters.keyword = ''
   productFilters.categoryId = 0
   productFilters.status = ''
-  productPagination.page = 0
   loadProducts().catch(() => {})
 }
 
 function applyProductFilters() {
-  productPagination.page = 0
-  loadProducts().catch(() => {})
-}
-
-function changeProductPage(target: number) {
-  if (target < 0 || target === productPagination.page) return
-  if (totalProductPages.value && target >= totalProductPages.value) return
-  productPagination.page = target
   loadProducts().catch(() => {})
 }
 
@@ -667,7 +641,6 @@ async function refreshProductsAndOverview() {
   } catch (err) {
     error.value = err instanceof Error ? err.message : '加载管理数据失败'
   }
-  productPagination.page = 0
   await loadProducts().catch(() => {})
   await loadWallet()
 }
@@ -898,7 +871,7 @@ function formatNumber(value?: number | null) {
             <div v-if="productError" class="product-placeholder is-error">{{ productError }}</div>
             <div v-else-if="productLoading" class="product-placeholder">正在加载商品列表…</div>
             <div v-else>
-              <div v-if="productRows.length" class="table-wrapper">
+              <div v-if="productRows.length" class="table-wrapper scrollable-table">
                 <table class="product-table">
                   <thead>
                     <tr>
@@ -952,20 +925,6 @@ function formatNumber(value?: number | null) {
                 </table>
               </div>
               <p v-else class="product-placeholder">暂无商品记录，请尝试调整筛选条件或新增商品。</p>
-
-              <nav v-if="totalProductPages > 1" class="pagination" aria-label="商品分页导航">
-                <button type="button" :disabled="productPagination.page === 0" @click="changeProductPage(productPagination.page - 1)">
-                  上一页
-                </button>
-                <span>第 {{ productPagination.page + 1 }} / {{ totalProductPages }} 页</span>
-                <button
-                  type="button"
-                  :disabled="totalProductPages > 0 && productPagination.page + 1 >= totalProductPages"
-                  @click="changeProductPage(productPagination.page + 1)"
-                >
-                  下一页
-                </button>
-              </nav>
             </div>
           </section>
 
@@ -1526,6 +1485,35 @@ function formatNumber(value?: number | null) {
 
 .table-wrapper {
   overflow-x: auto;
+  border: 1px solid rgba(59, 130, 246, 0.16);
+  border-radius: 20px;
+  background: rgba(239, 246, 255, 0.8);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.6);
+}
+
+.table-wrapper.scrollable-table {
+  --overview-visible-rows: 3;
+  --overview-row-height: 4.8rem;
+  --overview-header-height: 3.2rem;
+  max-height: calc(
+    var(--overview-visible-rows) * var(--overview-row-height) +
+      var(--overview-header-height)
+  );
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.table-wrapper.scrollable-table::-webkit-scrollbar {
+  width: 6px;
+}
+
+.table-wrapper.scrollable-table::-webkit-scrollbar-thumb {
+  background: rgba(59, 130, 246, 0.35);
+  border-radius: 999px;
+}
+
+.table-wrapper.scrollable-table::-webkit-scrollbar-track {
+  background: transparent;
 }
 
 .product-table {
@@ -1592,27 +1580,6 @@ function formatNumber(value?: number | null) {
 
 .link-button:disabled {
   opacity: 0.6;
-  cursor: not-allowed;
-}
-
-.pagination {
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  gap: 1rem;
-  margin-top: 1.25rem;
-}
-
-.pagination button {
-  padding: 0.45rem 1.2rem;
-  border-radius: 999px;
-  border: 1px solid rgba(15, 23, 42, 0.18);
-  background: rgba(226, 232, 240, 0.4);
-  cursor: pointer;
-}
-
-.pagination button:disabled {
-  opacity: 0.5;
   cursor: not-allowed;
 }
 

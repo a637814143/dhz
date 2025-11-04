@@ -139,26 +139,6 @@ const addressForm = reactive({
   isDefault: false,
 })
 
-const addressPagination = reactive({
-  page: 0,
-  size: 5,
-})
-
-const cartPagination = reactive({
-  page: 0,
-  size: 5,
-})
-
-const orderPagination = reactive({
-  page: 0,
-  size: 8,
-})
-
-const reviewPagination = reactive({
-  page: 0,
-  size: 6,
-})
-
 const orderItems = computed<OrderItemDetail[]>(() => orderDetail.value?.orderItems ?? [])
 const hasRecommendations = computed(() => (homeContent.value?.recommendations?.length ?? 0) > 0)
 const hasAnnouncements = computed(() => announcements.value.length > 0)
@@ -192,91 +172,6 @@ const reviewMap = computed(() => {
 })
 const hasReviews = computed(() => myReviews.value.length > 0)
 const hasOrders = computed(() => orders.value.length > 0)
-
-const totalAddressPages = computed(() =>
-  addressPagination.size > 0 ? Math.ceil(addresses.value.length / addressPagination.size) : 0
-)
-
-const paginatedAddresses = computed(() => {
-  if (!addresses.value.length) return []
-  const start = addressPagination.page * addressPagination.size
-  const end = start + addressPagination.size
-  return addresses.value.slice(start, end)
-})
-
-const totalCartPages = computed(() =>
-  cartPagination.size > 0 ? Math.ceil(cartItems.value.length / cartPagination.size) : 0
-)
-
-const paginatedCartItems = computed(() => {
-  if (!cartItems.value.length) return []
-  const start = cartPagination.page * cartPagination.size
-  const end = start + cartPagination.size
-  return cartItems.value.slice(start, end)
-})
-
-const totalOrderPages = computed(() =>
-  orderPagination.size > 0 ? Math.ceil(orders.value.length / orderPagination.size) : 0
-)
-
-const paginatedOrders = computed(() => {
-  if (!orders.value.length) return []
-  const start = orderPagination.page * orderPagination.size
-  const end = start + orderPagination.size
-  return orders.value.slice(start, end)
-})
-
-const totalReviewPages = computed(() =>
-  reviewPagination.size > 0 ? Math.ceil(myReviews.value.length / reviewPagination.size) : 0
-)
-
-const paginatedReviews = computed(() => {
-  if (!myReviews.value.length) return []
-  const start = reviewPagination.page * reviewPagination.size
-  const end = start + reviewPagination.size
-  return myReviews.value.slice(start, end)
-})
-
-function ensurePaginationWithinBounds(
-  pagination: { page: number; size: number },
-  totalItems: number
-) {
-  const size = pagination.size > 0 ? pagination.size : 1
-  const totalPages = totalItems > 0 ? Math.ceil(totalItems / size) : 0
-  if (totalPages === 0) {
-    pagination.page = 0
-    return
-  }
-  if (pagination.page >= totalPages) {
-    pagination.page = totalPages - 1
-  } else if (pagination.page < 0) {
-    pagination.page = 0
-  }
-}
-
-function changeAddressPage(target: number) {
-  if (target === addressPagination.page || target < 0) return
-  if (totalAddressPages.value > 0 && target >= totalAddressPages.value) return
-  addressPagination.page = target
-}
-
-function changeCartPage(target: number) {
-  if (target === cartPagination.page || target < 0) return
-  if (totalCartPages.value > 0 && target >= totalCartPages.value) return
-  cartPagination.page = target
-}
-
-function changeOrderPage(target: number) {
-  if (target === orderPagination.page || target < 0) return
-  if (totalOrderPages.value > 0 && target >= totalOrderPages.value) return
-  orderPagination.page = target
-}
-
-function changeReviewPage(target: number) {
-  if (target === reviewPagination.page || target < 0) return
-  if (totalReviewPages.value > 0 && target >= totalReviewPages.value) return
-  reviewPagination.page = target
-}
 
 const normalizeStatusValue = (value: string) =>
   value.trim().replace(/[\s_-]+/g, '').toUpperCase()
@@ -402,7 +297,6 @@ async function loadProfile() {
 async function loadOrders() {
   if (!state.user) {
     orders.value = []
-    ensurePaginationWithinBounds(orderPagination, 0)
     return
   }
 
@@ -445,7 +339,6 @@ async function loadOrders() {
   orders.value = Array.from(aggregated.values()).sort(
     (a, b) => toTimestamp(b.orderTime) - toTimestamp(a.orderTime)
   )
-  ensurePaginationWithinBounds(orderPagination, orders.value.length)
 }
 
 async function loadHomeContent() {
@@ -471,7 +364,6 @@ async function loadReviews() {
     reviewsError.value = null
     reviewListMessage.value = null
     reviewListError.value = null
-    ensurePaginationWithinBounds(reviewPagination, 0)
     return
   }
   reviewsLoading.value = true
@@ -481,12 +373,10 @@ async function loadReviews() {
   try {
     const { data } = await api.get<ProductReview[]>(`/reviews/consumers/${state.user.id}`)
     myReviews.value = data ?? []
-    ensurePaginationWithinBounds(reviewPagination, myReviews.value.length)
   } catch (err) {
     const message = err instanceof Error ? err.message : '加载评价列表失败'
     reviewsError.value = message
     myReviews.value = []
-    ensurePaginationWithinBounds(reviewPagination, 0)
   } finally {
     reviewsLoading.value = false
   }
@@ -495,7 +385,6 @@ async function loadReviews() {
 async function loadCart() {
   if (!state.user) {
     cartItems.value = []
-    ensurePaginationWithinBounds(cartPagination, 0)
     return
   }
   cartLoading.value = true
@@ -503,11 +392,9 @@ async function loadCart() {
   try {
     const { data } = await api.get<CartItem[]>('/cart')
     cartItems.value = data ?? []
-    ensurePaginationWithinBounds(cartPagination, cartItems.value.length)
   } catch (err) {
     cartItems.value = []
     cartError.value = err instanceof Error ? err.message : '加载购物车失败'
-    ensurePaginationWithinBounds(cartPagination, 0)
   } finally {
     cartLoading.value = false
   }
@@ -516,7 +403,6 @@ async function loadCart() {
 async function loadAddresses() {
   if (!state.user) {
     addresses.value = []
-    ensurePaginationWithinBounds(addressPagination, 0)
     return
   }
   addressLoading.value = true
@@ -529,13 +415,11 @@ async function loadAddresses() {
       isDefault: Boolean(item.isDefault),
     }))
     addressActionError.value = null
-    ensurePaginationWithinBounds(addressPagination, addresses.value.length)
   } catch (err) {
     addresses.value = []
     const message = err instanceof Error ? err.message : '加载地址列表失败'
     addressError.value = message
     addressActionError.value = message
-    ensurePaginationWithinBounds(addressPagination, 0)
   } finally {
     addressLoading.value = false
   }
@@ -735,7 +619,6 @@ async function removeCartItem(item: CartItem) {
   try {
     await api.delete(`/cart/${item.id}`)
     cartItems.value = cartItems.value.filter((entry) => entry.id !== item.id)
-    ensurePaginationWithinBounds(cartPagination, cartItems.value.length)
   } catch (err) {
     cartError.value = err instanceof Error ? err.message : '移除购物车商品失败'
   } finally {
@@ -765,7 +648,6 @@ function syncOrderSummary(detail: OrderDetail) {
   } else {
     orders.value.unshift(summary)
   }
-  ensurePaginationWithinBounds(orderPagination, orders.value.length)
 }
 
 async function fetchAndUpdateOrder(orderId: number) {
@@ -1466,7 +1348,7 @@ const shortcutLinks = [
           <p v-else-if="addressError && !hasAddresses" class="placeholder is-error">
             {{ addressError }}
           </p>
-          <div v-else-if="hasAddresses" class="table-container">
+          <div v-else-if="hasAddresses" class="table-container scrollable-table">
             <table class="dashboard-table address-table">
               <thead>
                 <tr>
@@ -1478,7 +1360,7 @@ const shortcutLinks = [
                 </tr>
               </thead>
               <tbody>
-                <tr v-for="item in paginatedAddresses" :key="item.id">
+                <tr v-for="item in addresses" :key="item.id">
                   <td>{{ item.recipientName }}</td>
                   <td>{{ item.recipientPhone }}</td>
                   <td class="address-cell">{{ item.shippingAddress }}</td>
@@ -1511,23 +1393,6 @@ const shortcutLinks = [
               </tbody>
             </table>
           </div>
-          <nav
-            v-if="hasAddresses && totalAddressPages > 1"
-            class="pagination"
-            aria-label="地址分页"
-          >
-            <button type="button" :disabled="addressPagination.page === 0" @click="changeAddressPage(addressPagination.page - 1)">
-              上一页
-            </button>
-            <span>第 {{ addressPagination.page + 1 }} / {{ totalAddressPages }} 页</span>
-            <button
-              type="button"
-              :disabled="totalAddressPages > 0 && addressPagination.page + 1 >= totalAddressPages"
-              @click="changeAddressPage(addressPagination.page + 1)"
-            >
-              下一页
-            </button>
-          </nav>
           <p v-else class="empty">您还没有保存收货地址，请添加一个常用地址。</p>
           <p v-if="addressMessage" class="panel-success">{{ addressMessage }}</p>
           <p v-if="addressActionError" class="panel-error">{{ addressActionError }}</p>
@@ -1547,7 +1412,7 @@ const shortcutLinks = [
           </div>
           <p v-if="cartLoading" class="empty">购物车加载中…</p>
           <p v-else-if="cartError" class="empty is-error">{{ cartError }}</p>
-          <div v-else-if="hasCartItems" class="table-container">
+          <div v-else-if="hasCartItems" class="table-container scrollable-table">
             <table class="dashboard-table cart-table">
               <thead>
                 <tr>
@@ -1559,7 +1424,7 @@ const shortcutLinks = [
                 </tr>
               </thead>
               <tbody>
-                <tr v-for="item in paginatedCartItems" :key="item.id">
+                <tr v-for="item in cartItems" :key="item.id">
                   <td class="col-product">
                     <div class="cart-product">
                       <div class="image">
@@ -1608,29 +1473,12 @@ const shortcutLinks = [
               </tbody>
             </table>
           </div>
-          <nav
-            v-if="hasCartItems && totalCartPages > 1"
-            class="pagination"
-            aria-label="购物车分页"
-          >
-            <button type="button" :disabled="cartPagination.page === 0" @click="changeCartPage(cartPagination.page - 1)">
-              上一页
-            </button>
-            <span>第 {{ cartPagination.page + 1 }} / {{ totalCartPages }} 页</span>
-            <button
-              type="button"
-              :disabled="totalCartPages > 0 && cartPagination.page + 1 >= totalCartPages"
-              @click="changeCartPage(cartPagination.page + 1)"
-            >
-              下一页
-            </button>
-          </nav>
           <p v-else class="empty">购物车空空如也，快去产品中心挑选吧。</p>
         </section>
 
         <section class="panel orders full-row table-panel" aria-labelledby="orders-title">
           <div class="panel-title" id="orders-title">我的订单</div>
-          <div v-if="hasOrders" class="table-container">
+          <div v-if="hasOrders" class="table-container scrollable-table">
             <table class="dashboard-table orders-table">
               <thead>
                 <tr>
@@ -1643,7 +1491,7 @@ const shortcutLinks = [
                 </tr>
               </thead>
               <tbody>
-                <tr v-for="order in paginatedOrders" :key="order.id">
+                <tr v-for="order in orders" :key="order.id">
                   <td class="col-order-no">
                     <span class="order-no">{{ order.orderNo }}</span>
                     <span
@@ -1701,23 +1549,6 @@ const shortcutLinks = [
               </tbody>
             </table>
           </div>
-          <nav
-            v-if="hasOrders && totalOrderPages > 1"
-            class="pagination"
-            aria-label="订单分页"
-          >
-            <button type="button" :disabled="orderPagination.page === 0" @click="changeOrderPage(orderPagination.page - 1)">
-              上一页
-            </button>
-            <span>第 {{ orderPagination.page + 1 }} / {{ totalOrderPages }} 页</span>
-            <button
-              type="button"
-              :disabled="totalOrderPages > 0 && orderPagination.page + 1 >= totalOrderPages"
-              @click="changeOrderPage(orderPagination.page + 1)"
-            >
-              下一页
-            </button>
-          </nav>
           <p v-else class="empty">暂无订单记录，前往首页挑选心仪商品吧。</p>
           <p v-if="orderActionMessage" class="panel-success">{{ orderActionMessage }}</p>
           <p v-if="orderActionError" class="panel-error">{{ orderActionError }}</p>
@@ -1734,7 +1565,7 @@ const shortcutLinks = [
           <div v-if="reviewsLoading" class="placeholder">正在加载评价…</div>
           <div v-else-if="reviewsError" class="placeholder is-error">{{ reviewsError }}</div>
           <template v-else>
-            <div v-if="hasReviews" class="table-container">
+            <div v-if="hasReviews" class="table-container scrollable-table">
               <table class="dashboard-table review-table">
                 <thead>
                   <tr>
@@ -1746,7 +1577,7 @@ const shortcutLinks = [
                   </tr>
                 </thead>
                 <tbody>
-                  <tr v-for="review in paginatedReviews" :key="review.id">
+                  <tr v-for="review in myReviews" :key="review.id">
                     <td class="col-product">
                       <strong>{{ review.productName }}</strong>
                       <p class="muted">订单ID：{{ review.orderId }}</p>
@@ -1777,23 +1608,6 @@ const shortcutLinks = [
                 </tbody>
               </table>
             </div>
-            <nav
-              v-if="hasReviews && totalReviewPages > 1"
-              class="pagination"
-              aria-label="评价分页"
-            >
-              <button type="button" :disabled="reviewPagination.page === 0" @click="changeReviewPage(reviewPagination.page - 1)">
-                上一页
-              </button>
-              <span>第 {{ reviewPagination.page + 1 }} / {{ totalReviewPages }} 页</span>
-              <button
-                type="button"
-                :disabled="totalReviewPages > 0 && reviewPagination.page + 1 >= totalReviewPages"
-                @click="changeReviewPage(reviewPagination.page + 1)"
-              >
-                下一页
-              </button>
-            </nav>
             <p v-else class="empty">您还没有发布过商品评价，快去评价已完成的订单吧。</p>
           </template>
           <p v-if="reviewListMessage" class="panel-success">{{ reviewListMessage }}</p>
@@ -2420,6 +2234,31 @@ const shortcutLinks = [
   overflow-x: auto;
   background: rgba(248, 250, 252, 0.68);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.4);
+}
+
+.table-container.scrollable-table {
+  --dashboard-scroll-visible-rows: 3;
+  --dashboard-row-height: 4.8rem;
+  --dashboard-header-height: 3.5rem;
+  max-height: calc(
+    var(--dashboard-scroll-visible-rows) * var(--dashboard-row-height) +
+      var(--dashboard-header-height)
+  );
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.table-container.scrollable-table::-webkit-scrollbar {
+  width: 6px;
+}
+
+.table-container.scrollable-table::-webkit-scrollbar-thumb {
+  background: rgba(79, 70, 229, 0.35);
+  border-radius: 999px;
+}
+
+.table-container.scrollable-table::-webkit-scrollbar-track {
+  background: transparent;
 }
 
 .dashboard-table {

@@ -96,23 +96,6 @@ const categoryListExpanded = ref(false)
 
 const unitOptions = ['件', '条', '个', '箱']
 
-const productPagination = reactive({
-  page: 0,
-  size: 6,
-  total: 0,
-})
-
-const soldOrderPagination = reactive({
-  page: 0,
-  size: 5,
-  total: 0,
-})
-
-const returnPagination = reactive({
-  page: 0,
-  size: 5,
-})
-
 const returnRequests = ref<ReturnRequest[]>([])
 const returnRequestsLoading = ref(false)
 const returnRequestsError = ref<string | null>(null)
@@ -132,70 +115,6 @@ watch(
     }
   }
 )
-
-function syncPaginationFromResponse(
-  pagination: { page: number; size: number; total: number },
-  payload: PageResponse<unknown>
-) {
-  const pageNumber = typeof payload?.number === 'number' ? payload.number : pagination.page
-  const pageSize = typeof payload?.size === 'number' && payload.size > 0 ? payload.size : pagination.size
-  const totalElements =
-    typeof payload?.totalElements === 'number'
-      ? payload.totalElements
-      : Array.isArray(payload?.content)
-      ? payload.content.length
-      : 0
-
-  pagination.page = pageNumber
-  pagination.size = pageSize
-  pagination.total = totalElements
-
-  const maxPage = pagination.size > 0 ? Math.ceil(pagination.total / pagination.size) : 0
-  if (maxPage === 0) {
-    pagination.page = 0
-  } else if (pagination.page >= maxPage) {
-    pagination.page = maxPage - 1
-  } else if (pagination.page < 0) {
-    pagination.page = 0
-  }
-}
-
-function clampLocalPagination(pagination: { page: number; size: number }, totalItems: number) {
-  const pageSize = pagination.size > 0 ? pagination.size : 1
-  const totalPages = totalItems > 0 ? Math.ceil(totalItems / pageSize) : 0
-  if (totalPages === 0) {
-    pagination.page = 0
-    return
-  }
-  if (pagination.page >= totalPages) {
-    pagination.page = totalPages - 1
-  } else if (pagination.page < 0) {
-    pagination.page = 0
-  }
-}
-
-const totalProductPages = computed(() =>
-  productPagination.total > 0 ? Math.ceil(productPagination.total / productPagination.size) : 0
-)
-
-const totalSoldOrderPages = computed(() =>
-  soldOrderPagination.total > 0
-    ? Math.ceil(soldOrderPagination.total / soldOrderPagination.size)
-    : 0
-)
-
-const totalReturnPages = computed(() =>
-  returnPagination.size > 0
-    ? Math.ceil(returnRequests.value.length / returnPagination.size)
-    : 0
-)
-
-const paginatedReturnRequests = computed(() => {
-  if (!returnRequests.value.length) return []
-  const start = returnPagination.page * returnPagination.size
-  const end = start + returnPagination.size
-  return returnRequests.value.slice(start, end)
-})
 
 function extractNumericId(value: unknown): number | null {
   if (typeof value === 'number' && Number.isFinite(value)) {
@@ -224,10 +143,10 @@ async function loadProfile() {
 async function loadProducts() {
   if (!state.user) return
   const { data } = await api.get<PageResponse<ProductSummary>>(`/products/supplier/${state.user.id}`, {
-    params: { page: productPagination.page, size: productPagination.size },
+    params: { page: 0, size: 1000 },
   })
-  products.value = data.content ?? []
-  syncPaginationFromResponse(productPagination, data)
+  const content = Array.isArray(data?.content) ? data.content : []
+  products.value = content
 }
 
 async function loadSoldOrders() {
@@ -244,11 +163,10 @@ async function loadSoldOrders() {
     const { data } = await api.get<PageResponse<SupplierOrderSummary>>(
       `/orders/supplier/${state.user.id}`,
       {
-        params: { page: soldOrderPagination.page, size: soldOrderPagination.size },
+        params: { page: 0, size: 1000 },
       }
     )
-    soldOrders.value = data.content ?? []
-    syncPaginationFromResponse(soldOrderPagination, data)
+    soldOrders.value = Array.isArray(data?.content) ? data.content : []
   } catch (err) {
     soldOrders.value = []
     soldOrdersError.value = err instanceof Error ? err.message : '加载已销售订单失败'
@@ -275,7 +193,6 @@ async function loadReturnRequests() {
       return timeB - timeA
     })
     returnRequests.value = list
-    clampLocalPagination(returnPagination, returnRequests.value.length)
     list.forEach((item) => {
       if (!item?.id) return
       const existing = resolutionDrafts[item.id]
@@ -288,26 +205,6 @@ async function loadReturnRequests() {
   } finally {
     returnRequestsLoading.value = false
   }
-}
-
-function changeProductPage(target: number) {
-  if (target === productPagination.page || target < 0) return
-  if (totalProductPages.value > 0 && target >= totalProductPages.value) return
-  productPagination.page = target
-  loadProducts()
-}
-
-function changeSoldOrderPage(target: number) {
-  if (target === soldOrderPagination.page || target < 0) return
-  if (totalSoldOrderPages.value > 0 && target >= totalSoldOrderPages.value) return
-  soldOrderPagination.page = target
-  loadSoldOrders()
-}
-
-function changeReturnPage(target: number) {
-  if (target === returnPagination.page || target < 0) return
-  if (totalReturnPages.value > 0 && target >= totalReturnPages.value) return
-  returnPagination.page = target
 }
 
 async function loadHomeContent() {
@@ -1043,7 +940,7 @@ async function removeCategory(option: CategoryOption) {
           <div class="panel-title" id="product-list">商品概览</div>
           <button type="button" class="primary" @click="openProductForm()">新增商品</button>
         </div>
-        <div v-if="products.length" class="product-table">
+        <div v-if="products.length" class="product-table scrollable-table">
           <table>
             <thead>
               <tr>
@@ -1079,19 +976,6 @@ async function removeCategory(option: CategoryOption) {
             </tbody>
           </table>
         </div>
-        <nav v-if="totalProductPages > 1" class="pagination" aria-label="商品分页导航">
-          <button type="button" :disabled="productPagination.page === 0" @click="changeProductPage(productPagination.page - 1)">
-            上一页
-          </button>
-          <span>第 {{ productPagination.page + 1 }} / {{ totalProductPages }} 页</span>
-          <button
-            type="button"
-            :disabled="totalProductPages > 0 && productPagination.page + 1 >= totalProductPages"
-            @click="changeProductPage(productPagination.page + 1)"
-          >
-            下一页
-          </button>
-        </nav>
         <p v-else class="empty">暂无商品，请尽快完成商品录入与上架。</p>
 
         <div class="category-create">
@@ -1141,90 +1025,69 @@ async function removeCategory(option: CategoryOption) {
         </div>
         <p v-if="soldOrdersLoading" class="empty">正在加载已销售的订单…</p>
         <p v-else-if="soldOrdersError" class="sold-order-error">{{ soldOrdersError }}</p>
-        <ul v-else-if="soldOrders.length" class="sold-order-list">
-          <li v-for="order in soldOrders" :key="order.id" class="sold-order-card">
-            <header class="sold-order-header">
-              <div>
-                <h3>订单号：{{ order.orderNo }}</h3>
-                <p>下单时间：{{ formatDateTime(order.orderTime) }}</p>
-                <p v-if="order.paymentTime">支付时间：{{ formatDateTime(order.paymentTime) }}</p>
-              </div>
-              <div class="sold-order-status">
-                <span class="status-pill">{{ orderStatusLabel(order.status) }}</span>
-                <span v-if="order.mixedSuppliers" class="sold-order-note">含其他供应商商品</span>
-              </div>
-            </header>
-            <div class="sold-order-body">
-              <dl class="sold-order-meta">
+        <div v-else-if="soldOrders.length" class="sold-order-container scrollable-list">
+          <ul class="sold-order-list">
+            <li v-for="order in soldOrders" :key="order.id" class="sold-order-card">
+              <header class="sold-order-header">
                 <div>
-                  <dt>收货人</dt>
-                  <dd>{{ order.recipientName ?? '—' }}</dd>
+                  <h3>订单号：{{ order.orderNo }}</h3>
+                  <p>下单时间：{{ formatDateTime(order.orderTime) }}</p>
+                  <p v-if="order.paymentTime">支付时间：{{ formatDateTime(order.paymentTime) }}</p>
                 </div>
-                <div>
-                  <dt>联系电话</dt>
-                  <dd>{{ order.recipientPhone ?? '—' }}</dd>
+                <div class="sold-order-status">
+                  <span class="status-pill">{{ orderStatusLabel(order.status) }}</span>
+                  <span v-if="order.mixedSuppliers" class="sold-order-note">含其他供应商商品</span>
                 </div>
-                <div>
-                  <dt>配送地址</dt>
-                  <dd>{{ order.shippingAddress ?? '—' }}</dd>
-                </div>
-                <div>
-                  <dt>商品金额</dt>
-                  <dd>{{ formatCurrency(order.supplierTotalAmount) }}</dd>
-                </div>
-                <div>
-                  <dt>商品数量</dt>
-                  <dd>{{ order.supplierTotalQuantity }}</dd>
-                </div>
-              </dl>
-              <p v-if="!order.items.length" class="sold-order-empty-items">订单中暂无属于您的商品</p>
-              <ul v-else class="sold-order-items">
-                <li v-for="item in order.items" :key="item.id">
+              </header>
+              <div class="sold-order-body">
+                <dl class="sold-order-meta">
                   <div>
-                    <strong>{{ item.productName ?? '商品' }}</strong>
-                    <span>数量 × {{ item.quantity }}</span>
+                    <dt>收货人</dt>
+                    <dd>{{ order.recipientName ?? '—' }}</dd>
                   </div>
-                  <div class="sold-order-item-amount">{{ formatCurrency(item.totalPrice) }}</div>
-                </li>
-              </ul>
-            </div>
-            <footer class="sold-order-footer">
-              <button
-                v-if="order.canShip"
-                type="button"
-                class="primary-button"
-                @click="confirmShipment(order.id)"
-                :disabled="shippingOrderId === order.id"
-              >
-                {{ shippingOrderId === order.id ? '更新中…' : '确认发货' }}
-              </button>
-              <span v-else class="sold-order-hint">{{ soldOrderHint(order) }}</span>
-            </footer>
-          </li>
-        </ul>
-        <nav
-          v-if="!soldOrdersLoading && !soldOrdersError && totalSoldOrderPages > 1"
-          class="pagination"
-          aria-label="已销售商品分页"
-        >
-          <button
-            type="button"
-            :disabled="soldOrderPagination.page === 0"
-            @click="changeSoldOrderPage(soldOrderPagination.page - 1)"
-          >
-            上一页
-          </button>
-          <span>第 {{ soldOrderPagination.page + 1 }} / {{ totalSoldOrderPages }} 页</span>
-          <button
-            type="button"
-            :disabled="
-              totalSoldOrderPages > 0 && soldOrderPagination.page + 1 >= totalSoldOrderPages
-            "
-            @click="changeSoldOrderPage(soldOrderPagination.page + 1)"
-          >
-            下一页
-          </button>
-        </nav>
+                  <div>
+                    <dt>联系电话</dt>
+                    <dd>{{ order.recipientPhone ?? '—' }}</dd>
+                  </div>
+                  <div>
+                    <dt>配送地址</dt>
+                    <dd>{{ order.shippingAddress ?? '—' }}</dd>
+                  </div>
+                  <div>
+                    <dt>商品金额</dt>
+                    <dd>{{ formatCurrency(order.supplierTotalAmount) }}</dd>
+                  </div>
+                  <div>
+                    <dt>商品数量</dt>
+                    <dd>{{ order.supplierTotalQuantity }}</dd>
+                  </div>
+                </dl>
+                <p v-if="!order.items.length" class="sold-order-empty-items">订单中暂无属于您的商品</p>
+                <ul v-else class="sold-order-items">
+                  <li v-for="item in order.items" :key="item.id">
+                    <div>
+                      <strong>{{ item.productName ?? '商品' }}</strong>
+                      <span>数量 × {{ item.quantity }}</span>
+                    </div>
+                    <div class="sold-order-item-amount">{{ formatCurrency(item.totalPrice) }}</div>
+                  </li>
+                </ul>
+              </div>
+              <footer class="sold-order-footer">
+                <button
+                  v-if="order.canShip"
+                  type="button"
+                  class="primary-button"
+                  @click="confirmShipment(order.id)"
+                  :disabled="shippingOrderId === order.id"
+                >
+                  {{ shippingOrderId === order.id ? '更新中…' : '确认发货' }}
+                </button>
+                <span v-else class="sold-order-hint">{{ soldOrderHint(order) }}</span>
+              </footer>
+            </li>
+          </ul>
+        </div>
         <p v-else class="empty">暂时没有已销售的订单。</p>
       </section>
 
@@ -1244,9 +1107,9 @@ async function removeCategory(option: CategoryOption) {
         </transition>
         <p v-if="returnRequestsLoading" class="empty">正在加载退货申请…</p>
         <p v-else-if="returnRequestsError" class="return-error">{{ returnRequestsError }}</p>
-        <ul v-else-if="paginatedReturnRequests.length" class="return-list">
-          <li
-            v-for="request in paginatedReturnRequests"
+        <div v-else-if="returnRequests.length" class="return-list scrollable-list">
+          <article
+            v-for="request in returnRequests"
             :key="request.id"
             :class="['return-card', { 'return-card--resolved': !canProcessReturn(request) }]"
           >
@@ -1318,25 +1181,8 @@ async function removeCategory(option: CategoryOption) {
                 {{ updatingReturnId === request.id ? '提交中…' : '确认退货' }}
               </button>
             </footer>
-          </li>
-        </ul>
-        <nav
-          v-if="!returnRequestsLoading && !returnRequestsError && totalReturnPages > 1"
-          class="pagination"
-          aria-label="退货申请分页"
-        >
-          <button type="button" :disabled="returnPagination.page === 0" @click="changeReturnPage(returnPagination.page - 1)">
-            上一页
-          </button>
-          <span>第 {{ returnPagination.page + 1 }} / {{ totalReturnPages }} 页</span>
-          <button
-            type="button"
-            :disabled="totalReturnPages > 0 && returnPagination.page + 1 >= totalReturnPages"
-            @click="changeReturnPage(returnPagination.page + 1)"
-          >
-            下一页
-          </button>
-        </nav>
+          </article>
+        </div>
         <p v-else class="empty">暂无退货申请。</p>
       </section>
 
@@ -1702,6 +1548,39 @@ async function removeCategory(option: CategoryOption) {
   color: #b91c1c;
 }
 
+.product-table {
+  border: 1px solid rgba(14, 165, 233, 0.18);
+  border-radius: 18px;
+  background: rgba(240, 249, 255, 0.75);
+  overflow: hidden;
+  overflow-x: auto;
+}
+
+.scrollable-table {
+  --supplier-visible-rows: 3;
+  --supplier-row-height: 4.75rem;
+  --supplier-header-height: 3.4rem;
+  max-height: calc(
+    var(--supplier-visible-rows) * var(--supplier-row-height) +
+      var(--supplier-header-height)
+  );
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.scrollable-table::-webkit-scrollbar {
+  width: 6px;
+}
+
+.scrollable-table::-webkit-scrollbar-thumb {
+  background: rgba(37, 99, 235, 0.35);
+  border-radius: 999px;
+}
+
+.scrollable-table::-webkit-scrollbar-track {
+  background: transparent;
+}
+
 .product-table table {
   width: 100%;
   border-collapse: collapse;
@@ -1984,6 +1863,34 @@ async function removeCategory(option: CategoryOption) {
   padding: 0;
   display: grid;
   gap: 1.25rem;
+}
+
+.sold-order-container {
+  border: 1px solid rgba(14, 165, 233, 0.18);
+  border-radius: 20px;
+  background: rgba(240, 249, 255, 0.7);
+  padding: 1.25rem;
+}
+
+.scrollable-list {
+  --supplier-visible-cards: 3;
+  --supplier-card-height: 12.5rem;
+  max-height: calc(var(--supplier-visible-cards) * var(--supplier-card-height));
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.scrollable-list::-webkit-scrollbar {
+  width: 6px;
+}
+
+.scrollable-list::-webkit-scrollbar-thumb {
+  background: rgba(14, 165, 233, 0.35);
+  border-radius: 999px;
+}
+
+.scrollable-list::-webkit-scrollbar-track {
+  background: transparent;
 }
 
 .sold-order-card {
