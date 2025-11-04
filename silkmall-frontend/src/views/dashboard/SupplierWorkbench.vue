@@ -96,6 +96,23 @@ const categoryListExpanded = ref(false)
 
 const unitOptions = ['件', '条', '个', '箱']
 
+const productPagination = reactive({
+  page: 0,
+  size: 6,
+  total: 0,
+})
+
+const soldOrderPagination = reactive({
+  page: 0,
+  size: 5,
+  total: 0,
+})
+
+const returnPagination = reactive({
+  page: 0,
+  size: 5,
+})
+
 const returnRequests = ref<ReturnRequest[]>([])
 const returnRequestsLoading = ref(false)
 const returnRequestsError = ref<string | null>(null)
@@ -115,6 +132,70 @@ watch(
     }
   }
 )
+
+function syncPaginationFromResponse(
+  pagination: { page: number; size: number; total: number },
+  payload: PageResponse<unknown>
+) {
+  const pageNumber = typeof payload?.number === 'number' ? payload.number : pagination.page
+  const pageSize = typeof payload?.size === 'number' && payload.size > 0 ? payload.size : pagination.size
+  const totalElements =
+    typeof payload?.totalElements === 'number'
+      ? payload.totalElements
+      : Array.isArray(payload?.content)
+      ? payload.content.length
+      : 0
+
+  pagination.page = pageNumber
+  pagination.size = pageSize
+  pagination.total = totalElements
+
+  const maxPage = pagination.size > 0 ? Math.ceil(pagination.total / pagination.size) : 0
+  if (maxPage === 0) {
+    pagination.page = 0
+  } else if (pagination.page >= maxPage) {
+    pagination.page = maxPage - 1
+  } else if (pagination.page < 0) {
+    pagination.page = 0
+  }
+}
+
+function clampLocalPagination(pagination: { page: number; size: number }, totalItems: number) {
+  const pageSize = pagination.size > 0 ? pagination.size : 1
+  const totalPages = totalItems > 0 ? Math.ceil(totalItems / pageSize) : 0
+  if (totalPages === 0) {
+    pagination.page = 0
+    return
+  }
+  if (pagination.page >= totalPages) {
+    pagination.page = totalPages - 1
+  } else if (pagination.page < 0) {
+    pagination.page = 0
+  }
+}
+
+const totalProductPages = computed(() =>
+  productPagination.total > 0 ? Math.ceil(productPagination.total / productPagination.size) : 0
+)
+
+const totalSoldOrderPages = computed(() =>
+  soldOrderPagination.total > 0
+    ? Math.ceil(soldOrderPagination.total / soldOrderPagination.size)
+    : 0
+)
+
+const totalReturnPages = computed(() =>
+  returnPagination.size > 0
+    ? Math.ceil(returnRequests.value.length / returnPagination.size)
+    : 0
+)
+
+const paginatedReturnRequests = computed(() => {
+  if (!returnRequests.value.length) return []
+  const start = returnPagination.page * returnPagination.size
+  const end = start + returnPagination.size
+  return returnRequests.value.slice(start, end)
+})
 
 function extractNumericId(value: unknown): number | null {
   if (typeof value === 'number' && Number.isFinite(value)) {
@@ -143,9 +224,10 @@ async function loadProfile() {
 async function loadProducts() {
   if (!state.user) return
   const { data } = await api.get<PageResponse<ProductSummary>>(`/products/supplier/${state.user.id}`, {
-    params: { page: 0, size: 6 },
+    params: { page: productPagination.page, size: productPagination.size },
   })
   products.value = data.content ?? []
+  syncPaginationFromResponse(productPagination, data)
 }
 
 async function loadSoldOrders() {
@@ -162,10 +244,11 @@ async function loadSoldOrders() {
     const { data } = await api.get<PageResponse<SupplierOrderSummary>>(
       `/orders/supplier/${state.user.id}`,
       {
-        params: { page: 0, size: 8 },
+        params: { page: soldOrderPagination.page, size: soldOrderPagination.size },
       }
     )
     soldOrders.value = data.content ?? []
+    syncPaginationFromResponse(soldOrderPagination, data)
   } catch (err) {
     soldOrders.value = []
     soldOrdersError.value = err instanceof Error ? err.message : '加载已销售订单失败'
@@ -192,6 +275,7 @@ async function loadReturnRequests() {
       return timeB - timeA
     })
     returnRequests.value = list
+    clampLocalPagination(returnPagination, returnRequests.value.length)
     list.forEach((item) => {
       if (!item?.id) return
       const existing = resolutionDrafts[item.id]
@@ -204,6 +288,26 @@ async function loadReturnRequests() {
   } finally {
     returnRequestsLoading.value = false
   }
+}
+
+function changeProductPage(target: number) {
+  if (target === productPagination.page || target < 0) return
+  if (totalProductPages.value > 0 && target >= totalProductPages.value) return
+  productPagination.page = target
+  loadProducts()
+}
+
+function changeSoldOrderPage(target: number) {
+  if (target === soldOrderPagination.page || target < 0) return
+  if (totalSoldOrderPages.value > 0 && target >= totalSoldOrderPages.value) return
+  soldOrderPagination.page = target
+  loadSoldOrders()
+}
+
+function changeReturnPage(target: number) {
+  if (target === returnPagination.page || target < 0) return
+  if (totalReturnPages.value > 0 && target >= totalReturnPages.value) return
+  returnPagination.page = target
 }
 
 async function loadHomeContent() {
@@ -975,6 +1079,19 @@ async function removeCategory(option: CategoryOption) {
             </tbody>
           </table>
         </div>
+        <nav v-if="totalProductPages > 1" class="pagination" aria-label="商品分页导航">
+          <button type="button" :disabled="productPagination.page === 0" @click="changeProductPage(productPagination.page - 1)">
+            上一页
+          </button>
+          <span>第 {{ productPagination.page + 1 }} / {{ totalProductPages }} 页</span>
+          <button
+            type="button"
+            :disabled="totalProductPages > 0 && productPagination.page + 1 >= totalProductPages"
+            @click="changeProductPage(productPagination.page + 1)"
+          >
+            下一页
+          </button>
+        </nav>
         <p v-else class="empty">暂无商品，请尽快完成商品录入与上架。</p>
 
         <div class="category-create">
@@ -1085,6 +1202,29 @@ async function removeCategory(option: CategoryOption) {
             </footer>
           </li>
         </ul>
+        <nav
+          v-if="!soldOrdersLoading && !soldOrdersError && totalSoldOrderPages > 1"
+          class="pagination"
+          aria-label="已销售商品分页"
+        >
+          <button
+            type="button"
+            :disabled="soldOrderPagination.page === 0"
+            @click="changeSoldOrderPage(soldOrderPagination.page - 1)"
+          >
+            上一页
+          </button>
+          <span>第 {{ soldOrderPagination.page + 1 }} / {{ totalSoldOrderPages }} 页</span>
+          <button
+            type="button"
+            :disabled="
+              totalSoldOrderPages > 0 && soldOrderPagination.page + 1 >= totalSoldOrderPages
+            "
+            @click="changeSoldOrderPage(soldOrderPagination.page + 1)"
+          >
+            下一页
+          </button>
+        </nav>
         <p v-else class="empty">暂时没有已销售的订单。</p>
       </section>
 
@@ -1104,9 +1244,9 @@ async function removeCategory(option: CategoryOption) {
         </transition>
         <p v-if="returnRequestsLoading" class="empty">正在加载退货申请…</p>
         <p v-else-if="returnRequestsError" class="return-error">{{ returnRequestsError }}</p>
-        <ul v-else-if="returnRequests.length" class="return-list">
+        <ul v-else-if="paginatedReturnRequests.length" class="return-list">
           <li
-            v-for="request in returnRequests"
+            v-for="request in paginatedReturnRequests"
             :key="request.id"
             :class="['return-card', { 'return-card--resolved': !canProcessReturn(request) }]"
           >
@@ -1180,6 +1320,23 @@ async function removeCategory(option: CategoryOption) {
             </footer>
           </li>
         </ul>
+        <nav
+          v-if="!returnRequestsLoading && !returnRequestsError && totalReturnPages > 1"
+          class="pagination"
+          aria-label="退货申请分页"
+        >
+          <button type="button" :disabled="returnPagination.page === 0" @click="changeReturnPage(returnPagination.page - 1)">
+            上一页
+          </button>
+          <span>第 {{ returnPagination.page + 1 }} / {{ totalReturnPages }} 页</span>
+          <button
+            type="button"
+            :disabled="totalReturnPages > 0 && returnPagination.page + 1 >= totalReturnPages"
+            @click="changeReturnPage(returnPagination.page + 1)"
+          >
+            下一页
+          </button>
+        </nav>
         <p v-else class="empty">暂无退货申请。</p>
       </section>
 
