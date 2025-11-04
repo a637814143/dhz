@@ -72,7 +72,6 @@ const deletingProductId = ref<number | null>(null)
 const soldOrdersLoading = ref(false)
 const soldOrdersError = ref<string | null>(null)
 const shippingOrderId = ref<number | null>(null)
-const deliveredOrderId = ref<number | null>(null)
 
 const productForm = reactive({
   id: null as number | null,
@@ -469,6 +468,37 @@ function orderStatusLabel(status?: string | null) {
   return normalized.length > 0 ? normalized : '未知状态'
 }
 
+function normalizeOrderStatus(value?: string | null) {
+  if (!value) return ''
+  return value.trim().replace(/[\s_-]+/g, '').toUpperCase()
+}
+
+const awaitingConsumerConfirmationStatuses = new Set(
+  [
+    '已发货',
+    '运送中',
+    '待收货',
+    'SHIPPED',
+    'IN TRANSIT',
+    'AWAITING RECEIPT',
+  ].map((value) => normalizeOrderStatus(value))
+)
+
+const pendingShipmentStatuses = new Set(
+  ['待发货', 'PENDING SHIPMENT'].map((value) => normalizeOrderStatus(value))
+)
+
+function soldOrderHint(order: SupplierOrderSummary): string {
+  const status = normalizeOrderStatus(order.status)
+  if (order.mixedSuppliers && pendingShipmentStatuses.has(status)) {
+    return '订单包含其他供应商商品，需平台协调发货'
+  }
+  if (awaitingConsumerConfirmationStatuses.has(status)) {
+    return '等待消费者确认收货'
+  }
+  return '订单当前状态无需操作'
+}
+
 function returnStatusLabel(status?: string | null) {
   if (!status) return '未知状态'
   const normalized = status.trim().toUpperCase()
@@ -744,21 +774,6 @@ async function confirmShipment(orderId: number) {
     window.alert(message)
   } finally {
     shippingOrderId.value = null
-  }
-}
-
-async function markOrderDelivered(orderId: number) {
-  if (!window.confirm('确认该订单的商品已经送达消费者？')) return
-  deliveredOrderId.value = orderId
-  try {
-    await api.put(`/orders/${orderId}/supplier-deliver`)
-    await loadSoldOrders()
-    window.alert('订单状态已更新为待收货')
-  } catch (err) {
-    const message = err instanceof Error ? err.message : '更新送达状态失败'
-    window.alert(message)
-  } finally {
-    deliveredOrderId.value = null
   }
 }
 
@@ -1066,22 +1081,7 @@ async function removeCategory(option: CategoryOption) {
               >
                 {{ shippingOrderId === order.id ? '更新中…' : '确认发货' }}
               </button>
-              <button
-                v-else-if="order.canMarkDelivered"
-                type="button"
-                class="primary-button"
-                @click="markOrderDelivered(order.id)"
-                :disabled="deliveredOrderId === order.id"
-              >
-                {{ deliveredOrderId === order.id ? '更新中…' : '商品已送达' }}
-              </button>
-              <span v-else class="sold-order-hint">
-                {{
-                  order.status === '待发货'
-                    ? '订单包含其他供应商商品，需平台协调发货'
-                    : '订单当前状态无需操作'
-                }}
-              </span>
+              <span v-else class="sold-order-hint">{{ soldOrderHint(order) }}</span>
             </footer>
           </li>
         </ul>

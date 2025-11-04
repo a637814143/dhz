@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import api from '@/services/api'
+import { useAuthState } from '@/services/authState'
 import type {
   Announcement,
   HomepageContent,
@@ -26,12 +27,25 @@ interface ProductDetail {
   supplier?: { id: number; companyName?: string | null } | null
 }
 
+const { state } = useAuthState()
+
 const overview = ref<ProductOverview | null>(null)
 const announcements = ref<Announcement[]>([])
 const news = ref<NewsItem[]>([])
 const hotProducts = ref<ProductSummary[]>([])
 const loading = ref(true)
 const error = ref<string | null>(null)
+
+const walletBalance = ref<number | null>(null)
+const walletLoading = ref(false)
+const walletError = ref<string | null>(null)
+const redeemCodeInput = ref('')
+const redeeming = ref(false)
+const redeemMessage = ref<string | null>(null)
+const redeemError = ref<string | null>(null)
+const walletDisplay = computed(() =>
+  typeof walletBalance.value === 'number' ? formatCurrency(walletBalance.value) : '—'
+)
 
 const productLoading = ref(false)
 const productError = ref<string | null>(null)
@@ -78,6 +92,13 @@ const viewingProduct = ref<ProductDetail | null>(null)
 const pendingExternalRefresh = ref(false)
 
 let externalRefreshTimer: ReturnType<typeof setTimeout> | null = null
+
+const featureScroller = ref<HTMLElement | null>(null)
+const featureCanScrollPrev = ref(false)
+const featureCanScrollNext = ref(false)
+
+let featureScrollCleanup: (() => void) | null = null
+let featureScrollFrame: number | null = null
 
 const productForm = reactive({
   id: null as number | null,
@@ -127,6 +148,26 @@ async function loadHomeContent() {
   announcements.value = parsed.announcements
   news.value = parsed.news
   hotProducts.value = parsed.hotSales.slice(0, 5)
+}
+
+async function loadWallet() {
+  if (!state.user) {
+    walletBalance.value = null
+    walletError.value = '请先登录管理员账号'
+    return
+  }
+  walletLoading.value = true
+  walletError.value = null
+  try {
+    const { data } = await api.get<{ balance: number }>('/wallet')
+    walletBalance.value = typeof data?.balance === 'number' ? data.balance : null
+  } catch (err) {
+    console.warn('加载管理员钱包失败', err)
+    walletBalance.value = null
+    walletError.value = err instanceof Error ? err.message : '加载钱包信息失败'
+  } finally {
+    walletLoading.value = false
+  }
 }
 
 function normaliseCategoryOptions(payload: unknown): CategoryOption[] {
@@ -292,6 +333,71 @@ function scheduleExternalRefresh() {
   }, 250)
 }
 
+function updateFeatureScrollState() {
+  const element = featureScroller.value
+  if (!element) {
+    featureCanScrollPrev.value = false
+    featureCanScrollNext.value = false
+    return
+  }
+  const { scrollLeft, scrollWidth, clientWidth } = element
+  featureCanScrollPrev.value = scrollLeft > 4
+  featureCanScrollNext.value = scrollLeft + clientWidth < scrollWidth - 4
+}
+
+function scheduleFeatureScrollUpdate() {
+  if (typeof window === 'undefined') return
+  if (featureScrollFrame !== null) {
+    window.cancelAnimationFrame(featureScrollFrame)
+  }
+  featureScrollFrame = window.requestAnimationFrame(() => {
+    featureScrollFrame = null
+    updateFeatureScrollState()
+  })
+}
+
+function setupFeatureScrollObservers() {
+  if (typeof window === 'undefined') return
+  const element = featureScroller.value
+  if (!element) return
+  const handleScroll = () => updateFeatureScrollState()
+  const handleResize = () => scheduleFeatureScrollUpdate()
+  element.addEventListener('scroll', handleScroll, { passive: true })
+  window.addEventListener('resize', handleResize)
+  featureScrollCleanup = () => {
+    element.removeEventListener('scroll', handleScroll)
+    window.removeEventListener('resize', handleResize)
+    featureScrollCleanup = null
+  }
+  scheduleFeatureScrollUpdate()
+}
+
+function scrollFeatures(direction: 'prev' | 'next') {
+  const element = featureScroller.value
+  if (!element) return
+  const offset = direction === 'prev' ? -1 : 1
+  const step = element.clientWidth * 0.9 || 320
+  element.scrollBy({ left: step * offset, behavior: 'smooth' })
+}
+
+watch(
+  () => featureScroller.value,
+  (element) => {
+    if (featureScrollCleanup) {
+      featureScrollCleanup()
+    }
+    if (element) {
+      nextTick(() => setupFeatureScrollObservers())
+    }
+  }
+)
+
+watch(
+  () => [productRows.value, hotProducts.value, announcements.value, news.value],
+  () => scheduleFeatureScrollUpdate(),
+  { deep: true }
+)
+
 function handleExternalProductChange(event: Event) {
   const detail = (event as CustomEvent<ProductChangeDetail | undefined>).detail
   if (detail?.source === 'admin-overview') {
@@ -323,6 +429,38 @@ async function initProductManagement() {
     productError.value = message
   } finally {
     productLoading.value = false
+  }
+}
+
+function resetRedeemFeedback() {
+  redeemMessage.value = null
+  redeemError.value = null
+}
+
+async function redeemWallet() {
+  resetRedeemFeedback()
+  if (!state.user) {
+    redeemError.value = '请先登录管理员账号'
+    return
+  }
+  const code = redeemCodeInput.value.trim()
+  if (!code) {
+    redeemError.value = '请输入兑换码'
+    return
+  }
+  redeeming.value = true
+  try {
+    const { data } = await api.post<{ balance: number }>('/wallet/redeem', { code })
+    const balance = typeof data?.balance === 'number' ? data.balance : null
+    walletBalance.value = balance
+    redeemCodeInput.value = ''
+    redeemMessage.value = '兑换成功，余额已更新'
+    walletError.value = null
+  } catch (err) {
+    console.warn('管理员钱包兑换失败', err)
+    redeemError.value = err instanceof Error ? err.message : '兑换失败，请稍后再试'
+  } finally {
+    redeeming.value = false
   }
 }
 
@@ -531,6 +669,7 @@ async function refreshProductsAndOverview() {
   }
   productPagination.page = 0
   await loadProducts().catch(() => {})
+  await loadWallet()
 }
 
 async function openProductView(product: ProductSummary) {
@@ -564,7 +703,7 @@ async function bootstrap() {
   loading.value = true
   error.value = null
   try {
-    await Promise.all([loadOverview(), loadHomeContent()])
+    await Promise.all([loadOverview(), loadHomeContent(), loadWallet()])
   } catch (err) {
     error.value = err instanceof Error ? err.message : '加载管理数据失败'
   } finally {
@@ -579,6 +718,7 @@ onMounted(() => {
     window.addEventListener(PRODUCT_EVENT_NAME, handleExternalProductChange as EventListener)
     document.addEventListener('visibilitychange', handleVisibilityChange)
   }
+  nextTick(() => setupFeatureScrollObservers())
 })
 
 onBeforeUnmount(() => {
@@ -591,6 +731,13 @@ onBeforeUnmount(() => {
     externalRefreshTimer = null
   }
   pendingExternalRefresh.value = false
+  if (featureScrollCleanup) {
+    featureScrollCleanup()
+  }
+  if (featureScrollFrame !== null && typeof window !== 'undefined') {
+    window.cancelAnimationFrame(featureScrollFrame)
+    featureScrollFrame = null
+  }
 })
 
 function formatCurrency(amount?: number | string | null) {
@@ -636,6 +783,42 @@ function formatNumber(value?: number | null) {
     <div v-if="loading" class="placeholder">正在加载平台数据…</div>
     <div v-else-if="error" class="placeholder is-error">{{ error }}</div>
     <template v-else>
+      <section class="panel admin-wallet" aria-labelledby="wallet-title">
+        <header class="wallet-header">
+          <div>
+            <div class="panel-title" id="wallet-title">平台钱包</div>
+            <p class="panel-subtitle">查看结算储备与平台收益，支持使用兑换码快速充值。</p>
+          </div>
+          <button type="button" class="secondary" @click="loadWallet" :disabled="walletLoading">
+            {{ walletLoading ? '刷新中…' : '刷新余额' }}
+          </button>
+        </header>
+        <div class="wallet-summary">
+          <div class="wallet-amount">{{ walletDisplay }}</div>
+          <p class="wallet-caption">当前余额</p>
+        </div>
+        <p v-if="walletError" class="wallet-error">{{ walletError }}</p>
+        <p v-else-if="walletLoading" class="wallet-status">余额刷新中…</p>
+        <div class="redeem-box">
+          <label>
+            <span>兑换码</span>
+            <input
+              v-model="redeemCodeInput"
+              type="text"
+              placeholder="输入兑换码兑换余额"
+              :disabled="redeeming"
+            />
+          </label>
+          <div class="redeem-actions">
+            <button type="button" @click="redeemWallet" :disabled="redeeming">
+              {{ redeeming ? '兑换中…' : '兑换余额' }}
+            </button>
+            <p v-if="redeemMessage" class="redeem-success">{{ redeemMessage }}</p>
+            <p v-if="redeemError" class="redeem-error">{{ redeemError }}</p>
+          </div>
+        </div>
+      </section>
+
       <section class="panel metrics" aria-labelledby="metrics-title">
         <div class="panel-title" id="metrics-title">核心指标</div>
         <div class="metric-grid">
@@ -662,163 +845,187 @@ function formatNumber(value?: number | null) {
         </div>
       </section>
 
-      <section class="panel product-admin" aria-labelledby="admin-product-title">
-        <header class="product-admin-header">
-          <div>
-            <div class="panel-title" id="admin-product-title">商品概览</div>
-            <p class="panel-subtitle">快速查看、搜索并管理全站商品，新增后立即更新统计。</p>
-          </div>
-          <button type="button" class="primary" @click="openProductDialog()">新增商品</button>
-        </header>
+      <section class="feature-scroller" aria-label="运营功能模块">
+        <button
+          type="button"
+          class="feature-scroll is-prev"
+          @click="scrollFeatures('prev')"
+          :disabled="!featureCanScrollPrev"
+        >
+          <span aria-hidden="true">‹</span>
+          <span class="visually-hidden">查看上一个功能</span>
+        </button>
 
-        <form class="product-filters" @submit.prevent="applyProductFilters">
-          <label>
-            <span>关键字</span>
-            <input v-model.trim="productFilters.keyword" type="text" placeholder="商品名称或描述" />
-          </label>
-          <label>
-            <span>分类</span>
-            <select v-model.number="productFilters.categoryId">
-              <option :value="0">全部分类</option>
-              <option v-for="option in categoryOptions" :key="option.id" :value="option.id">
-                {{ option.name }}
-              </option>
-            </select>
-          </label>
-          <label>
-            <span>状态</span>
-            <select v-model="productFilters.status">
-              <option value="">全部状态</option>
-              <option v-for="option in statusOptions" :key="option.value" :value="option.value">
-                {{ option.label }}
-              </option>
-            </select>
-          </label>
-          <div class="filter-actions">
-            <button type="submit" class="primary">搜索</button>
-            <button type="button" class="secondary" @click="resetProductFilters">重置</button>
-          </div>
-        </form>
+        <div class="feature-track" ref="featureScroller">
+          <section class="panel product-admin feature-slide" aria-labelledby="admin-product-title">
+            <header class="product-admin-header">
+              <div>
+                <div class="panel-title" id="admin-product-title">商品概览</div>
+                <p class="panel-subtitle">快速查看、搜索并管理全站商品，新增后立即更新统计。</p>
+              </div>
+              <button type="button" class="primary" @click="openProductDialog()">新增商品</button>
+            </header>
 
-        <div v-if="productError" class="product-placeholder is-error">{{ productError }}</div>
-        <div v-else-if="productLoading" class="product-placeholder">正在加载商品列表…</div>
-        <div v-else>
-          <div v-if="productRows.length" class="table-wrapper">
-            <table class="product-table">
+            <form class="product-filters" @submit.prevent="applyProductFilters">
+              <label>
+                <span>关键字</span>
+                <input v-model.trim="productFilters.keyword" type="text" placeholder="商品名称或描述" />
+              </label>
+              <label>
+                <span>分类</span>
+                <select v-model.number="productFilters.categoryId">
+                  <option :value="0">全部分类</option>
+                  <option v-for="option in categoryOptions" :key="option.id" :value="option.id">
+                    {{ option.name }}
+                  </option>
+                </select>
+              </label>
+              <label>
+                <span>状态</span>
+                <select v-model="productFilters.status">
+                  <option value="">全部状态</option>
+                  <option v-for="option in statusOptions" :key="option.value" :value="option.value">
+                    {{ option.label }}
+                  </option>
+                </select>
+              </label>
+              <div class="filter-actions">
+                <button type="submit" class="primary">搜索</button>
+                <button type="button" class="secondary" @click="resetProductFilters">重置</button>
+              </div>
+            </form>
+
+            <div v-if="productError" class="product-placeholder is-error">{{ productError }}</div>
+            <div v-else-if="productLoading" class="product-placeholder">正在加载商品列表…</div>
+            <div v-else>
+              <div v-if="productRows.length" class="table-wrapper">
+                <table class="product-table">
+                  <thead>
+                    <tr>
+                      <th scope="col">商品名称</th>
+                      <th scope="col">分类</th>
+                      <th scope="col">供应商</th>
+                      <th scope="col">售价</th>
+                      <th scope="col">库存</th>
+                      <th scope="col">销量</th>
+                      <th scope="col">状态</th>
+                      <th scope="col">创建时间</th>
+                      <th scope="col">操作</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr v-for="item in productRows" :key="item.id">
+                      <td class="name-cell">
+                        <strong>{{ item.name }}</strong>
+                        <p v-if="item.description" class="description">{{ item.description }}</p>
+                      </td>
+                      <td>{{ item.categoryName ?? '—' }}</td>
+                      <td>{{ item.supplierName ?? '—' }}</td>
+                      <td>{{ formatCurrency(item.price) }}</td>
+                      <td>{{ formatNumber(item.stock) }}</td>
+                      <td>{{ formatNumber(item.sales) }}</td>
+                      <td><span class="status-pill">{{ formatStatus(item.status) }}</span></td>
+                      <td>{{ formatDate(item.createdAt) }}</td>
+                      <td class="product-actions">
+                        <button type="button" class="link-button" @click="openProductView(item)">查看</button>
+                        <button type="button" class="link-button" @click="openProductDialog(item)">编辑</button>
+                        <button
+                          type="button"
+                          class="link-button"
+                          :class="{ danger: item.status === 'ON_SALE' }"
+                          @click="changeProductStatus(item.id, item.status === 'ON_SALE' ? 'OFF_SALE' : 'ON_SALE')"
+                          :disabled="updatingStatusId === item.id"
+                        >
+                          {{ item.status === 'ON_SALE' ? '下架' : '上架' }}
+                        </button>
+                        <button
+                          type="button"
+                          class="link-button danger"
+                          @click="deleteProduct(item.id)"
+                          :disabled="deletingProductId === item.id"
+                        >
+                          删除
+                        </button>
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+              <p v-else class="product-placeholder">暂无商品记录，请尝试调整筛选条件或新增商品。</p>
+
+              <nav v-if="totalProductPages > 1" class="pagination" aria-label="商品分页导航">
+                <button type="button" :disabled="productPagination.page === 0" @click="changeProductPage(productPagination.page - 1)">
+                  上一页
+                </button>
+                <span>第 {{ productPagination.page + 1 }} / {{ totalProductPages }} 页</span>
+                <button
+                  type="button"
+                  :disabled="totalProductPages > 0 && productPagination.page + 1 >= totalProductPages"
+                  @click="changeProductPage(productPagination.page + 1)"
+                >
+                  下一页
+                </button>
+              </nav>
+            </div>
+          </section>
+
+          <section class="panel hot-products feature-slide" aria-labelledby="hot-title">
+            <div class="panel-title" id="hot-title">热销商品排行</div>
+            <table v-if="hotProducts.length">
               <thead>
                 <tr>
-                  <th scope="col">商品名称</th>
-                  <th scope="col">分类</th>
-                  <th scope="col">供应商</th>
-                  <th scope="col">售价</th>
-                  <th scope="col">库存</th>
+                  <th scope="col">商品</th>
                   <th scope="col">销量</th>
-                  <th scope="col">状态</th>
-                  <th scope="col">创建时间</th>
-                  <th scope="col">操作</th>
+                  <th scope="col">库存</th>
                 </tr>
               </thead>
               <tbody>
-                <tr v-for="item in productRows" :key="item.id">
-                  <td class="name-cell">
-                    <strong>{{ item.name }}</strong>
-                    <p v-if="item.description" class="description">{{ item.description }}</p>
-                  </td>
-                  <td>{{ item.categoryName ?? '—' }}</td>
-                  <td>{{ item.supplierName ?? '—' }}</td>
-                  <td>{{ formatCurrency(item.price) }}</td>
-                  <td>{{ formatNumber(item.stock) }}</td>
+                <tr v-for="item in hotProducts" :key="item.id">
+                  <td>{{ item.name }}</td>
                   <td>{{ formatNumber(item.sales) }}</td>
-                  <td><span class="status-pill">{{ formatStatus(item.status) }}</span></td>
-                  <td>{{ formatDate(item.createdAt) }}</td>
-                  <td class="product-actions">
-                    <button type="button" class="link-button" @click="openProductView(item)">查看</button>
-                    <button type="button" class="link-button" @click="openProductDialog(item)">编辑</button>
-                    <button
-                      type="button"
-                      class="link-button"
-                      :class="{ danger: item.status === 'ON_SALE' }"
-                      @click="changeProductStatus(item.id, item.status === 'ON_SALE' ? 'OFF_SALE' : 'ON_SALE')"
-                      :disabled="updatingStatusId === item.id"
-                    >
-                      {{ item.status === 'ON_SALE' ? '下架' : '上架' }}
-                    </button>
-                    <button
-                      type="button"
-                      class="link-button danger"
-                      @click="deleteProduct(item.id)"
-                      :disabled="deletingProductId === item.id"
-                    >
-                      删除
-                    </button>
-                  </td>
+                  <td>{{ formatNumber(item.stock) }}</td>
                 </tr>
               </tbody>
             </table>
-          </div>
-          <p v-else class="product-placeholder">暂无商品记录，请尝试调整筛选条件或新增商品。</p>
+            <p v-else class="empty">暂无热销数据，请提醒供应商及时完善商品。</p>
+          </section>
 
-          <nav v-if="totalProductPages > 1" class="pagination" aria-label="商品分页导航">
-            <button type="button" :disabled="productPagination.page === 0" @click="changeProductPage(productPagination.page - 1)">
-              上一页
-            </button>
-            <span>第 {{ productPagination.page + 1 }} / {{ totalProductPages }} 页</span>
-            <button
-              type="button"
-              :disabled="totalProductPages > 0 && productPagination.page + 1 >= totalProductPages"
-              @click="changeProductPage(productPagination.page + 1)"
-            >
-              下一页
-            </button>
-          </nav>
+          <section class="panel announcements feature-slide" aria-labelledby="admin-announcement">
+            <div class="panel-title" id="admin-announcement">公告管理</div>
+            <ul class="announcement-list">
+              <li v-for="item in announcements" :key="item.id">
+                <div>
+                  <strong>{{ item.title }}</strong>
+                  <p>{{ item.content }}</p>
+                </div>
+                <span class="category">{{ item.category }}</span>
+              </li>
+            </ul>
+          </section>
+
+          <section class="panel news feature-slide" aria-labelledby="news-title">
+            <div class="panel-title" id="news-title">行业资讯</div>
+            <ul class="news-list">
+              <li v-for="item in news" :key="item.id">
+                <div>
+                  <strong>{{ item.title }}</strong>
+                  <p>{{ item.summary }}</p>
+                </div>
+                <span class="source">{{ item.source }}</span>
+              </li>
+            </ul>
+          </section>
         </div>
-      </section>
 
-      <section class="panel hot-products" aria-labelledby="hot-title">
-        <div class="panel-title" id="hot-title">热销商品排行</div>
-        <table v-if="hotProducts.length">
-          <thead>
-            <tr>
-              <th scope="col">商品</th>
-              <th scope="col">销量</th>
-              <th scope="col">库存</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-for="item in hotProducts" :key="item.id">
-              <td>{{ item.name }}</td>
-              <td>{{ formatNumber(item.sales) }}</td>
-              <td>{{ formatNumber(item.stock) }}</td>
-            </tr>
-          </tbody>
-        </table>
-        <p v-else class="empty">暂无热销数据，请提醒供应商及时完善商品。</p>
-      </section>
-
-      <section class="panel announcements" aria-labelledby="admin-announcement">
-        <div class="panel-title" id="admin-announcement">公告管理</div>
-        <ul class="announcement-list">
-          <li v-for="item in announcements" :key="item.id">
-            <div>
-              <strong>{{ item.title }}</strong>
-              <p>{{ item.content }}</p>
-            </div>
-            <span class="category">{{ item.category }}</span>
-          </li>
-        </ul>
-      </section>
-
-      <section class="panel news" aria-labelledby="news-title">
-        <div class="panel-title" id="news-title">行业资讯</div>
-        <ul class="news-list">
-          <li v-for="item in news" :key="item.id">
-            <div>
-              <strong>{{ item.title }}</strong>
-              <p>{{ item.summary }}</p>
-            </div>
-            <span class="source">{{ item.source }}</span>
-          </li>
-        </ul>
+        <button
+          type="button"
+          class="feature-scroll is-next"
+          @click="scrollFeatures('next')"
+          :disabled="!featureCanScrollNext"
+        >
+          <span aria-hidden="true">›</span>
+          <span class="visually-hidden">查看下一个功能</span>
+        </button>
       </section>
     </template>
 
@@ -1015,10 +1222,185 @@ function formatNumber(value?: number | null) {
   gap: 1.5rem;
 }
 
+.feature-scroller {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: stretch;
+  gap: 1.25rem;
+}
+
+.feature-track {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(320px, min(100%, 540px));
+  gap: 1.5rem;
+  overflow-x: auto;
+  padding-bottom: 0.5rem;
+  scroll-snap-type: x proximity;
+  scrollbar-width: thin;
+}
+
+.feature-track::-webkit-scrollbar {
+  height: 8px;
+}
+
+.feature-track::-webkit-scrollbar-thumb {
+  background: rgba(30, 41, 59, 0.25);
+  border-radius: 999px;
+}
+
+.feature-track::-webkit-scrollbar-track {
+  background: rgba(148, 163, 184, 0.18);
+  border-radius: 999px;
+}
+
+.feature-slide {
+  scroll-snap-align: start;
+  min-height: 100%;
+}
+
+.feature-scroll {
+  align-self: center;
+  width: 3rem;
+  height: 3rem;
+  border-radius: 50%;
+  border: none;
+  background: rgba(15, 23, 42, 0.08);
+  color: rgba(15, 23, 42, 0.65);
+  font-size: 1.75rem;
+  font-weight: 700;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  transition: background 0.2s ease, color 0.2s ease, transform 0.2s ease;
+}
+
+.feature-scroll:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.feature-scroll:not(:disabled):hover {
+  background: rgba(37, 99, 235, 0.12);
+  color: rgba(37, 99, 235, 0.9);
+  transform: translateY(-1px);
+}
+
+.feature-scroll span[aria-hidden='true'] {
+  line-height: 1;
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
 .panel-title {
   font-weight: 700;
   font-size: 1.1rem;
   color: rgba(30, 41, 59, 0.78);
+}
+
+.admin-wallet {
+  gap: 1.25rem;
+}
+
+.wallet-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.wallet-header .panel-subtitle {
+  margin: 0.35rem 0 0;
+  color: rgba(30, 41, 59, 0.58);
+}
+
+.wallet-summary {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.wallet-amount {
+  font-size: 2rem;
+  font-weight: 700;
+  color: #1e293b;
+}
+
+.wallet-caption {
+  margin: 0;
+  color: rgba(30, 41, 59, 0.6);
+}
+
+.wallet-status {
+  margin: 0;
+  color: rgba(37, 99, 235, 0.75);
+  font-weight: 500;
+}
+
+.wallet-error {
+  margin: 0;
+  color: #b91c1c;
+  font-weight: 600;
+}
+
+.redeem-box {
+  display: grid;
+  gap: 0.85rem;
+  padding: 1.2rem 1.3rem;
+  border-radius: 16px;
+  background: linear-gradient(135deg, rgba(79, 70, 229, 0.12), rgba(99, 102, 241, 0.08));
+}
+
+.redeem-box label {
+  display: grid;
+  gap: 0.4rem;
+  font-weight: 600;
+}
+
+.redeem-box input {
+  padding: 0.6rem 0.75rem;
+  border-radius: 0.75rem;
+  border: 1px solid rgba(17, 24, 39, 0.12);
+  font-size: 0.95rem;
+}
+
+.redeem-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.redeem-actions button {
+  padding: 0.55rem 1.4rem;
+  border-radius: 0.75rem;
+  border: none;
+  background: linear-gradient(135deg, #16a34a, #22c55e);
+  color: #fff;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.redeem-actions button:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+}
+
+.redeem-success {
+  color: #15803d;
+}
+
+.redeem-error {
+  color: #b91c1c;
 }
 
 .panel-subtitle {
@@ -1395,6 +1777,21 @@ function formatNumber(value?: number | null) {
 .source {
   font-weight: 600;
   color: #f97316;
+}
+
+@media (max-width: 1024px) {
+  .feature-scroller {
+    grid-template-columns: 1fr;
+  }
+
+  .feature-scroll {
+    display: none;
+  }
+
+  .feature-track {
+    grid-auto-columns: minmax(280px, 1fr);
+    padding-bottom: 0.25rem;
+  }
 }
 
 @media (max-width: 768px) {

@@ -21,7 +21,6 @@ public class SupplierOrderSummaryDTO {
     private Date deliveryTime;
     private Date inTransitTime;
     private boolean canShip;
-    private boolean canMarkDelivered;
     private boolean mixedSuppliers;
     private List<SupplierOrderItemDTO> items;
 
@@ -151,14 +150,6 @@ public class SupplierOrderSummaryDTO {
 
     public void setCanShip(boolean canShip) {
         this.canShip = canShip;
-    }
-
-    public boolean isCanMarkDelivered() {
-        return canMarkDelivered;
-    }
-
-    public void setCanMarkDelivered(boolean canMarkDelivered) {
-        this.canMarkDelivered = canMarkDelivered;
     }
 
     public boolean isMixedSuppliers() {

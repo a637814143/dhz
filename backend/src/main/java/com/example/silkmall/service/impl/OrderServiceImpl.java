@@ -219,16 +219,16 @@ public class OrderServiceImpl extends BaseServiceImpl<Order, Long> implements Or
 
         restoreStock(order);
 
+        BigDecimal recoveredFromSuppliers = BigDecimal.ZERO;
         if (PAYOUT_APPROVED.equals(order.getPayoutStatus())) {
-            rollbackSupplierDistribution(order);
-            if (admin != null && totalAmount != null) {
-                BigDecimal adminBalance = resolveBalance(admin.getWalletBalance());
-                admin.setWalletBalance(adminBalance.add(totalAmount));
-            }
+            recoveredFromSuppliers = rollbackSupplierDistribution(order);
         }
 
         if (admin != null && totalAmount != null) {
             BigDecimal adminBalance = resolveBalance(admin.getWalletBalance());
+            if (recoveredFromSuppliers.compareTo(BigDecimal.ZERO) > 0) {
+                adminBalance = adminBalance.add(recoveredFromSuppliers);
+            }
             BigDecimal updatedAdmin = adminBalance.subtract(totalAmount);
             if (updatedAdmin.compareTo(BigDecimal.ZERO) < 0) {
                 updatedAdmin = BigDecimal.ZERO;
@@ -323,60 +323,6 @@ public class OrderServiceImpl extends BaseServiceImpl<Order, Long> implements Or
         orderRepository.save(order);
     }
 
-    @Transactional
-    @Override
-    public void supplierDeliverOrder(Long id, Long supplierId) {
-        if (supplierId == null) {
-            throw new RuntimeException("供应商信息缺失");
-        }
-
-        Order order = orderRepository.findDetailedById(id)
-                .orElseThrow(() -> new RuntimeException("订单不存在"));
-
-        String status = order.getStatus();
-        if (!SHIPPED.equals(status) && !IN_TRANSIT.equals(status)) {
-            throw new RuntimeException("只有已发货或运送中的订单才能更新为待收货");
-        }
-
-        List<OrderItem> items = order.getOrderItems();
-        if (items == null || items.isEmpty()) {
-            throw new RuntimeException("订单缺少商品信息");
-        }
-
-        boolean hasSupplierItems = false;
-        for (OrderItem item : items) {
-            Product product = item.getProduct();
-            if (product == null) {
-                product = productRepository.findById(item.getProduct().getId())
-                        .orElseThrow(() -> new RuntimeException("产品不存在: " + item.getProduct().getId()));
-                item.setProduct(product);
-            }
-
-            Supplier supplier = product.getSupplier();
-            Long itemSupplierId = supplier == null ? null : supplier.getId();
-            if (itemSupplierId == null) {
-                throw new RuntimeException("商品缺少供应商信息，无法更新送达状态");
-            }
-            if (!itemSupplierId.equals(supplierId)) {
-                throw new RuntimeException("订单包含其他供应商的商品，无法更新送达状态");
-            }
-            hasSupplierItems = true;
-        }
-
-        if (!hasSupplierItems) {
-            throw new RuntimeException("订单中没有该供应商的商品");
-        }
-
-        if (order.getInTransitTime() == null) {
-            order.setInTransitTime(new Date());
-        }
-
-        order.setStatus(AWAITING_RECEIPT);
-        order.setDeliveryTime(new Date());
-
-        orderRepository.save(order);
-    }
-
     @Override
     public void markInTransit(Long id) {
         Order order = findById(id)
@@ -410,19 +356,36 @@ public class OrderServiceImpl extends BaseServiceImpl<Order, Long> implements Or
         // 这里简化处理，实际项目中可能需要更复杂的逻辑
     }
 
+    @Transactional
     @Override
     public void confirmReceipt(Long id) {
         Order order = findById(id)
                 .orElseThrow(() -> new RuntimeException("订单不存在"));
 
-        if (!AWAITING_RECEIPT.equals(order.getStatus())) {
-            throw new RuntimeException("只有待收货的订单才能确认收货");
+        String status = order.getStatus();
+        if (!AWAITING_RECEIPT.equals(status) && !SHIPPED.equals(status) && !IN_TRANSIT.equals(status)) {
+            throw new RuntimeException("只有已发货的订单才能确认收货");
+        }
+
+        Date now = new Date();
+        if (order.getShippingTime() == null) {
+            order.setShippingTime(now);
+        }
+        if (order.getInTransitTime() == null && (SHIPPED.equals(status) || IN_TRANSIT.equals(status))) {
+            order.setInTransitTime(now);
+        }
+        if (order.getDeliveryTime() == null) {
+            order.setDeliveryTime(now);
         }
 
         order.setStatus(DELIVERED);
-        order.setConsumerConfirmationTime(new Date());
+        order.setConsumerConfirmationTime(now);
 
         orderRepository.save(order);
+
+        if (PAYOUT_PENDING.equals(order.getPayoutStatus())) {
+            finalizePayout(order);
+        }
     }
 
     @Transactional
@@ -435,6 +398,18 @@ public class OrderServiceImpl extends BaseServiceImpl<Order, Long> implements Or
             throw new RuntimeException("只有已收货的订单才能批准货款");
         }
 
+        if (!PAYOUT_PENDING.equals(order.getPayoutStatus())) {
+            throw new RuntimeException("当前订单没有待批准的货款");
+        }
+
+        if (order.getConsumerConfirmationTime() == null) {
+            throw new RuntimeException("消费者尚未确认收货，无法结算");
+        }
+
+        finalizePayout(order);
+    }
+
+    private void finalizePayout(Order order) {
         if (!PAYOUT_PENDING.equals(order.getPayoutStatus())) {
             throw new RuntimeException("当前订单没有待批准的货款");
         }
@@ -650,7 +625,7 @@ public class OrderServiceImpl extends BaseServiceImpl<Order, Long> implements Or
         }
     }
 
-    private void rollbackSupplierDistribution(Order order) {
+    private BigDecimal rollbackSupplierDistribution(Order order) {
         BigDecimal totalAmount = Optional.ofNullable(order.getTotalAmount()).orElse(BigDecimal.ZERO);
         BigDecimal commission = totalAmount.multiply(ADMIN_COMMISSION_RATE).setScale(2, RoundingMode.HALF_UP);
         BigDecimal payoutPool = totalAmount.subtract(commission);
@@ -659,6 +634,7 @@ public class OrderServiceImpl extends BaseServiceImpl<Order, Long> implements Or
         }
 
         Map<Long, BigDecimal> payouts = calculateSupplierPayouts(order, payoutPool);
+        BigDecimal recovered = BigDecimal.ZERO;
         for (Map.Entry<Long, BigDecimal> entry : payouts.entrySet()) {
             Supplier supplier = supplierRepository.findById(entry.getKey())
                     .orElseThrow(() -> new RuntimeException("供应商不存在: " + entry.getKey()));
@@ -671,7 +647,9 @@ public class OrderServiceImpl extends BaseServiceImpl<Order, Long> implements Or
             }
             supplier.setWalletBalance(updated);
             supplierRepository.save(supplier);
+            recovered = recovered.add(entry.getValue());
         }
+        return recovered;
     }
 
     private Map<Long, BigDecimal> calculateSupplierPayouts(Order order, BigDecimal payoutPool) {

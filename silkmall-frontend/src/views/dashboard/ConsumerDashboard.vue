@@ -190,7 +190,11 @@ const pendingPaymentStatusSet = new Set(
 )
 
 const awaitingReceiptStatusValues = [
+  '已发货',
+  '运送中',
   '待收货',
+  'SHIPPED',
+  'IN TRANSIT',
   'AWAITING RECEIPT',
 ] as const
 

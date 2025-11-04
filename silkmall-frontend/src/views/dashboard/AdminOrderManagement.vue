@@ -5,9 +5,6 @@ import type { AdminOrderSummary, PageResponse, ReturnRequest } from '@/types'
 
 const loading = ref(false)
 const error = ref<string | null>(null)
-const actionMessage = ref<string | null>(null)
-const actionError = ref<string | null>(null)
-const approvingId = ref<number | null>(null)
 
 const orders = ref<AdminOrderSummary[]>([])
 const returnApprovals = ref<ReturnRequest[]>([])
@@ -60,7 +57,6 @@ watch(
   () => filters.receipt,
   () => {
     pagination.page = 0
-    clearFeedback()
     loadOrders()
   }
 )
@@ -70,7 +66,6 @@ watch(
   (newValue, oldValue) => {
     if (newValue.trim() === '' && oldValue && oldValue.trim() !== '') {
       pagination.page = 0
-      clearFeedback()
       loadOrders()
     }
   }
@@ -99,11 +94,6 @@ function resolveConsumerConfirmedParam() {
   if (filters.receipt === 'pending') return false
   if (filters.receipt === 'confirmed') return true
   return undefined
-}
-
-function clearFeedback() {
-  actionMessage.value = null
-  actionError.value = null
 }
 
 function clearReturnFeedback() {
@@ -180,38 +170,12 @@ async function loadReturnApprovals(status: 'all' | 'pending' = 'all') {
   }
 }
 
-function canApprove(order: AdminOrderSummary) {
-  return order.canApprove && approvingId.value !== order.id
-}
-
-async function approveOrder(order: AdminOrderSummary) {
-  if (!order.id || !order.canApprove) {
-    actionError.value = order.approvalDisabledReason ?? '该订单暂无法确认'
-    return
-  }
-
-  approvingId.value = order.id
-  actionError.value = null
-  actionMessage.value = null
-  try {
-    await api.put(`/orders/${order.id}/approve-payment`)
-    actionMessage.value = `订单 ${order.orderNo} 已完成结算，已向供应商支付`;
-    await loadOrders()
-  } catch (err) {
-    const message = err instanceof Error ? err.message : '确认订单失败'
-    actionError.value = message
-  } finally {
-    approvingId.value = null
-  }
-}
-
 function goToPage(page: number) {
   if (page < 0 || (totalPages.value > 0 && page >= totalPages.value)) {
     return
   }
   if (page === pagination.page) return
   pagination.page = page
-  clearFeedback()
   loadOrders()
 }
 
@@ -225,13 +189,11 @@ function prevPage() {
 
 function submitSearch() {
   pagination.page = 0
-  clearFeedback()
   loadOrders()
 }
 
 function resetOrderSearch() {
   if (!filters.orderNo) return
-  clearFeedback()
   filters.orderNo = ''
 }
 
@@ -246,6 +208,23 @@ function payoutTagClass(order: AdminOrderSummary) {
   if (order.payoutStatus === '已批准') return 'tag tag--success'
   if (order.payoutStatus === '已退款' || order.payoutStatus === '账单已取消') return 'tag tag--danger'
   return 'tag'
+}
+
+function settlementGuidance(order: AdminOrderSummary) {
+  if (order.cancelled) return ''
+  if (order.payoutStatus === '已批准') {
+    if (order.adminApprovalTime) {
+      const settledAt = formatDateTime(order.adminApprovalTime)
+      if (settledAt && settledAt !== '—') {
+        return `消费者确认收货后系统已于 ${settledAt} 自动完成结算。`
+      }
+    }
+    return '消费者确认收货后系统已自动完成结算。'
+  }
+  if (order.consumerConfirmed) {
+    return '消费者已确认收货，系统正在自动完成结算，请稍后刷新查看资金状态。'
+  }
+  return '待消费者确认收货，系统会在确认后自动完成结算。'
 }
 
 function adminResolutionDraft(id: number) {
@@ -310,7 +289,7 @@ onMounted(() => {
       <div>
         <h1>订单管理</h1>
         <p class="subtitle">
-          订单资金在消费者付款后托管于平台，消费者确认收货后由管理员结算并自动收取 5% 平台佣金。
+          订单资金在消费者付款后托管于平台，消费者确认收货后系统自动结算并收取 5% 平台佣金。
         </p>
       </div>
       <form class="filters" @submit.prevent="submitSearch">
@@ -345,13 +324,6 @@ onMounted(() => {
         </label>
       </form>
     </header>
-
-    <transition name="fade">
-      <p v-if="actionMessage" class="feedback feedback--success">{{ actionMessage }}</p>
-    </transition>
-    <transition name="fade">
-      <p v-if="actionError" class="feedback feedback--error">{{ actionError }}</p>
-    </transition>
 
     <section class="return-approvals" aria-labelledby="return-approvals-title">
       <div class="panel-title-row">
@@ -583,18 +555,7 @@ onMounted(() => {
             <p v-if="order.cancellationLabel" class="muted cancellation-note">
               该订单已取消并完成退款处理
             </p>
-            <p v-if="order.approvalDisabledReason" class="muted">
-              {{ order.approvalDisabledReason }}
-            </p>
-          </div>
-          <div class="footer-actions">
-            <button
-              type="button"
-              :disabled="!canApprove(order)"
-              @click="approveOrder(order)"
-            >
-              {{ approvingId === order.id ? '结算中…' : '确认结算' }}
-            </button>
+            <p v-else class="muted">{{ settlementGuidance(order) }}</p>
           </div>
         </footer>
       </li>
@@ -1065,25 +1026,9 @@ onMounted(() => {
 .order-card__footer {
   display: flex;
   flex-wrap: wrap;
-  justify-content: space-between;
+  justify-content: flex-start;
   align-items: center;
   gap: 1rem;
-}
-
-.footer-actions button {
-  padding: 0.55rem 1.5rem;
-  border-radius: 999px;
-  border: none;
-  background: linear-gradient(135deg, #f28e1c, #f5c342);
-  color: #fff;
-  font-weight: 700;
-  cursor: pointer;
-  transition: opacity 0.2s ease;
-}
-
-.footer-actions button:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
 }
 
 .muted {
