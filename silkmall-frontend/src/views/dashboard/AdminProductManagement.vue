@@ -84,6 +84,8 @@ const statusOptions = [
   { value: 'OFF_SALE', label: '未上架' },
 ]
 
+const unitOptions = ['件', '条', '个', '箱']
+
 const totalPages = computed(() =>
   pagination.total > 0 ? Math.ceil(pagination.total / pagination.size) : 0
 )
@@ -649,7 +651,16 @@ async function changeProductStatus(productId: number, nextStatus: 'ON_SALE' | 'O
           </label>
           <label>
             <span>计量单位</span>
-            <input v-model="productForm.unit" type="text" placeholder="如：件 / 箱 / kg" maxlength="20" />
+            <input
+              v-model="productForm.unit"
+              type="text"
+              placeholder="如：件 / 箱 / kg"
+              maxlength="20"
+              list="admin-product-unit-options"
+            />
+            <datalist id="admin-product-unit-options">
+              <option v-for="option in unitOptions" :key="option" :value="option"></option>
+            </datalist>
           </label>
           <label>
             <span>库存数量</span>

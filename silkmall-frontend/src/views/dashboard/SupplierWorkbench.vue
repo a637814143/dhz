@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
 import api from '@/services/api'
 import { useAuthState } from '@/services/authState'
 import type {
@@ -93,6 +93,9 @@ const categorySaving = ref(false)
 const categoryFeedback = ref<string | null>(null)
 const categoryError = ref<string | null>(null)
 const categoryDeletingId = ref<number | null>(null)
+const categoryListExpanded = ref(false)
+
+const unitOptions = ['件', '条', '个', '箱']
 
 const returnRequests = ref<ReturnRequest[]>([])
 const returnRequestsLoading = ref(false)
@@ -101,6 +104,18 @@ const returnActionMessage = ref<string | null>(null)
 const returnActionError = ref<string | null>(null)
 const updatingReturnId = ref<number | null>(null)
 const resolutionDrafts = reactive<Record<number, string>>({})
+
+watch(
+  () => categories.value.length,
+  (next, previous) => {
+    const prevCount = typeof previous === 'number' ? previous : 0
+    if (next > prevCount) {
+      categoryListExpanded.value = true
+    } else if (next === 0) {
+      categoryListExpanded.value = false
+    }
+  }
+)
 
 function extractNumericId(value: unknown): number | null {
   if (typeof value === 'number' && Number.isFinite(value)) {
@@ -958,9 +973,20 @@ async function removeCategory(option: CategoryOption) {
           <p v-if="categoryFeedback" class="success">{{ categoryFeedback }}</p>
           <p v-if="categoryError" class="error">{{ categoryError }}</p>
           <div class="category-existing">
-            <h5>已有分类</h5>
-            <p v-if="!categories.length" class="empty">暂无分类，创建后可在此管理。</p>
-            <ul v-else class="category-list">
+            <button
+              type="button"
+              class="category-toggle"
+              @click="categoryListExpanded = !categoryListExpanded"
+              :aria-expanded="categoryListExpanded ? 'true' : 'false'"
+            >
+              <span class="label">
+                已有分类
+                <span v-if="categories.length" class="count">({{ categories.length }})</span>
+              </span>
+              <span class="chevron" :class="{ open: categoryListExpanded }">⌄</span>
+            </button>
+            <p v-if="categoryListExpanded && !categories.length" class="empty">暂无分类，创建后可在此管理。</p>
+            <ul v-if="categoryListExpanded && categories.length" class="category-list">
               <li v-for="category in categories" :key="category.id">
                 <span>{{ category.name }}</span>
                 <button
@@ -1210,7 +1236,16 @@ async function removeCategory(option: CategoryOption) {
             </label>
             <label>
               <span>计量单位</span>
-              <input v-model="productForm.unit" type="text" placeholder="如：件 / 箱 / kg" maxlength="20" />
+              <input
+                v-model="productForm.unit"
+                type="text"
+                placeholder="如：件 / 箱 / kg"
+                maxlength="20"
+                list="supplier-product-unit-options"
+              />
+              <datalist id="supplier-product-unit-options">
+                <option v-for="option in unitOptions" :key="option" :value="option"></option>
+              </datalist>
             </label>
             <label>
               <span>库存数量</span>
@@ -1711,11 +1746,38 @@ async function removeCategory(option: CategoryOption) {
   gap: 0.75rem;
 }
 
-.category-existing h5 {
-  margin: 0;
+.category-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  border: none;
+  background: transparent;
+  padding: 0;
   font-size: 0.95rem;
   font-weight: 600;
   color: rgba(15, 23, 42, 0.75);
+  cursor: pointer;
+}
+
+.category-toggle .label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.category-toggle .count {
+  font-weight: 500;
+  color: rgba(15, 23, 42, 0.6);
+}
+
+.category-toggle .chevron {
+  display: inline-block;
+  transition: transform 0.2s ease;
+}
+
+.category-toggle .chevron.open {
+  transform: rotate(180deg);
 }
 
 .category-list {
