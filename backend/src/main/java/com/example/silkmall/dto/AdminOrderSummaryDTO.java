@@ -12,8 +12,6 @@ public class AdminOrderSummaryDTO {
     private String status;
     private String receiptStatus;
     private boolean consumerConfirmed;
-    private boolean canApprove;
-    private String approvalDisabledReason;
     private boolean cancelled;
     private String cancellationLabel;
     private BigDecimal commissionAmount;
@@ -88,22 +86,6 @@ public class AdminOrderSummaryDTO {
 
     public void setConsumerConfirmed(boolean consumerConfirmed) {
         this.consumerConfirmed = consumerConfirmed;
-    }
-
-    public boolean isCanApprove() {
-        return canApprove;
-    }
-
-    public void setCanApprove(boolean canApprove) {
-        this.canApprove = canApprove;
-    }
-
-    public String getApprovalDisabledReason() {
-        return approvalDisabledReason;
-    }
-
-    public void setApprovalDisabledReason(String approvalDisabledReason) {
-        this.approvalDisabledReason = approvalDisabledReason;
     }
 
     public boolean isCancelled() {

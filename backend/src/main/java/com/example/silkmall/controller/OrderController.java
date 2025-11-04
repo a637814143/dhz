@@ -32,10 +32,7 @@ import java.util.Optional;
 import java.util.stream.Collectors;
 
 import static com.example.silkmall.common.OrderStatuses.CANCELLED;
-import static com.example.silkmall.common.OrderStatuses.DELIVERED;
-import static com.example.silkmall.common.OrderStatuses.IN_TRANSIT;
 import static com.example.silkmall.common.OrderStatuses.PENDING_SHIPMENT;
-import static com.example.silkmall.common.OrderStatuses.SHIPPED;
 
 @RestController
 @RequestMapping("/api/orders")
@@ -44,8 +41,6 @@ public class OrderController extends BaseController {
     private static final BigDecimal ADMIN_COMMISSION_RATE = new BigDecimal("0.05");
     private static final String RECEIPT_UNCONFIRMED_LABEL = "未收货";
     private static final String RECEIPT_CONFIRMED_LABEL = "已收货";
-    private static final String PAYOUT_PENDING = "待批准";
-    private static final String CANCELLED_ORDER_REASON = "订单已取消";
     private static final String CANCELLED_BILL_LABEL = "账单已取消";
     
     @Autowired
@@ -483,22 +478,6 @@ public class OrderController extends BaseController {
                 .sorted(Comparator.comparing(AdminOrderItemDTO::getId, Comparator.nullsLast(Long::compareTo)))
                 .collect(Collectors.toList());
         dto.setItems(itemDtos);
-
-        String disableReason = null;
-        boolean statusAllowsApproval = DELIVERED.equals(order.getStatus());
-        if (cancelled) {
-            disableReason = CANCELLED_ORDER_REASON;
-        } else if (!consumerConfirmed) {
-            disableReason = "等待消费者确认收货";
-        } else if (!statusAllowsApproval) {
-            disableReason = "订单状态暂不支持确认";
-        } else if (!PAYOUT_PENDING.equals(order.getPayoutStatus())) {
-            String payoutStatus = order.getPayoutStatus();
-            disableReason = payoutStatus == null ? "订单尚未完成支付" : "货款状态：" + payoutStatus;
-        }
-
-        dto.setCanApprove(disableReason == null);
-        dto.setApprovalDisabledReason(disableReason);
 
         return dto;
     }

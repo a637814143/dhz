@@ -356,6 +356,7 @@ public class OrderServiceImpl extends BaseServiceImpl<Order, Long> implements Or
         // 这里简化处理，实际项目中可能需要更复杂的逻辑
     }
 
+    @Transactional
     @Override
     public void confirmReceipt(Long id) {
         Order order = findById(id)
@@ -381,6 +382,10 @@ public class OrderServiceImpl extends BaseServiceImpl<Order, Long> implements Or
         order.setConsumerConfirmationTime(now);
 
         orderRepository.save(order);
+
+        if (PAYOUT_PENDING.equals(order.getPayoutStatus())) {
+            finalizePayout(order);
+        }
     }
 
     @Transactional
@@ -393,6 +398,18 @@ public class OrderServiceImpl extends BaseServiceImpl<Order, Long> implements Or
             throw new RuntimeException("只有已收货的订单才能批准货款");
         }
 
+        if (!PAYOUT_PENDING.equals(order.getPayoutStatus())) {
+            throw new RuntimeException("当前订单没有待批准的货款");
+        }
+
+        if (order.getConsumerConfirmationTime() == null) {
+            throw new RuntimeException("消费者尚未确认收货，无法结算");
+        }
+
+        finalizePayout(order);
+    }
+
+    private void finalizePayout(Order order) {
         if (!PAYOUT_PENDING.equals(order.getPayoutStatus())) {
             throw new RuntimeException("当前订单没有待批准的货款");
         }

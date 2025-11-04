@@ -271,8 +271,6 @@ export interface AdminOrderSummary {
   status: string
   receiptStatus: string
   consumerConfirmed: boolean
-  canApprove: boolean
-  approvalDisabledReason?: string | null
   cancelled: boolean
   cancellationLabel?: string | null
   commissionAmount: number
