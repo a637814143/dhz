@@ -143,9 +143,10 @@ async function loadProfile() {
 async function loadProducts() {
   if (!state.user) return
   const { data } = await api.get<PageResponse<ProductSummary>>(`/products/supplier/${state.user.id}`, {
-    params: { page: 0, size: 6 },
+    params: { page: 0, size: 1000 },
   })
-  products.value = data.content ?? []
+  const content = Array.isArray(data?.content) ? data.content : []
+  products.value = content
 }
 
 async function loadSoldOrders() {
@@ -162,10 +163,10 @@ async function loadSoldOrders() {
     const { data } = await api.get<PageResponse<SupplierOrderSummary>>(
       `/orders/supplier/${state.user.id}`,
       {
-        params: { page: 0, size: 8 },
+        params: { page: 0, size: 1000 },
       }
     )
-    soldOrders.value = data.content ?? []
+    soldOrders.value = Array.isArray(data?.content) ? data.content : []
   } catch (err) {
     soldOrders.value = []
     soldOrdersError.value = err instanceof Error ? err.message : '加载已销售订单失败'
@@ -939,7 +940,7 @@ async function removeCategory(option: CategoryOption) {
           <div class="panel-title" id="product-list">商品概览</div>
           <button type="button" class="primary" @click="openProductForm()">新增商品</button>
         </div>
-        <div v-if="products.length" class="product-table">
+        <div v-if="products.length" class="product-table scrollable-table">
           <table>
             <thead>
               <tr>
@@ -1024,67 +1025,69 @@ async function removeCategory(option: CategoryOption) {
         </div>
         <p v-if="soldOrdersLoading" class="empty">正在加载已销售的订单…</p>
         <p v-else-if="soldOrdersError" class="sold-order-error">{{ soldOrdersError }}</p>
-        <ul v-else-if="soldOrders.length" class="sold-order-list">
-          <li v-for="order in soldOrders" :key="order.id" class="sold-order-card">
-            <header class="sold-order-header">
-              <div>
-                <h3>订单号：{{ order.orderNo }}</h3>
-                <p>下单时间：{{ formatDateTime(order.orderTime) }}</p>
-                <p v-if="order.paymentTime">支付时间：{{ formatDateTime(order.paymentTime) }}</p>
-              </div>
-              <div class="sold-order-status">
-                <span class="status-pill">{{ orderStatusLabel(order.status) }}</span>
-                <span v-if="order.mixedSuppliers" class="sold-order-note">含其他供应商商品</span>
-              </div>
-            </header>
-            <div class="sold-order-body">
-              <dl class="sold-order-meta">
+        <div v-else-if="soldOrders.length" class="sold-order-container scrollable-list">
+          <ul class="sold-order-list">
+            <li v-for="order in soldOrders" :key="order.id" class="sold-order-card">
+              <header class="sold-order-header">
                 <div>
-                  <dt>收货人</dt>
-                  <dd>{{ order.recipientName ?? '—' }}</dd>
+                  <h3>订单号：{{ order.orderNo }}</h3>
+                  <p>下单时间：{{ formatDateTime(order.orderTime) }}</p>
+                  <p v-if="order.paymentTime">支付时间：{{ formatDateTime(order.paymentTime) }}</p>
                 </div>
-                <div>
-                  <dt>联系电话</dt>
-                  <dd>{{ order.recipientPhone ?? '—' }}</dd>
+                <div class="sold-order-status">
+                  <span class="status-pill">{{ orderStatusLabel(order.status) }}</span>
+                  <span v-if="order.mixedSuppliers" class="sold-order-note">含其他供应商商品</span>
                 </div>
-                <div>
-                  <dt>配送地址</dt>
-                  <dd>{{ order.shippingAddress ?? '—' }}</dd>
-                </div>
-                <div>
-                  <dt>商品金额</dt>
-                  <dd>{{ formatCurrency(order.supplierTotalAmount) }}</dd>
-                </div>
-                <div>
-                  <dt>商品数量</dt>
-                  <dd>{{ order.supplierTotalQuantity }}</dd>
-                </div>
-              </dl>
-              <p v-if="!order.items.length" class="sold-order-empty-items">订单中暂无属于您的商品</p>
-              <ul v-else class="sold-order-items">
-                <li v-for="item in order.items" :key="item.id">
+              </header>
+              <div class="sold-order-body">
+                <dl class="sold-order-meta">
                   <div>
-                    <strong>{{ item.productName ?? '商品' }}</strong>
-                    <span>数量 × {{ item.quantity }}</span>
+                    <dt>收货人</dt>
+                    <dd>{{ order.recipientName ?? '—' }}</dd>
                   </div>
-                  <div class="sold-order-item-amount">{{ formatCurrency(item.totalPrice) }}</div>
-                </li>
-              </ul>
-            </div>
-            <footer class="sold-order-footer">
-              <button
-                v-if="order.canShip"
-                type="button"
-                class="primary-button"
-                @click="confirmShipment(order.id)"
-                :disabled="shippingOrderId === order.id"
-              >
-                {{ shippingOrderId === order.id ? '更新中…' : '确认发货' }}
-              </button>
-              <span v-else class="sold-order-hint">{{ soldOrderHint(order) }}</span>
-            </footer>
-          </li>
-        </ul>
+                  <div>
+                    <dt>联系电话</dt>
+                    <dd>{{ order.recipientPhone ?? '—' }}</dd>
+                  </div>
+                  <div>
+                    <dt>配送地址</dt>
+                    <dd>{{ order.shippingAddress ?? '—' }}</dd>
+                  </div>
+                  <div>
+                    <dt>商品金额</dt>
+                    <dd>{{ formatCurrency(order.supplierTotalAmount) }}</dd>
+                  </div>
+                  <div>
+                    <dt>商品数量</dt>
+                    <dd>{{ order.supplierTotalQuantity }}</dd>
+                  </div>
+                </dl>
+                <p v-if="!order.items.length" class="sold-order-empty-items">订单中暂无属于您的商品</p>
+                <ul v-else class="sold-order-items">
+                  <li v-for="item in order.items" :key="item.id">
+                    <div>
+                      <strong>{{ item.productName ?? '商品' }}</strong>
+                      <span>数量 × {{ item.quantity }}</span>
+                    </div>
+                    <div class="sold-order-item-amount">{{ formatCurrency(item.totalPrice) }}</div>
+                  </li>
+                </ul>
+              </div>
+              <footer class="sold-order-footer">
+                <button
+                  v-if="order.canShip"
+                  type="button"
+                  class="primary-button"
+                  @click="confirmShipment(order.id)"
+                  :disabled="shippingOrderId === order.id"
+                >
+                  {{ shippingOrderId === order.id ? '更新中…' : '确认发货' }}
+                </button>
+                <span v-else class="sold-order-hint">{{ soldOrderHint(order) }}</span>
+              </footer>
+            </li>
+          </ul>
+        </div>
         <p v-else class="empty">暂时没有已销售的订单。</p>
       </section>
 
@@ -1104,8 +1107,8 @@ async function removeCategory(option: CategoryOption) {
         </transition>
         <p v-if="returnRequestsLoading" class="empty">正在加载退货申请…</p>
         <p v-else-if="returnRequestsError" class="return-error">{{ returnRequestsError }}</p>
-        <ul v-else-if="returnRequests.length" class="return-list">
-          <li
+        <div v-else-if="returnRequests.length" class="return-list scrollable-list">
+          <article
             v-for="request in returnRequests"
             :key="request.id"
             :class="['return-card', { 'return-card--resolved': !canProcessReturn(request) }]"
@@ -1178,8 +1181,8 @@ async function removeCategory(option: CategoryOption) {
                 {{ updatingReturnId === request.id ? '提交中…' : '确认退货' }}
               </button>
             </footer>
-          </li>
-        </ul>
+          </article>
+        </div>
         <p v-else class="empty">暂无退货申请。</p>
       </section>
 
@@ -1545,6 +1548,39 @@ async function removeCategory(option: CategoryOption) {
   color: #b91c1c;
 }
 
+.product-table {
+  border: 1px solid rgba(14, 165, 233, 0.18);
+  border-radius: 18px;
+  background: rgba(240, 249, 255, 0.75);
+  overflow: hidden;
+  overflow-x: auto;
+}
+
+.scrollable-table {
+  --supplier-visible-rows: 3;
+  --supplier-row-height: 4.75rem;
+  --supplier-header-height: 3.4rem;
+  max-height: calc(
+    var(--supplier-visible-rows) * var(--supplier-row-height) +
+      var(--supplier-header-height)
+  );
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.scrollable-table::-webkit-scrollbar {
+  width: 6px;
+}
+
+.scrollable-table::-webkit-scrollbar-thumb {
+  background: rgba(37, 99, 235, 0.35);
+  border-radius: 999px;
+}
+
+.scrollable-table::-webkit-scrollbar-track {
+  background: transparent;
+}
+
 .product-table table {
   width: 100%;
   border-collapse: collapse;
@@ -1827,6 +1863,34 @@ async function removeCategory(option: CategoryOption) {
   padding: 0;
   display: grid;
   gap: 1.25rem;
+}
+
+.sold-order-container {
+  border: 1px solid rgba(14, 165, 233, 0.18);
+  border-radius: 20px;
+  background: rgba(240, 249, 255, 0.7);
+  padding: 1.25rem;
+}
+
+.scrollable-list {
+  --supplier-visible-cards: 3;
+  --supplier-card-height: 12.5rem;
+  max-height: calc(var(--supplier-visible-cards) * var(--supplier-card-height));
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.scrollable-list::-webkit-scrollbar {
+  width: 6px;
+}
+
+.scrollable-list::-webkit-scrollbar-thumb {
+  background: rgba(14, 165, 233, 0.35);
+  border-radius: 999px;
+}
+
+.scrollable-list::-webkit-scrollbar-track {
+  background: transparent;
 }
 
 .sold-order-card {

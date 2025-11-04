@@ -171,6 +171,7 @@ const reviewMap = computed(() => {
   return map
 })
 const hasReviews = computed(() => myReviews.value.length > 0)
+const hasOrders = computed(() => orders.value.length > 0)
 
 const normalizeStatusValue = (value: string) =>
   value.trim().replace(/[\s_-]+/g, '').toUpperCase()
@@ -1347,7 +1348,7 @@ const shortcutLinks = [
           <p v-else-if="addressError && !hasAddresses" class="placeholder is-error">
             {{ addressError }}
           </p>
-          <div v-else-if="hasAddresses" class="table-container">
+          <div v-else-if="hasAddresses" class="table-container scrollable-table">
             <table class="dashboard-table address-table">
               <thead>
                 <tr>
@@ -1411,7 +1412,7 @@ const shortcutLinks = [
           </div>
           <p v-if="cartLoading" class="empty">购物车加载中…</p>
           <p v-else-if="cartError" class="empty is-error">{{ cartError }}</p>
-          <div v-else-if="cartItems.length" class="table-container">
+          <div v-else-if="hasCartItems" class="table-container scrollable-table">
             <table class="dashboard-table cart-table">
               <thead>
                 <tr>
@@ -1477,7 +1478,7 @@ const shortcutLinks = [
 
         <section class="panel orders full-row table-panel" aria-labelledby="orders-title">
           <div class="panel-title" id="orders-title">我的订单</div>
-          <div v-if="orders.length" class="table-container">
+          <div v-if="hasOrders" class="table-container scrollable-table">
             <table class="dashboard-table orders-table">
               <thead>
                 <tr>
@@ -1564,7 +1565,7 @@ const shortcutLinks = [
           <div v-if="reviewsLoading" class="placeholder">正在加载评价…</div>
           <div v-else-if="reviewsError" class="placeholder is-error">{{ reviewsError }}</div>
           <template v-else>
-            <div v-if="hasReviews" class="table-container">
+            <div v-if="hasReviews" class="table-container scrollable-table">
               <table class="dashboard-table review-table">
                 <thead>
                   <tr>
@@ -2233,6 +2234,31 @@ const shortcutLinks = [
   overflow-x: auto;
   background: rgba(248, 250, 252, 0.68);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.4);
+}
+
+.table-container.scrollable-table {
+  --dashboard-scroll-visible-rows: 3;
+  --dashboard-row-height: 4.8rem;
+  --dashboard-header-height: 3.5rem;
+  max-height: calc(
+    var(--dashboard-scroll-visible-rows) * var(--dashboard-row-height) +
+      var(--dashboard-header-height)
+  );
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.table-container.scrollable-table::-webkit-scrollbar {
+  width: 6px;
+}
+
+.table-container.scrollable-table::-webkit-scrollbar-thumb {
+  background: rgba(79, 70, 229, 0.35);
+  border-radius: 999px;
+}
+
+.table-container.scrollable-table::-webkit-scrollbar-track {
+  background: transparent;
 }
 
 .dashboard-table {

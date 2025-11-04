@@ -35,11 +35,6 @@ const filters = reactive({
   membershipLevel: 'all' as 'all' | number,
 })
 
-const pagination = reactive({
-  page: 0,
-  size: 10,
-})
-
 const createDialogOpen = ref(false)
 const editDialogOpen = ref(false)
 
@@ -96,8 +91,8 @@ async function loadConsumers() {
   error.value = null
   try {
     const params: Record<string, unknown> = {
-      page: pagination.page,
-      size: pagination.size,
+      page: 0,
+      size: 1000,
     }
     if (filters.keyword.trim()) {
       params.keyword = filters.keyword.trim()
@@ -112,8 +107,6 @@ async function loadConsumers() {
     const { data } = await api.get<PageResponse<ConsumerRecord>>('/consumers', { params })
     consumers.value = data.content ?? []
     total.value = data.totalElements ?? 0
-    pagination.page = data.number ?? 0
-    pagination.size = data.size ?? pagination.size
   } catch (err) {
     error.value = err instanceof Error ? err.message : '加载消费者数据失败'
   } finally {
@@ -224,43 +217,15 @@ async function deleteConsumer(id: number) {
   }
 }
 
-function handlePageChange(page: number) {
-  if (page === pagination.page) return
-  pagination.page = page
-  loadConsumers()
-}
-
 function membershipLabel(level: number | null) {
   if (!level) return '普通会员'
   const option = levelOptions.find((item) => item.value === level)
   return option ? option.label : `等级 ${level}`
 }
 
-const totalPages = computed(() => {
-  if (pagination.size <= 0) return 0
-  return Math.ceil(total.value / pagination.size)
-})
-
-const pageNumbers = computed(() => {
-  const pages: number[] = []
-  for (let i = 0; i < totalPages.value; i += 1) {
-    pages.push(i)
-  }
-  return pages
-})
-
 watch(
   () => ({ ...filters }),
   () => {
-    pagination.page = 0
-    loadConsumers()
-  }
-)
-
-watch(
-  () => pagination.size,
-  () => {
-    pagination.page = 0
     loadConsumers()
   }
 )
@@ -311,14 +276,6 @@ function formatPoints(points: number | null) {
             </option>
           </select>
         </label>
-        <label>
-          <span>每页条数</span>
-          <select v-model.number="pagination.size">
-            <option :value="10">10</option>
-            <option :value="20">20</option>
-            <option :value="50">50</option>
-          </select>
-        </label>
       </div>
     </section>
 
@@ -326,10 +283,11 @@ function formatPoints(points: number | null) {
     <div v-else-if="error" class="placeholder is-error">{{ error }}</div>
     <template v-else>
       <section class="panel">
-        <table v-if="hasConsumers" class="data-table">
-          <thead>
-            <tr>
-              <th scope="col">ID</th>
+        <div v-if="hasConsumers" class="table-wrapper scrollable-table">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th scope="col">ID</th>
               <th scope="col">账号</th>
               <th scope="col">联系方式</th>
               <th scope="col">积分</th>
@@ -367,34 +325,9 @@ function formatPoints(points: number | null) {
               </td>
             </tr>
           </tbody>
-        </table>
+          </table>
+        </div>
         <p v-else class="empty">暂无消费者数据，点击右上角按钮新增采购账号。</p>
-
-        <nav v-if="hasConsumers && totalPages > 1" class="pagination" aria-label="分页">
-          <button
-            type="button"
-            :disabled="pagination.page === 0"
-            @click="handlePageChange(Math.max(0, pagination.page - 1))"
-          >
-            上一页
-          </button>
-          <button
-            v-for="page in pageNumbers"
-            :key="page"
-            type="button"
-            :class="{ current: page === pagination.page }"
-            @click="handlePageChange(page)"
-          >
-            {{ page + 1 }}
-          </button>
-          <button
-            type="button"
-            :disabled="pagination.page >= totalPages - 1"
-            @click="handlePageChange(Math.min(totalPages - 1, pagination.page + 1))"
-          >
-            下一页
-          </button>
-        </nav>
       </section>
     </template>
 
@@ -618,6 +551,40 @@ function formatPoints(points: number | null) {
   box-shadow: 0 20px 40px rgba(15, 23, 42, 0.08);
 }
 
+.table-wrapper {
+  border: 1px solid rgba(59, 130, 246, 0.18);
+  border-radius: 18px;
+  background: rgba(239, 246, 255, 0.85);
+  overflow: hidden;
+  overflow-x: auto;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7);
+}
+
+.table-wrapper.scrollable-table {
+  --consumer-visible-rows: 3;
+  --consumer-row-height: 5rem;
+  --consumer-header-height: 3.2rem;
+  max-height: calc(
+    var(--consumer-visible-rows) * var(--consumer-row-height) +
+      var(--consumer-header-height)
+  );
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.table-wrapper.scrollable-table::-webkit-scrollbar {
+  width: 6px;
+}
+
+.table-wrapper.scrollable-table::-webkit-scrollbar-thumb {
+  background: rgba(59, 130, 246, 0.35);
+  border-radius: 999px;
+}
+
+.table-wrapper.scrollable-table::-webkit-scrollbar-track {
+  background: transparent;
+}
+
 .data-table {
   width: 100%;
   border-collapse: collapse;
@@ -700,32 +667,6 @@ function formatPoints(points: number | null) {
   text-align: center;
   color: rgba(71, 85, 105, 0.75);
   padding: 1rem 0;
-}
-
-.pagination {
-  display: flex;
-  justify-content: center;
-  gap: 0.5rem;
-  margin-top: 1.2rem;
-}
-
-.pagination button {
-  padding: 0.45rem 0.9rem;
-  border-radius: 12px;
-  border: 1px solid rgba(148, 163, 184, 0.4);
-  background: #fff;
-  cursor: pointer;
-}
-
-.pagination button.current {
-  background: #2563eb;
-  color: #fff;
-  border-color: #2563eb;
-}
-
-.pagination button:disabled {
-  cursor: not-allowed;
-  opacity: 0.6;
 }
 
 .dialog-backdrop {
