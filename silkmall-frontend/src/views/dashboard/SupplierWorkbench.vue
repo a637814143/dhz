@@ -2072,6 +2072,7 @@ async function removeCategory(option: CategoryOption) {
   justify-content: center;
   padding: 1.5rem;
   z-index: 30;
+  overflow-y: auto;
 }
 
 .modal {
@@ -2081,6 +2082,9 @@ async function removeCategory(option: CategoryOption) {
   width: 100%;
   box-shadow: 0 24px 60px rgba(15, 23, 42, 0.18);
   overflow: hidden;
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
 }
 
 .modal-header {
@@ -2096,6 +2100,8 @@ async function removeCategory(option: CategoryOption) {
   flex-direction: column;
   gap: 1rem;
   padding: 1.5rem;
+  flex: 1 1 auto;
+  overflow-y: auto;
 }
 
 .modal-body label {

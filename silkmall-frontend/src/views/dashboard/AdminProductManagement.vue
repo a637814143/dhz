@@ -1048,6 +1048,7 @@ tbody tr:nth-child(odd) {
   justify-content: center;
   padding: 2rem;
   z-index: 20;
+  overflow-y: auto;
 }
 
 .form-shell {
