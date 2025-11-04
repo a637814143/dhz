@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import api from '@/services/api'
+import { useAuthState } from '@/services/authState'
 import type {
   Announcement,
   HomepageContent,
@@ -26,12 +27,25 @@ interface ProductDetail {
   supplier?: { id: number; companyName?: string | null } | null
 }
 
+const { state } = useAuthState()
+
 const overview = ref<ProductOverview | null>(null)
 const announcements = ref<Announcement[]>([])
 const news = ref<NewsItem[]>([])
 const hotProducts = ref<ProductSummary[]>([])
 const loading = ref(true)
 const error = ref<string | null>(null)
+
+const walletBalance = ref<number | null>(null)
+const walletLoading = ref(false)
+const walletError = ref<string | null>(null)
+const redeemCodeInput = ref('')
+const redeeming = ref(false)
+const redeemMessage = ref<string | null>(null)
+const redeemError = ref<string | null>(null)
+const walletDisplay = computed(() =>
+  typeof walletBalance.value === 'number' ? formatCurrency(walletBalance.value) : '—'
+)
 
 const productLoading = ref(false)
 const productError = ref<string | null>(null)
@@ -127,6 +141,26 @@ async function loadHomeContent() {
   announcements.value = parsed.announcements
   news.value = parsed.news
   hotProducts.value = parsed.hotSales.slice(0, 5)
+}
+
+async function loadWallet() {
+  if (!state.user) {
+    walletBalance.value = null
+    walletError.value = '请先登录管理员账号'
+    return
+  }
+  walletLoading.value = true
+  walletError.value = null
+  try {
+    const { data } = await api.get<{ balance: number }>('/wallet')
+    walletBalance.value = typeof data?.balance === 'number' ? data.balance : null
+  } catch (err) {
+    console.warn('加载管理员钱包失败', err)
+    walletBalance.value = null
+    walletError.value = err instanceof Error ? err.message : '加载钱包信息失败'
+  } finally {
+    walletLoading.value = false
+  }
 }
 
 function normaliseCategoryOptions(payload: unknown): CategoryOption[] {
@@ -323,6 +357,38 @@ async function initProductManagement() {
     productError.value = message
   } finally {
     productLoading.value = false
+  }
+}
+
+function resetRedeemFeedback() {
+  redeemMessage.value = null
+  redeemError.value = null
+}
+
+async function redeemWallet() {
+  resetRedeemFeedback()
+  if (!state.user) {
+    redeemError.value = '请先登录管理员账号'
+    return
+  }
+  const code = redeemCodeInput.value.trim()
+  if (!code) {
+    redeemError.value = '请输入兑换码'
+    return
+  }
+  redeeming.value = true
+  try {
+    const { data } = await api.post<{ balance: number }>('/wallet/redeem', { code })
+    const balance = typeof data?.balance === 'number' ? data.balance : null
+    walletBalance.value = balance
+    redeemCodeInput.value = ''
+    redeemMessage.value = '兑换成功，余额已更新'
+    walletError.value = null
+  } catch (err) {
+    console.warn('管理员钱包兑换失败', err)
+    redeemError.value = err instanceof Error ? err.message : '兑换失败，请稍后再试'
+  } finally {
+    redeeming.value = false
   }
 }
 
@@ -531,6 +597,7 @@ async function refreshProductsAndOverview() {
   }
   productPagination.page = 0
   await loadProducts().catch(() => {})
+  await loadWallet()
 }
 
 async function openProductView(product: ProductSummary) {
@@ -564,7 +631,7 @@ async function bootstrap() {
   loading.value = true
   error.value = null
   try {
-    await Promise.all([loadOverview(), loadHomeContent()])
+    await Promise.all([loadOverview(), loadHomeContent(), loadWallet()])
   } catch (err) {
     error.value = err instanceof Error ? err.message : '加载管理数据失败'
   } finally {
@@ -636,6 +703,42 @@ function formatNumber(value?: number | null) {
     <div v-if="loading" class="placeholder">正在加载平台数据…</div>
     <div v-else-if="error" class="placeholder is-error">{{ error }}</div>
     <template v-else>
+      <section class="panel admin-wallet" aria-labelledby="wallet-title">
+        <header class="wallet-header">
+          <div>
+            <div class="panel-title" id="wallet-title">平台钱包</div>
+            <p class="panel-subtitle">查看结算储备与平台收益，支持使用兑换码快速充值。</p>
+          </div>
+          <button type="button" class="secondary" @click="loadWallet" :disabled="walletLoading">
+            {{ walletLoading ? '刷新中…' : '刷新余额' }}
+          </button>
+        </header>
+        <div class="wallet-summary">
+          <div class="wallet-amount">{{ walletDisplay }}</div>
+          <p class="wallet-caption">当前余额</p>
+        </div>
+        <p v-if="walletError" class="wallet-error">{{ walletError }}</p>
+        <p v-else-if="walletLoading" class="wallet-status">余额刷新中…</p>
+        <div class="redeem-box">
+          <label>
+            <span>兑换码</span>
+            <input
+              v-model="redeemCodeInput"
+              type="text"
+              placeholder="输入兑换码兑换余额"
+              :disabled="redeeming"
+            />
+          </label>
+          <div class="redeem-actions">
+            <button type="button" @click="redeemWallet" :disabled="redeeming">
+              {{ redeeming ? '兑换中…' : '兑换余额' }}
+            </button>
+            <p v-if="redeemMessage" class="redeem-success">{{ redeemMessage }}</p>
+            <p v-if="redeemError" class="redeem-error">{{ redeemError }}</p>
+          </div>
+        </div>
+      </section>
+
       <section class="panel metrics" aria-labelledby="metrics-title">
         <div class="panel-title" id="metrics-title">核心指标</div>
         <div class="metric-grid">
@@ -1019,6 +1122,101 @@ function formatNumber(value?: number | null) {
   font-weight: 700;
   font-size: 1.1rem;
   color: rgba(30, 41, 59, 0.78);
+}
+
+.admin-wallet {
+  gap: 1.25rem;
+}
+
+.wallet-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.wallet-header .panel-subtitle {
+  margin: 0.35rem 0 0;
+  color: rgba(30, 41, 59, 0.58);
+}
+
+.wallet-summary {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.wallet-amount {
+  font-size: 2rem;
+  font-weight: 700;
+  color: #1e293b;
+}
+
+.wallet-caption {
+  margin: 0;
+  color: rgba(30, 41, 59, 0.6);
+}
+
+.wallet-status {
+  margin: 0;
+  color: rgba(37, 99, 235, 0.75);
+  font-weight: 500;
+}
+
+.wallet-error {
+  margin: 0;
+  color: #b91c1c;
+  font-weight: 600;
+}
+
+.redeem-box {
+  display: grid;
+  gap: 0.85rem;
+  padding: 1.2rem 1.3rem;
+  border-radius: 16px;
+  background: linear-gradient(135deg, rgba(79, 70, 229, 0.12), rgba(99, 102, 241, 0.08));
+}
+
+.redeem-box label {
+  display: grid;
+  gap: 0.4rem;
+  font-weight: 600;
+}
+
+.redeem-box input {
+  padding: 0.6rem 0.75rem;
+  border-radius: 0.75rem;
+  border: 1px solid rgba(17, 24, 39, 0.12);
+  font-size: 0.95rem;
+}
+
+.redeem-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.redeem-actions button {
+  padding: 0.55rem 1.4rem;
+  border-radius: 0.75rem;
+  border: none;
+  background: linear-gradient(135deg, #16a34a, #22c55e);
+  color: #fff;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.redeem-actions button:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+}
+
+.redeem-success {
+  color: #15803d;
+}
+
+.redeem-error {
+  color: #b91c1c;
 }
 
 .panel-subtitle {
