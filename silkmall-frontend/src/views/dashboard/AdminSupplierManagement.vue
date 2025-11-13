@@ -25,6 +25,7 @@ const loading = ref(false)
 const error = ref<string | null>(null)
 const suppliers = ref<SupplierRecord[]>([])
 const total = ref(0)
+const PAGE_SIZE = 8
 
 const filters = reactive({
   keyword: '',
@@ -35,7 +36,7 @@ const filters = reactive({
 
 const pagination = reactive({
   page: 0,
-  size: 10,
+  size: PAGE_SIZE,
 })
 
 const statusOptions = [
@@ -59,8 +60,6 @@ const enabledOptions = [
   { label: '启用', value: 'true' },
   { label: '停用', value: 'false' },
 ]
-
-const sizeOptions = [10, 20, 50]
 
 const createDialogOpen = ref(false)
 const editDialogOpen = ref(false)
@@ -129,7 +128,7 @@ async function loadSuppliers() {
   try {
     const params: Record<string, unknown> = {
       page: pagination.page,
-      size: pagination.size,
+      size: PAGE_SIZE,
       sortBy: 'createdAt',
       sortDirection: 'DESC',
     }
@@ -143,7 +142,7 @@ async function loadSuppliers() {
     suppliers.value = Array.isArray(data.content) ? data.content : []
     total.value = typeof data.totalElements === 'number' ? data.totalElements : suppliers.value.length
     pagination.page = typeof data.number === 'number' ? data.number : pagination.page
-    pagination.size = typeof data.size === 'number' ? data.size : pagination.size
+    pagination.size = PAGE_SIZE
   } catch (err) {
     error.value = err instanceof Error ? err.message : '加载供应商数据失败'
   } finally {
@@ -417,14 +416,6 @@ watch(
   }
 )
 
-watch(
-  () => pagination.size,
-  () => {
-    pagination.page = 0
-    loadSuppliers()
-  }
-)
-
 onMounted(() => {
   loadSuppliers()
 })
@@ -468,12 +459,6 @@ onMounted(() => {
             <option v-for="option in enabledOptions" :key="option.value" :value="option.value">
               {{ option.label }}
             </option>
-          </select>
-        </label>
-        <label>
-          <span>每页条数</span>
-          <select v-model.number="pagination.size">
-            <option v-for="size in sizeOptions" :key="size" :value="size">{{ size }}</option>
           </select>
         </label>
       </div>
