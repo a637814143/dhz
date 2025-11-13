@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 import api from '@/services/api'
 import type {
   CategoryOption,
@@ -43,6 +43,20 @@ const overview = ref<ProductOverview | null>(null)
 const products = ref<ProductSummary[]>([])
 const categories = ref<CategoryOption[]>([])
 const suppliers = ref<SupplierOption[]>([])
+
+const PAGE_SIZE = 8
+const currentPage = ref(1)
+const totalPages = ref(0)
+const totalElements = ref(0)
+
+const canGoPreviousPage = computed(() => totalPages.value > 0 && currentPage.value > 1)
+const canGoNextPage = computed(() => totalPages.value > 0 && currentPage.value < totalPages.value)
+const pageIndicator = computed(() => {
+  if (totalPages.value <= 0) {
+    return '0/0'
+  }
+  return `${currentPage.value}/${totalPages.value}`
+})
 
 const filters = reactive({
   keyword: '',
@@ -189,12 +203,23 @@ async function loadSuppliers() {
   suppliers.value = normaliseSuppliers(data)
 }
 
-async function loadProducts() {
+async function loadProducts(targetPage?: number) {
+  const previousPage = currentPage.value
   tableLoading.value = true
   try {
+    const requestedPage =
+      typeof targetPage === 'number' && Number.isFinite(targetPage)
+        ? Math.floor(targetPage)
+        : currentPage.value || 1
+    const safeRequestedPage = requestedPage > 0 ? requestedPage : 1
+
+    if (safeRequestedPage !== currentPage.value) {
+      currentPage.value = safeRequestedPage
+    }
+
     const params: Record<string, unknown> = {
-      page: 0,
-      size: 1000,
+      page: safeRequestedPage - 1,
+      size: PAGE_SIZE,
       sortBy: 'createdAt',
       sortDirection: 'DESC',
     }
@@ -208,9 +233,32 @@ async function loadProducts() {
       params,
     })
 
-    products.value = Array.isArray(data?.content) ? data.content : []
+    const list = Array.isArray(data?.content) ? data.content : []
+    products.value = list
+
+    const rawTotalPages = Number((data as PageResponse<ProductSummary> | undefined)?.totalPages)
+    const computedTotalPages = Number.isFinite(rawTotalPages) ? Math.max(0, Math.trunc(rawTotalPages)) : 0
+    totalPages.value = computedTotalPages > 0 ? computedTotalPages : list.length > 0 ? 1 : 0
+
+    const rawTotalElements = Number((data as PageResponse<ProductSummary> | undefined)?.totalElements)
+    totalElements.value = Number.isFinite(rawTotalElements) && rawTotalElements >= 0 ? rawTotalElements : list.length
+
+    if (totalPages.value <= 0) {
+      currentPage.value = list.length > 0 ? 1 : 0
+      return
+    }
+
+    const rawServerPage = Number((data as PageResponse<ProductSummary> | undefined)?.number)
+    const serverPage = Number.isFinite(rawServerPage) ? Math.max(1, Math.trunc(rawServerPage) + 1) : safeRequestedPage
+    currentPage.value = Math.min(serverPage, totalPages.value)
+
+    if (safeRequestedPage > totalPages.value && list.length === 0) {
+      await loadProducts(totalPages.value)
+      return
+    }
   } catch (err) {
     const message = err instanceof Error ? err.message : '加载商品失败'
+    currentPage.value = previousPage
     if (loading.value) {
       throw err instanceof Error ? err : new Error(message)
     }
@@ -261,7 +309,8 @@ onMounted(() => {
 })
 
 function applyFilters() {
-  loadProducts()
+  currentPage.value = 1
+  loadProducts(1)
 }
 
 function resetFilters() {
@@ -269,7 +318,8 @@ function resetFilters() {
   filters.categoryId = 0
   filters.supplierId = 0
   filters.status = ''
-  loadProducts()
+  currentPage.value = 1
+  loadProducts(1)
 }
 
 async function openProductForm(product?: ProductSummary) {
@@ -427,6 +477,16 @@ async function changeProductStatus(productId: number, nextStatus: 'ON_SALE' | 'O
     statusUpdatingId.value = null
   }
 }
+
+function goToPreviousPage() {
+  if (!canGoPreviousPage.value) return
+  loadProducts(currentPage.value - 1)
+}
+
+function goToNextPage() {
+  if (!canGoNextPage.value) return
+  loadProducts(currentPage.value + 1)
+}
 </script>
 
 <template>
@@ -514,61 +574,85 @@ async function changeProductStatus(productId: number, nextStatus: 'ON_SALE' | 'O
           <div class="panel-title" id="product-table">商品列表</div>
           <span v-if="tableLoading" class="table-status">数据刷新中…</span>
         </div>
-        <div v-if="products.length" class="table-wrapper scrollable-table">
-          <table>
-            <thead>
-              <tr>
-                <th scope="col">商品名称</th>
-                <th scope="col">所属分类</th>
-                <th scope="col">供应商</th>
-                <th scope="col">售价</th>
-                <th scope="col">计量单位</th>
-                <th scope="col">库存</th>
-                <th scope="col">销量</th>
-                <th scope="col">状态</th>
-                <th scope="col">上架时间</th>
-                <th scope="col">操作</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr v-for="item in products" :key="item.id">
-                <td class="name-cell">
-                  <strong>{{ item.name }}</strong>
-                  <p v-if="item.description" class="description">{{ item.description }}</p>
-                </td>
-                <td>{{ item.categoryName ?? '—' }}</td>
-                <td>{{ item.supplierName ?? '—' }}</td>
-                <td>{{ formatCurrency(item.price) }}</td>
-                <td>{{ item.unit ?? '—' }}</td>
-                <td>{{ formatNumber(item.stock) }}</td>
-                <td>{{ formatNumber(item.sales) }}</td>
-                <td><span class="status-pill">{{ formatStatus(item.status) }}</span></td>
-                <td>{{ formatDate(item.createdAt as string | undefined) }}</td>
-                <td class="actions">
-                  <button type="button" class="link-button" @click="openProductView(item)">查看</button>
-                  <button type="button" class="link-button" @click="openProductForm(item)">编辑</button>
-                  <button
-                    type="button"
-                    class="link-button"
-                    :class="{ danger: item.status === 'ON_SALE' }"
-                    @click="changeProductStatus(item.id, item.status === 'ON_SALE' ? 'OFF_SALE' : 'ON_SALE')"
-                    :disabled="statusUpdatingId === item.id"
-                  >
-                    {{ item.status === 'ON_SALE' ? '下架' : '上架' }}
-                  </button>
-                  <button
-                    type="button"
-                    class="link-button danger"
-                    @click="deleteProduct(item.id)"
-                    :disabled="deletingProductId === item.id"
-                  >
-                    删除
-                  </button>
-                </td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
+        <template v-if="products.length">
+          <div class="table-wrapper scrollable-table">
+            <table>
+              <thead>
+                <tr>
+                  <th scope="col">商品名称</th>
+                  <th scope="col">所属分类</th>
+                  <th scope="col">供应商</th>
+                  <th scope="col">售价</th>
+                  <th scope="col">计量单位</th>
+                  <th scope="col">库存</th>
+                  <th scope="col">销量</th>
+                  <th scope="col">状态</th>
+                  <th scope="col">上架时间</th>
+                  <th scope="col">操作</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="item in products" :key="item.id">
+                  <td class="name-cell">
+                    <strong>{{ item.name }}</strong>
+                    <p v-if="item.description" class="description">{{ item.description }}</p>
+                  </td>
+                  <td>{{ item.categoryName ?? '—' }}</td>
+                  <td>{{ item.supplierName ?? '—' }}</td>
+                  <td>{{ formatCurrency(item.price) }}</td>
+                  <td>{{ item.unit ?? '—' }}</td>
+                  <td>{{ formatNumber(item.stock) }}</td>
+                  <td>{{ formatNumber(item.sales) }}</td>
+                  <td><span class="status-pill">{{ formatStatus(item.status) }}</span></td>
+                  <td>{{ formatDate(item.createdAt as string | undefined) }}</td>
+                  <td class="actions">
+                    <button type="button" class="link-button" @click="openProductView(item)">查看</button>
+                    <button type="button" class="link-button" @click="openProductForm(item)">编辑</button>
+                    <button
+                      type="button"
+                      class="link-button"
+                      :class="{ danger: item.status === 'ON_SALE' }"
+                      @click="changeProductStatus(item.id, item.status === 'ON_SALE' ? 'OFF_SALE' : 'ON_SALE')"
+                      :disabled="statusUpdatingId === item.id"
+                    >
+                      {{ item.status === 'ON_SALE' ? '下架' : '上架' }}
+                    </button>
+                    <button
+                      type="button"
+                      class="link-button danger"
+                      @click="deleteProduct(item.id)"
+                      :disabled="deletingProductId === item.id"
+                    >
+                      删除
+                    </button>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <div v-if="totalPages > 0" class="table-footer">
+            <span class="pagination-status">共 {{ formatNumber(totalElements) }} 件商品</span>
+            <div class="pagination-controls">
+              <button
+                type="button"
+                class="pager-button"
+                :disabled="!canGoPreviousPage || tableLoading"
+                @click="goToPreviousPage"
+              >
+                &lt;
+              </button>
+              <span class="page-indicator">{{ pageIndicator }}</span>
+              <button
+                type="button"
+                class="pager-button"
+                :disabled="!canGoNextPage || tableLoading"
+                @click="goToNextPage"
+              >
+                &gt;
+              </button>
+            </div>
+          </div>
+        </template>
         <p v-else class="empty">暂无商品记录，请尝试调整筛选条件或新增商品。</p>
       </section>
     </template>
@@ -868,6 +952,53 @@ async function changeProductStatus(productId: number, nextStatus: 'ON_SALE' | 'O
   border-radius: 18px;
   background: rgba(240, 249, 255, 0.7);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.5);
+}
+
+.table-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.75rem 1.5rem;
+  padding-top: 1rem;
+}
+
+.pagination-status {
+  color: rgba(15, 23, 42, 0.65);
+  font-weight: 600;
+}
+
+.pagination-controls {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.pager-button {
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: 999px;
+  border: 1px solid rgba(15, 23, 42, 0.2);
+  background: rgba(148, 163, 184, 0.12);
+  color: rgba(15, 23, 42, 0.75);
+  font-size: 1.1rem;
+  font-weight: 600;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.pager-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.page-indicator {
+  min-width: 3.5rem;
+  text-align: center;
+  font-weight: 600;
+  color: rgba(15, 23, 42, 0.75);
 }
 
 .table-wrapper.scrollable-table {
