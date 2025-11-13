@@ -22,6 +22,8 @@ public class Product {
     private String unit;
     private Integer stock;
     private Integer sales;
+    @Lob
+    @Column(columnDefinition = "LONGTEXT")
     private String mainImage;
     private String status; // 上架状态
     private Date createdAt;

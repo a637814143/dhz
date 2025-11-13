@@ -19,6 +19,8 @@ public class Product {
     private BigDecimal price;
     private Integer stock;
     private Integer sales;
+    @Lob
+    @Column(columnDefinition = "LONGTEXT")
     private String mainImage;
     private String status; // 上架状态
     private Date createdAt;
