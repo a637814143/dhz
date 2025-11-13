@@ -336,12 +336,32 @@ public class ReturnRequestServiceImpl extends BaseServiceImpl<ReturnRequest, Lon
                 : supplierShare.setScale(2, RoundingMode.HALF_UP);
         if (Boolean.TRUE.equals(request.getAfterReceipt())) {
             BigDecimal normalizedRefund = refundAmount.setScale(2, RoundingMode.HALF_UP);
-            supplierContribution = normalizedRefund;
-            request.setSupplierShareAmount(normalizedRefund);
-            if (commission == null || commission.compareTo(BigDecimal.ZERO) != 0) {
-                request.setCommissionAmount(BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP));
-                commission = BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP);
+            BigDecimal normalizedCommission = commission == null
+                    ? calculateCommission(normalizedRefund)
+                    : commission.setScale(2, RoundingMode.HALF_UP);
+            if (normalizedCommission.compareTo(normalizedRefund) > 0) {
+                normalizedCommission = normalizedRefund;
             }
+            BigDecimal normalizedSupplierShare = normalizedRefund.subtract(normalizedCommission)
+                    .setScale(2, RoundingMode.HALF_UP);
+            if (normalizedSupplierShare.compareTo(BigDecimal.ZERO) < 0) {
+                normalizedSupplierShare = BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP);
+            }
+            supplierContribution = normalizedSupplierShare;
+            request.setSupplierShareAmount(normalizedSupplierShare);
+            request.setCommissionAmount(normalizedCommission);
+
+            Admin persistedAdmin = adminRepository.findById(admin.getId())
+                    .orElseThrow(() -> new RuntimeException("管理员不存在: " + admin.getId()));
+            BigDecimal adminBalance = resolveBalance(persistedAdmin.getWalletBalance());
+            if (normalizedCommission.compareTo(BigDecimal.ZERO) > 0) {
+                if (adminBalance.compareTo(normalizedCommission) < 0) {
+                    throw new RuntimeException("管理员钱包余额不足，无法退回提成");
+                }
+                persistedAdmin.setWalletBalance(adminBalance.subtract(normalizedCommission));
+                adminRepository.save(persistedAdmin);
+            }
+            commission = normalizedCommission;
         }
 
         BigDecimal supplierBalance = resolveBalance(persistedSupplier.getWalletBalance());
@@ -377,12 +397,19 @@ public class ReturnRequestServiceImpl extends BaseServiceImpl<ReturnRequest, Lon
 
         if (Boolean.TRUE.equals(request.getAfterReceipt())) {
             BigDecimal normalizedRefund = refundAmount.setScale(2, RoundingMode.HALF_UP);
-            if (commission == null || commission.compareTo(BigDecimal.ZERO) != 0) {
-                request.setCommissionAmount(BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP));
+            BigDecimal normalizedCommission = commission == null
+                    ? calculateCommission(normalizedRefund)
+                    : commission.setScale(2, RoundingMode.HALF_UP);
+            if (normalizedCommission.compareTo(normalizedRefund) > 0) {
+                normalizedCommission = normalizedRefund;
             }
-            if (supplierShare == null || supplierShare.compareTo(normalizedRefund) != 0) {
-                request.setSupplierShareAmount(normalizedRefund);
+            BigDecimal normalizedSupplierShare = normalizedRefund.subtract(normalizedCommission)
+                    .setScale(2, RoundingMode.HALF_UP);
+            if (normalizedSupplierShare.compareTo(BigDecimal.ZERO) < 0) {
+                normalizedSupplierShare = BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP);
             }
+            request.setCommissionAmount(normalizedCommission);
+            request.setSupplierShareAmount(normalizedSupplierShare);
             return refundAmount;
         }
 
