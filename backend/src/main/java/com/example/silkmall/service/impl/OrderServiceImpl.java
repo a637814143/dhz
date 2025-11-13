@@ -432,24 +432,51 @@ public class OrderServiceImpl extends BaseServiceImpl<Order, Long> implements Or
             totalAmount = BigDecimal.ZERO;
         }
 
-        BigDecimal commission = totalAmount.multiply(ADMIN_COMMISSION_RATE).setScale(2, RoundingMode.HALF_UP);
-        if (commission.compareTo(totalAmount) > 0) {
-            commission = totalAmount;
+        BigDecimal holdingAmount = Optional.ofNullable(order.getAdminHoldingAmount()).orElse(totalAmount);
+        if (holdingAmount == null || holdingAmount.compareTo(BigDecimal.ZERO) < 0) {
+            holdingAmount = BigDecimal.ZERO;
         }
-        BigDecimal payoutPool = totalAmount.subtract(commission).setScale(2, RoundingMode.HALF_UP);
+
+        BigDecimal commission = totalAmount.multiply(ADMIN_COMMISSION_RATE).setScale(2, RoundingMode.HALF_UP);
+        if (commission.compareTo(holdingAmount) > 0) {
+            commission = holdingAmount;
+        }
+
+        BigDecimal payoutPool = holdingAmount.subtract(commission).setScale(2, RoundingMode.HALF_UP);
         if (payoutPool.compareTo(BigDecimal.ZERO) < 0) {
             payoutPool = BigDecimal.ZERO;
         }
 
         BigDecimal adminBalance = resolveBalance(admin.getWalletBalance());
-        if (adminBalance.compareTo(payoutPool) < 0) {
-            throw new RuntimeException("管理员钱包余额不足，无法批准付款");
+        boolean hasHeldFunds = holdingAmount.compareTo(BigDecimal.ZERO) > 0
+                && adminBalance.compareTo(holdingAmount) >= 0;
+
+        BigDecimal updatedAdminBalance;
+        if (hasHeldFunds) {
+            if (payoutPool.compareTo(BigDecimal.ZERO) > 0 && adminBalance.compareTo(payoutPool) < 0) {
+                throw new RuntimeException("管理员钱包余额不足，无法批准付款");
+            }
+            BigDecimal baseBalance = adminBalance.subtract(holdingAmount);
+            if (baseBalance.compareTo(BigDecimal.ZERO) < 0) {
+                baseBalance = BigDecimal.ZERO;
+            }
+            updatedAdminBalance = baseBalance.add(commission);
+        } else {
+            // 如果付款时未将货款托管到管理员钱包，则在结算时仅发放提成
+            updatedAdminBalance = adminBalance.add(commission);
         }
 
-        admin.setWalletBalance(adminBalance.subtract(payoutPool));
+        admin.setWalletBalance(updatedAdminBalance);
         adminRepository.save(admin);
 
-        distributeToSuppliers(order);
+        BigDecimal supplierDistribution = hasHeldFunds
+                ? payoutPool
+                : totalAmount.subtract(commission).setScale(2, RoundingMode.HALF_UP);
+        if (supplierDistribution.compareTo(BigDecimal.ZERO) < 0) {
+            supplierDistribution = BigDecimal.ZERO;
+        }
+
+        distributeToSuppliers(order, supplierDistribution);
 
         order.setPayoutStatus(PAYOUT_APPROVED);
         order.setAdminHoldingAmount(BigDecimal.ZERO);
@@ -605,15 +632,13 @@ public class OrderServiceImpl extends BaseServiceImpl<Order, Long> implements Or
         }
     }
 
-    private void distributeToSuppliers(Order order) {
-        BigDecimal totalAmount = Optional.ofNullable(order.getTotalAmount()).orElse(BigDecimal.ZERO);
-        BigDecimal commission = totalAmount.multiply(ADMIN_COMMISSION_RATE).setScale(2, RoundingMode.HALF_UP);
-        BigDecimal payoutPool = totalAmount.subtract(commission);
-        if (payoutPool.compareTo(BigDecimal.ZERO) < 0) {
-            payoutPool = BigDecimal.ZERO;
+    private void distributeToSuppliers(Order order, BigDecimal payoutPool) {
+        BigDecimal effectivePool = payoutPool == null ? BigDecimal.ZERO : payoutPool;
+        if (effectivePool.compareTo(BigDecimal.ZERO) <= 0) {
+            return;
         }
 
-        Map<Long, BigDecimal> payouts = calculateSupplierPayouts(order, payoutPool);
+        Map<Long, BigDecimal> payouts = calculateSupplierPayouts(order, effectivePool);
         for (Map.Entry<Long, BigDecimal> entry : payouts.entrySet()) {
             Supplier supplier = supplierRepository.findById(entry.getKey())
                     .orElseThrow(() -> new RuntimeException("供应商不存在: " + entry.getKey()));

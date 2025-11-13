@@ -28,6 +28,7 @@ const loading = ref(false)
 const error = ref<string | null>(null)
 const consumers = ref<ConsumerRecord[]>([])
 const total = ref(0)
+const PAGE_SIZE = 8
 
 const filters = reactive({
   keyword: '',
@@ -84,15 +85,38 @@ const statusOptions = [
   { label: '停用', value: 'false' },
 ]
 
+const pagination = reactive({
+  page: 0,
+  size: PAGE_SIZE,
+})
+
 const hasConsumers = computed(() => consumers.value.length > 0)
+
+const totalPages = computed(() => {
+  if (pagination.size <= 0) return 0
+  return Math.ceil(total.value / pagination.size)
+})
+
+const pageIndicator = computed(() => {
+  if (totalPages.value <= 0) return '0/0'
+  return `${pagination.page + 1}/${totalPages.value}`
+})
+
+const canGoPreviousPage = computed(
+  () => totalPages.value > 0 && pagination.page > 0
+)
+
+const canGoNextPage = computed(
+  () => totalPages.value > 0 && pagination.page + 1 < totalPages.value
+)
 
 async function loadConsumers() {
   loading.value = true
   error.value = null
   try {
     const params: Record<string, unknown> = {
-      page: 0,
-      size: 1000,
+      page: pagination.page,
+      size: PAGE_SIZE,
     }
     if (filters.keyword.trim()) {
       params.keyword = filters.keyword.trim()
@@ -104,9 +128,27 @@ async function loadConsumers() {
       params.membershipLevel = filters.membershipLevel
     }
 
+    const requestedPage = pagination.page
     const { data } = await api.get<PageResponse<ConsumerRecord>>('/consumers', { params })
-    consumers.value = data.content ?? []
-    total.value = data.totalElements ?? 0
+    const items = Array.isArray(data.content) ? data.content : []
+    const totalElements =
+      typeof data.totalElements === 'number' ? data.totalElements : items.length
+    const backendPage =
+      typeof data.number === 'number' ? data.number : requestedPage
+    const calculatedTotalPages = PAGE_SIZE > 0 ? Math.ceil(totalElements / PAGE_SIZE) : 0
+    const safePage =
+      calculatedTotalPages > 0 ? Math.min(backendPage, calculatedTotalPages - 1) : 0
+
+    if (calculatedTotalPages > 0 && backendPage >= calculatedTotalPages && requestedPage !== safePage) {
+      pagination.page = safePage
+      await loadConsumers()
+      return
+    }
+
+    consumers.value = items
+    total.value = totalElements
+    pagination.page = safePage
+    pagination.size = PAGE_SIZE
   } catch (err) {
     error.value = err instanceof Error ? err.message : '加载消费者数据失败'
   } finally {
@@ -223,9 +265,22 @@ function membershipLabel(level: number | null) {
   return option ? option.label : `等级 ${level}`
 }
 
+function changePage(target: number) {
+  if (target < 0 || target === pagination.page) return
+  if (totalPages.value && target >= totalPages.value) return
+  pagination.page = target
+  loadConsumers()
+}
+
+function formatNumber(value?: number | null) {
+  if (typeof value !== 'number' || Number.isNaN(value)) return '0'
+  return new Intl.NumberFormat('zh-CN').format(value)
+}
+
 watch(
   () => ({ ...filters }),
   () => {
+    pagination.page = 0
     loadConsumers()
   }
 )
@@ -283,51 +338,78 @@ function formatPoints(points: number | null) {
     <div v-else-if="error" class="placeholder is-error">{{ error }}</div>
     <template v-else>
       <section class="panel">
-        <div v-if="hasConsumers" class="table-wrapper scrollable-table">
+        <div v-if="hasConsumers" class="table-wrapper">
           <table class="data-table">
             <thead>
               <tr>
                 <th scope="col">ID</th>
-              <th scope="col">账号</th>
-              <th scope="col">联系方式</th>
-              <th scope="col">积分</th>
-              <th scope="col">会员等级</th>
-              <th scope="col">状态</th>
-              <th scope="col" class="actions">操作</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-for="record in consumers" :key="record.id">
-              <td>{{ record.id }}</td>
-              <td>
-                <div class="cell-main">
-                  <strong>{{ record.username }}</strong>
-                  <span v-if="record.email" class="sub">{{ record.email }}</span>
-                  <span v-if="record.address" class="sub">{{ record.address }}</span>
-                </div>
-              </td>
-              <td>
-                <div class="cell-main">
-                  <span>{{ record.phone ?? '—' }}</span>
-                  <span v-if="record.realName" class="sub">{{ record.realName }}</span>
-                </div>
-              </td>
-              <td>{{ formatPoints(record.points) }}</td>
-              <td>{{ membershipLabel(record.membershipLevel) }}</td>
-              <td>
-                <span :class="['status-pill', record.enabled ? 'is-active' : 'is-disabled']">
-                  {{ formatStatus(record) }}
-                </span>
-              </td>
-              <td class="actions">
-                <button type="button" class="link" @click="openEditDialog(record)">编辑</button>
-                <button type="button" class="link is-danger" @click="deleteConsumer(record.id)">删除</button>
-              </td>
-            </tr>
-          </tbody>
+                <th scope="col">账号</th>
+                <th scope="col">联系方式</th>
+                <th scope="col">积分</th>
+                <th scope="col">会员等级</th>
+                <th scope="col">状态</th>
+                <th scope="col" class="actions">操作</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="record in consumers" :key="record.id">
+                <td>{{ record.id }}</td>
+                <td>
+                  <div class="cell-main">
+                    <strong>{{ record.username }}</strong>
+                    <span v-if="record.email" class="sub">{{ record.email }}</span>
+                    <span v-if="record.address" class="sub">{{ record.address }}</span>
+                  </div>
+                </td>
+                <td>
+                  <div class="cell-main">
+                    <span>{{ record.phone ?? '—' }}</span>
+                    <span v-if="record.realName" class="sub">{{ record.realName }}</span>
+                  </div>
+                </td>
+                <td>{{ formatPoints(record.points) }}</td>
+                <td>{{ membershipLabel(record.membershipLevel) }}</td>
+                <td>
+                  <span :class="['status-pill', record.enabled ? 'is-active' : 'is-disabled']">
+                    {{ formatStatus(record) }}
+                  </span>
+                </td>
+                <td class="actions">
+                  <button type="button" class="link" @click="openEditDialog(record)">编辑</button>
+                  <button type="button" class="link is-danger" @click="deleteConsumer(record.id)">删除</button>
+                </td>
+              </tr>
+            </tbody>
           </table>
         </div>
         <p v-else class="empty">暂无消费者数据，点击右上角按钮新增采购账号。</p>
+
+        <nav
+          v-if="hasConsumers && totalPages > 0"
+          class="pagination-footer"
+          aria-label="消费者分页"
+        >
+          <span class="pagination-status">共 {{ formatNumber(total) }} 个账号</span>
+          <div class="pagination-controls">
+            <button
+              type="button"
+              class="pager-button"
+              :disabled="!canGoPreviousPage || loading"
+              @click="changePage(pagination.page - 1)"
+            >
+              &lt;
+            </button>
+            <span class="page-indicator">{{ pageIndicator }}</span>
+            <button
+              type="button"
+              class="pager-button"
+              :disabled="!canGoNextPage || loading"
+              @click="changePage(pagination.page + 1)"
+            >
+              &gt;
+            </button>
+          </div>
+        </nav>
       </section>
     </template>
 
@@ -560,31 +642,6 @@ function formatPoints(points: number | null) {
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7);
 }
 
-.table-wrapper.scrollable-table {
-  --consumer-visible-rows: 3;
-  --consumer-row-height: 5rem;
-  --consumer-header-height: 3.2rem;
-  max-height: calc(
-    var(--consumer-visible-rows) * var(--consumer-row-height) +
-      var(--consumer-header-height)
-  );
-  overflow-y: auto;
-  overscroll-behavior: contain;
-}
-
-.table-wrapper.scrollable-table::-webkit-scrollbar {
-  width: 6px;
-}
-
-.table-wrapper.scrollable-table::-webkit-scrollbar-thumb {
-  background: rgba(59, 130, 246, 0.35);
-  border-radius: 999px;
-}
-
-.table-wrapper.scrollable-table::-webkit-scrollbar-track {
-  background: transparent;
-}
-
 .data-table {
   width: 100%;
   border-collapse: collapse;
@@ -667,6 +724,52 @@ function formatPoints(points: number | null) {
   text-align: center;
   color: rgba(71, 85, 105, 0.75);
   padding: 1rem 0;
+}
+
+.pagination-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.75rem 1.5rem;
+  margin-top: 1.2rem;
+}
+
+.pagination-status {
+  color: rgba(71, 85, 105, 0.75);
+  font-weight: 600;
+}
+
+.pagination-controls {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.pager-button {
+  width: 2.4rem;
+  height: 2.4rem;
+  border-radius: 999px;
+  border: 1px solid rgba(148, 163, 184, 0.55);
+  background: rgba(226, 232, 240, 0.6);
+  color: rgba(30, 41, 59, 0.8);
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.pager-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.page-indicator {
+  min-width: 3.2rem;
+  text-align: center;
+  font-weight: 600;
+  color: rgba(30, 41, 59, 0.75);
 }
 
 .dialog-backdrop {

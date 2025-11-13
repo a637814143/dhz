@@ -25,6 +25,7 @@ const loading = ref(false)
 const error = ref<string | null>(null)
 const suppliers = ref<SupplierRecord[]>([])
 const total = ref(0)
+const PAGE_SIZE = 8
 
 const filters = reactive({
   keyword: '',
@@ -35,7 +36,7 @@ const filters = reactive({
 
 const pagination = reactive({
   page: 0,
-  size: 10,
+  size: PAGE_SIZE,
 })
 
 const statusOptions = [
@@ -59,8 +60,6 @@ const enabledOptions = [
   { label: '启用', value: 'true' },
   { label: '停用', value: 'false' },
 ]
-
-const sizeOptions = [10, 20, 50]
 
 const createDialogOpen = ref(false)
 const editDialogOpen = ref(false)
@@ -110,9 +109,18 @@ const totalPages = computed(() => {
   return Math.ceil(total.value / pagination.size)
 })
 
-const pageNumbers = computed(() => {
-  return Array.from({ length: totalPages.value }, (_, index) => index)
+const pageIndicator = computed(() => {
+  if (totalPages.value <= 0) return '0/0'
+  return `${pagination.page + 1}/${totalPages.value}`
 })
+
+const canGoPreviousPage = computed(
+  () => totalPages.value > 0 && pagination.page > 0
+)
+
+const canGoNextPage = computed(
+  () => totalPages.value > 0 && pagination.page + 1 < totalPages.value
+)
 
 async function loadSuppliers() {
   loading.value = true
@@ -120,7 +128,7 @@ async function loadSuppliers() {
   try {
     const params: Record<string, unknown> = {
       page: pagination.page,
-      size: pagination.size,
+      size: PAGE_SIZE,
       sortBy: 'createdAt',
       sortDirection: 'DESC',
     }
@@ -134,7 +142,7 @@ async function loadSuppliers() {
     suppliers.value = Array.isArray(data.content) ? data.content : []
     total.value = typeof data.totalElements === 'number' ? data.totalElements : suppliers.value.length
     pagination.page = typeof data.number === 'number' ? data.number : pagination.page
-    pagination.size = typeof data.size === 'number' ? data.size : pagination.size
+    pagination.size = PAGE_SIZE
   } catch (err) {
     error.value = err instanceof Error ? err.message : '加载供应商数据失败'
   } finally {
@@ -252,6 +260,11 @@ function formatLevel(level?: string | null) {
 function formatEnabled(enabled: boolean | null | undefined) {
   if (enabled === null || enabled === undefined) return '未知'
   return enabled ? '启用' : '停用'
+}
+
+function formatNumber(value?: number | null) {
+  if (typeof value !== 'number' || Number.isNaN(value)) return '0'
+  return new Intl.NumberFormat('zh-CN').format(value)
 }
 
 function formatDateTime(value?: string | null) {
@@ -403,14 +416,6 @@ watch(
   }
 )
 
-watch(
-  () => pagination.size,
-  () => {
-    pagination.page = 0
-    loadSuppliers()
-  }
-)
-
 onMounted(() => {
   loadSuppliers()
 })
@@ -454,12 +459,6 @@ onMounted(() => {
             <option v-for="option in enabledOptions" :key="option.value" :value="option.value">
               {{ option.label }}
             </option>
-          </select>
-        </label>
-        <label>
-          <span>每页条数</span>
-          <select v-model.number="pagination.size">
-            <option v-for="size in sizeOptions" :key="size" :value="size">{{ size }}</option>
           </select>
         </label>
       </div>
@@ -536,26 +535,31 @@ onMounted(() => {
         </table>
         <p v-else class="empty">暂无供应商记录，点击右上角按钮新增供应商账号。</p>
 
-        <nav v-if="hasSuppliers && totalPages > 1" class="pagination" aria-label="供应商分页">
-          <button type="button" :disabled="pagination.page === 0" @click="changePage(pagination.page - 1)">
-            上一页
-          </button>
-          <button
-            v-for="page in pageNumbers"
-            :key="page"
-            type="button"
-            :class="{ current: page === pagination.page }"
-            @click="changePage(page)"
-          >
-            {{ page + 1 }}
-          </button>
-          <button
-            type="button"
-            :disabled="totalPages > 0 && pagination.page >= totalPages - 1"
-            @click="changePage(pagination.page + 1)"
-          >
-            下一页
-          </button>
+        <nav
+          v-if="hasSuppliers && totalPages > 0"
+          class="pagination-footer"
+          aria-label="供应商分页"
+        >
+          <span class="pagination-status">共 {{ formatNumber(total) }} 个供应商</span>
+          <div class="pagination-controls">
+            <button
+              type="button"
+              class="pager-button"
+              :disabled="!canGoPreviousPage || loading"
+              @click="changePage(pagination.page - 1)"
+            >
+              &lt;
+            </button>
+            <span class="page-indicator">{{ pageIndicator }}</span>
+            <button
+              type="button"
+              class="pager-button"
+              :disabled="!canGoNextPage || loading"
+              @click="changePage(pagination.page + 1)"
+            >
+              &gt;
+            </button>
+          </div>
         </nav>
       </section>
     </template>
@@ -1011,30 +1015,50 @@ onMounted(() => {
   padding: 1rem 0;
 }
 
-.pagination {
+.pagination-footer {
   display: flex;
-  justify-content: center;
-  gap: 0.5rem;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.75rem 1.5rem;
   margin-top: 1.2rem;
 }
 
-.pagination button {
-  padding: 0.45rem 0.9rem;
-  border-radius: 12px;
-  border: 1px solid rgba(148, 163, 184, 0.4);
-  background: #fff;
+.pagination-status {
+  color: rgba(71, 85, 105, 0.75);
+  font-weight: 600;
+}
+
+.pagination-controls {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.pager-button {
+  width: 2.4rem;
+  height: 2.4rem;
+  border-radius: 999px;
+  border: 1px solid rgba(148, 163, 184, 0.55);
+  background: rgba(226, 232, 240, 0.6);
+  color: rgba(30, 41, 59, 0.8);
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   cursor: pointer;
 }
 
-.pagination button.current {
-  background: linear-gradient(135deg, #f97316, #fbbf24);
-  color: #fff;
-  border-color: transparent;
-}
-
-.pagination button:disabled {
+.pager-button:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+.page-indicator {
+  min-width: 3.2rem;
+  text-align: center;
+  font-weight: 600;
+  color: rgba(30, 41, 59, 0.75);
 }
 
 .dialog-backdrop {
