@@ -575,7 +575,7 @@ function goToNextPage() {
           <span v-if="tableLoading" class="table-status">数据刷新中…</span>
         </div>
         <template v-if="products.length">
-          <div class="table-wrapper scrollable-table">
+          <div class="table-wrapper">
             <table>
               <thead>
                 <tr>
@@ -999,31 +999,6 @@ function goToNextPage() {
   text-align: center;
   font-weight: 600;
   color: rgba(15, 23, 42, 0.75);
-}
-
-.table-wrapper.scrollable-table {
-  --admin-visible-rows: 3;
-  --admin-row-height: 4.6rem;
-  --admin-header-height: 3.2rem;
-  max-height: calc(
-    var(--admin-visible-rows) * var(--admin-row-height) +
-      var(--admin-header-height)
-  );
-  overflow-y: auto;
-  overscroll-behavior: contain;
-}
-
-.table-wrapper.scrollable-table::-webkit-scrollbar {
-  width: 6px;
-}
-
-.table-wrapper.scrollable-table::-webkit-scrollbar-thumb {
-  background: rgba(37, 99, 235, 0.35);
-  border-radius: 999px;
-}
-
-.table-wrapper.scrollable-table::-webkit-scrollbar-track {
-  background: transparent;
 }
 
 table {

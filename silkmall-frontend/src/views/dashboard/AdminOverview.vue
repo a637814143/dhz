@@ -71,6 +71,22 @@ const totalProductPages = computed(() =>
     : 0
 )
 
+const productPageIndicator = computed(() => {
+  if (totalProductPages.value <= 0) {
+    return '0/0'
+  }
+  return `${productPagination.page + 1}/${totalProductPages.value}`
+})
+
+const canGoProductPrevious = computed(
+  () => totalProductPages.value > 0 && productPagination.page > 0
+)
+
+const canGoProductNext = computed(
+  () =>
+    totalProductPages.value > 0 && productPagination.page + 1 < totalProductPages.value
+)
+
 const PRODUCT_EVENT_NAME = 'silkmall:products:changed'
 
 type ProductChangeAction = 'created' | 'updated' | 'deleted' | 'status-changed'
@@ -861,18 +877,31 @@ function formatNumber(value?: number | null) {
           </div>
           <p v-else class="product-placeholder">暂无商品记录，请尝试调整筛选条件或新增商品。</p>
 
-          <nav v-if="totalProductPages > 1" class="pagination" aria-label="商品分页导航">
-            <button type="button" :disabled="productPagination.page === 0" @click="changeProductPage(productPagination.page - 1)">
-              上一页
-            </button>
-            <span>第 {{ productPagination.page + 1 }} / {{ totalProductPages }} 页</span>
-            <button
-              type="button"
-              :disabled="totalProductPages > 0 && productPagination.page + 1 >= totalProductPages"
-              @click="changeProductPage(productPagination.page + 1)"
-            >
-              下一页
-            </button>
+          <nav
+            v-if="totalProductPages > 0"
+            class="product-pagination-footer"
+            aria-label="商品分页导航"
+          >
+            <span class="pagination-status">共 {{ formatNumber(productPagination.total) }} 件商品</span>
+            <div class="pagination-controls">
+              <button
+                type="button"
+                class="pager-button"
+                :disabled="!canGoProductPrevious || productLoading"
+                @click="changeProductPage(productPagination.page - 1)"
+              >
+                &lt;
+              </button>
+              <span class="page-indicator">{{ productPageIndicator }}</span>
+              <button
+                type="button"
+                class="pager-button"
+                :disabled="!canGoProductNext || productLoading"
+                @click="changeProductPage(productPagination.page + 1)"
+              >
+                &gt;
+              </button>
+            </div>
           </nav>
         </div>
       </section>
@@ -1411,25 +1440,51 @@ function formatNumber(value?: number | null) {
   cursor: not-allowed;
 }
 
-.pagination {
+.product-pagination-footer {
   display: flex;
-  justify-content: center;
+  justify-content: space-between;
   align-items: center;
-  gap: 1rem;
+  flex-wrap: wrap;
+  gap: 0.75rem 1.5rem;
   margin-top: 1.25rem;
 }
 
-.pagination button {
-  padding: 0.45rem 1.2rem;
-  border-radius: 999px;
-  border: 1px solid rgba(15, 23, 42, 0.18);
-  background: rgba(226, 232, 240, 0.4);
-  cursor: pointer;
+.pagination-status {
+  color: rgba(15, 23, 42, 0.65);
+  font-weight: 600;
 }
 
-.pagination button:disabled {
+.pagination-controls {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.pager-button {
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: 999px;
+  border: 1px solid rgba(15, 23, 42, 0.2);
+  background: rgba(148, 163, 184, 0.12);
+  color: rgba(15, 23, 42, 0.75);
+  font-size: 1.1rem;
+  font-weight: 600;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.pager-button:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+.page-indicator {
+  min-width: 3.5rem;
+  text-align: center;
+  font-weight: 600;
+  color: rgba(15, 23, 42, 0.75);
 }
 
 .product-dialog,
