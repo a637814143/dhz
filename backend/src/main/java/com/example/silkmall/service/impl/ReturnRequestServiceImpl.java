@@ -331,22 +331,25 @@ public class ReturnRequestServiceImpl extends BaseServiceImpl<ReturnRequest, Lon
                 .orElseThrow(() -> new RuntimeException("供应商不存在: " + supplier.getId()));
         Consumer persistedConsumer = consumerRepository.findById(consumer.getId())
                 .orElseThrow(() -> new RuntimeException("消费者不存在: " + consumer.getId()));
-        Admin persistedAdmin = adminRepository.findById(admin.getId())
-                .orElseThrow(() -> new RuntimeException("管理员不存在: " + admin.getId()));
+        BigDecimal supplierContribution = supplierShare == null
+                ? refundAmount.setScale(2, RoundingMode.HALF_UP)
+                : supplierShare.setScale(2, RoundingMode.HALF_UP);
+        if (Boolean.TRUE.equals(request.getAfterReceipt())) {
+            BigDecimal normalizedRefund = refundAmount.setScale(2, RoundingMode.HALF_UP);
+            supplierContribution = normalizedRefund;
+            request.setSupplierShareAmount(normalizedRefund);
+            if (commission == null || commission.compareTo(BigDecimal.ZERO) != 0) {
+                request.setCommissionAmount(BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP));
+                commission = BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP);
+            }
+        }
 
         BigDecimal supplierBalance = resolveBalance(persistedSupplier.getWalletBalance());
-        if (supplierBalance.compareTo(supplierShare) < 0) {
+        if (supplierBalance.compareTo(supplierContribution) < 0) {
             throw new RuntimeException("供应商钱包余额不足，无法完成退款");
         }
-        persistedSupplier.setWalletBalance(supplierBalance.subtract(supplierShare));
+        persistedSupplier.setWalletBalance(supplierBalance.subtract(supplierContribution));
         supplierRepository.save(persistedSupplier);
-
-        BigDecimal adminBalance = resolveBalance(persistedAdmin.getWalletBalance());
-        if (adminBalance.compareTo(commission) < 0) {
-            throw new RuntimeException("管理员钱包余额不足，无法完成退款");
-        }
-        persistedAdmin.setWalletBalance(adminBalance.subtract(commission));
-        adminRepository.save(persistedAdmin);
 
         BigDecimal consumerBalance = resolveBalance(persistedConsumer.getWalletBalance());
         persistedConsumer.setWalletBalance(consumerBalance.add(refundAmount));
@@ -370,12 +373,24 @@ public class ReturnRequestServiceImpl extends BaseServiceImpl<ReturnRequest, Lon
         }
 
         BigDecimal commission = request.getCommissionAmount();
+        BigDecimal supplierShare = request.getSupplierShareAmount();
+
+        if (Boolean.TRUE.equals(request.getAfterReceipt())) {
+            BigDecimal normalizedRefund = refundAmount.setScale(2, RoundingMode.HALF_UP);
+            if (commission == null || commission.compareTo(BigDecimal.ZERO) != 0) {
+                request.setCommissionAmount(BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP));
+            }
+            if (supplierShare == null || supplierShare.compareTo(normalizedRefund) != 0) {
+                request.setSupplierShareAmount(normalizedRefund);
+            }
+            return refundAmount;
+        }
+
         if (commission == null) {
             commission = calculateCommission(refundAmount);
             request.setCommissionAmount(commission);
         }
 
-        BigDecimal supplierShare = request.getSupplierShareAmount();
         if (supplierShare == null) {
             supplierShare = refundAmount.subtract(commission).setScale(2, RoundingMode.HALF_UP);
             request.setSupplierShareAmount(supplierShare);
