@@ -1,5 +1,6 @@
 package com.example.silkmall.service.impl;
 
+import com.example.silkmall.dto.CategoryOptionDTO;
 import com.example.silkmall.entity.Category;
 import com.example.silkmall.repository.CategoryRepository;
 import com.example.silkmall.service.CategoryService;
@@ -31,12 +32,17 @@ public class CategoryServiceImpl extends BaseServiceImpl<Category, Long> impleme
     public boolean existsByName(String name) {
         return categoryRepository.existsByName(name);
     }
-    
+
+    @Override
+    public boolean existsByNameExcludingId(String name, Long id) {
+        return categoryRepository.existsByNameAndIdNot(name, id);
+    }
+
     @Override
     public void enableCategory(Long id) {
         Category category = findById(id)
                 .orElseThrow(() -> new RuntimeException("分类不存在"));
-        
+
         category.setEnabled(true);
         categoryRepository.save(category);
     }
@@ -54,14 +60,9 @@ public class CategoryServiceImpl extends BaseServiceImpl<Category, Long> impleme
     public List<Category> findRootCategories() {
         return findByParentId(null);
     }
-    
+
     @Override
-    public Category save(Category category) {
-        // 检查分类名称是否已存在
-        if (existsByName(category.getName())) {
-            throw new RuntimeException("分类名称已存在");
-        }
-        
-        return super.save(category);
+    public List<CategoryOptionDTO> findAllOptions() {
+        return categoryRepository.findAllOptions();
     }
 }

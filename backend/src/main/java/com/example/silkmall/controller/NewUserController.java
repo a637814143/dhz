@@ -6,6 +6,7 @@ import com.example.silkmall.service.impl.NewConsumerServiceImpl;
 import com.example.silkmall.service.impl.NewSupplierServiceImpl;
 import com.example.silkmall.controller.BaseController;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.web.bind.annotation.*;
@@ -120,8 +121,7 @@ public class NewUserController extends BaseController {
         }
         
         if (adminService.findById(id).isPresent()) {
-            adminService.deleteById(id);
-            return success("管理员删除成功");
+            return error("管理员账号不支持删除", HttpStatus.FORBIDDEN);
         }
         
         return notFound("未找到该用户");
@@ -193,7 +193,7 @@ public class NewUserController extends BaseController {
         admin.setPassword(passwordEncoder.encode(admin.getPassword()));
         admin.setRole("admin");
         
-        return created(adminService.register(admin));
+        return error("管理员账号仅支持登录，禁止注册", HttpStatus.FORBIDDEN);
     }
     
     @PostMapping("/{id}/reset-password")
@@ -258,8 +258,7 @@ public class NewUserController extends BaseController {
         }
         
         if (adminService.findById(id).isPresent()) {
-            adminService.disable(id);
-            return success("用户已禁用");
+            return error("管理员账号不支持禁用", HttpStatus.FORBIDDEN);
         }
         
         return notFound("未找到该用户");

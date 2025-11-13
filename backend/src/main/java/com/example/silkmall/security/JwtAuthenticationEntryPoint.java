@@ -15,7 +15,17 @@ public class JwtAuthenticationEntryPoint implements AuthenticationEntryPoint {
     @Override
     public void commence(HttpServletRequest request, HttpServletResponse response,
                         AuthenticationException authException) throws IOException, ServletException {
-        // 当用户尝试访问受保护的资源但未提供有效的令牌时，发送401响应
-        response.sendError(HttpServletResponse.SC_UNAUTHORIZED, "未授权访问");
+        String requestedWith = request.getHeader("X-Requested-With");
+        String accept = request.getHeader("Accept");
+        boolean isAjax = "XMLHttpRequest".equalsIgnoreCase(requestedWith);
+        boolean expectsJson = accept != null && accept.contains("application/json");
+        boolean apiRequest = request.getRequestURI() != null && request.getRequestURI().startsWith("/api/");
+
+        if (apiRequest || isAjax || expectsJson) {
+            response.sendError(HttpServletResponse.SC_UNAUTHORIZED, "未授权访问");
+        } else {
+            response.setStatus(HttpServletResponse.SC_FOUND);
+            response.setHeader("Location", "/login");
+        }
     }
 }

@@ -1,5 +1,43 @@
 <script setup lang="ts">
-import { RouterLink, RouterView } from 'vue-router'
+import { computed } from 'vue'
+import { RouterLink, RouterView, useRouter, useRoute } from 'vue-router'
+import { useAuthState } from '@/services/authState'
+
+const router = useRouter()
+const route = useRoute()
+const { state, isAuthenticated, clearAuth, isGuestSession, exitGuestMode } = useAuthState()
+
+const roleHome = computed(() => {
+  switch (state.user?.userType) {
+    case 'admin':
+      return '/admin/overview'
+    case 'supplier':
+      return '/supplier/workbench'
+    case 'consumer':
+      return '/consumer/dashboard'
+    default:
+      return '/auth'
+  }
+})
+
+const showGuestLinks = computed(() => {
+  if (isAuthenticated.value || isGuestSession.value) {
+    return true
+  }
+  return route.name !== 'auth'
+})
+
+const showPrimaryNav = computed(() => isAuthenticated.value || isGuestSession.value)
+
+function signOut() {
+  clearAuth()
+  router.push({ name: 'auth', query: { mode: 'login' } })
+}
+
+function leaveGuestMode() {
+  exitGuestMode()
+  router.push({ name: 'auth', query: { mode: 'login' } })
+}
 </script>
 
 <template>
@@ -8,15 +46,33 @@ import { RouterLink, RouterView } from 'vue-router'
       <RouterLink to="/" class="brand" aria-label="返回首页">
         <span class="brand-mark">丝</span>
         <div class="brand-meta">
-          <strong class="brand-title">SilkMall</strong>
+          <strong class="brand-title">蚕制品销售</strong>
           <span class="brand-subtitle">蚕制品智慧销售平台</span>
         </div>
       </RouterLink>
 
-      <nav class="primary-nav" aria-label="主导航">
+      <nav v-if="showPrimaryNav" class="primary-nav" aria-label="主导航">
         <RouterLink to="/" active-class="is-active" class="nav-link">产品中心</RouterLink>
         <RouterLink to="/about" active-class="is-active" class="nav-link">关于项目</RouterLink>
       </nav>
+
+      <div v-if="showGuestLinks" class="auth-controls">
+        <template v-if="isAuthenticated">
+          <span class="user-chip">{{ state.user?.username }}</span>
+          <RouterLink :to="roleHome" class="dashboard-link">我的工作台</RouterLink>
+          <button type="button" class="logout-button" @click="signOut">退出</button>
+        </template>
+        <template v-else-if="isGuestSession">
+          <span class="user-chip is-guest">游客模式</span>
+          <button type="button" class="logout-button" @click="leaveGuestMode">退出游客</button>
+          <RouterLink :to="{ name: 'auth', query: { mode: 'login' } }" class="login-link">登录</RouterLink>
+          <RouterLink :to="{ name: 'auth', query: { mode: 'register' } }" class="register-link">注册</RouterLink>
+        </template>
+        <template v-else>
+          <RouterLink :to="{ name: 'auth', query: { mode: 'login' } }" class="login-link">登录</RouterLink>
+          <RouterLink :to="{ name: 'auth', query: { mode: 'register' } }" class="register-link">注册</RouterLink>
+        </template>
+      </div>
     </header>
 
     <main class="app-main">
@@ -24,7 +80,7 @@ import { RouterLink, RouterView } from 'vue-router'
     </main>
 
     <footer class="app-footer">
-      <p>© {{ new Date().getFullYear() }} SilkMall. 致力于打造数字化蚕桑产业链。</p>
+      <p>© {{ new Date().getFullYear() }} 蚕制品销售。致力于打造数字化蚕桑产业链。</p>
     </footer>
   </div>
 </template>
@@ -116,6 +172,46 @@ import { RouterLink, RouterView } from 'vue-router'
   transform: translateY(0);
 }
 
+.auth-controls {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.login-link,
+.register-link,
+.dashboard-link {
+  font-weight: 600;
+  color: #f07a26;
+}
+
+.register-link {
+  padding: 0.35rem 0.85rem;
+  border-radius: 999px;
+  background: rgba(240, 122, 38, 0.12);
+}
+
+.user-chip {
+  padding: 0.35rem 0.85rem;
+  border-radius: 999px;
+  background: rgba(79, 70, 229, 0.12);
+  color: #4338ca;
+  font-weight: 600;
+}
+
+.user-chip.is-guest {
+  background: rgba(59, 130, 246, 0.14);
+  color: #1d4ed8;
+}
+
+.logout-button {
+  border: none;
+  background: transparent;
+  color: rgba(0, 0, 0, 0.6);
+  font-weight: 600;
+  cursor: pointer;
+}
+
 .app-main {
   flex: 1;
   padding-bottom: 3rem;
@@ -143,6 +239,12 @@ import { RouterLink, RouterView } from 'vue-router'
   .nav-link {
     flex: 1;
     text-align: center;
+  }
+
+  .auth-controls {
+    width: 100%;
+    justify-content: flex-end;
+    flex-wrap: wrap;
   }
 }
 

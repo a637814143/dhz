@@ -1,0 +1,172 @@
+package com.example.silkmall.controller;
+
+import com.example.silkmall.entity.Order;
+import com.example.silkmall.service.OrderService;
+import com.example.silkmall.security.CustomUserDetails;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.web.bind.annotation.*;
+import java.util.Optional;
+
+@RestController
+@RequestMapping("/api/orders")
+public class OrderController extends BaseController {
+    private final OrderService orderService;
+    
+    @Autowired
+    public OrderController(OrderService orderService) {
+        this.orderService = orderService;
+    }
+    
+    @GetMapping("/{id}")
+    @PreAuthorize("hasRole('ADMIN') or hasRole('CONSUMER')")
+    public ResponseEntity<?> getOrderById(@PathVariable Long id,
+                                          @AuthenticationPrincipal CustomUserDetails currentUser) {
+        Optional<Order> order = orderService.findById(id);
+        if (order.isPresent()) {
+            if (isOwnerOrAdmin(currentUser, order.get())) {
+                return success(order.get());
+            }
+            return redirectForUser(currentUser);
+        } else {
+            return notFound("订单不存在");
+        }
+    }
+
+    @PostMapping
+    @PreAuthorize("hasRole('ADMIN') or hasRole('CONSUMER')")
+    public ResponseEntity<?> createOrder(@RequestBody Order order,
+                                         @AuthenticationPrincipal CustomUserDetails currentUser) {
+        if (!isOwnerOrAdmin(currentUser, order)) {
+            return redirectForUser(currentUser);
+        }
+        return created(orderService.createOrder(order));
+    }
+
+    @PutMapping("/{id}")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<Order> updateOrder(@PathVariable Long id, @RequestBody Order order) {
+        order.setId(id);
+        return success(orderService.save(order));
+    }
+
+    @DeleteMapping("/{id}")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<Void> deleteOrder(@PathVariable Long id) {
+        orderService.deleteById(id);
+        return success();
+    }
+
+    @GetMapping("/consumer/{consumerId}")
+    @PreAuthorize("hasRole('ADMIN') or (hasRole('CONSUMER') and #consumerId == principal.id)")
+    public ResponseEntity<Page<Order>> getOrdersByConsumerId(@PathVariable Long consumerId, Pageable pageable) {
+        return success(orderService.findByConsumerId(consumerId, pageable));
+    }
+
+    @GetMapping("/status/{status}")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<Page<Order>> getOrdersByStatus(@PathVariable String status, Pageable pageable) {
+        return success(orderService.findByStatus(status, pageable));
+    }
+
+    @GetMapping("/order-no/{orderNo}")
+    @PreAuthorize("hasRole('ADMIN') or hasRole('CONSUMER')")
+    public ResponseEntity<?> getOrderByOrderNo(@PathVariable String orderNo,
+                                               @AuthenticationPrincipal CustomUserDetails currentUser) {
+        Optional<Order> order = orderService.findByOrderNo(orderNo).stream().findFirst();
+        if (order.isPresent()) {
+            if (isOwnerOrAdmin(currentUser, order.get())) {
+                return success(order.get());
+            }
+            return redirectForUser(currentUser);
+        } else {
+            return notFound("订单不存在");
+        }
+    }
+
+    @PutMapping("/{id}/cancel")
+    @PreAuthorize("hasRole('ADMIN') or hasRole('CONSUMER')")
+    public ResponseEntity<?> cancelOrder(@PathVariable Long id,
+                                         @AuthenticationPrincipal CustomUserDetails currentUser) {
+        Optional<Order> order = orderService.findById(id);
+        if (order.isPresent() && isOwnerOrAdmin(currentUser, order.get())) {
+            orderService.cancelOrder(id);
+            return success();
+        }
+        return redirectForUser(currentUser);
+    }
+
+    @PutMapping("/{id}/pay")
+    @PreAuthorize("hasRole('ADMIN') or hasRole('CONSUMER')")
+    public ResponseEntity<?> payOrder(@PathVariable Long id, @RequestParam String paymentMethod,
+                                      @AuthenticationPrincipal CustomUserDetails currentUser) {
+        Optional<Order> order = orderService.findById(id);
+        if (order.isPresent() && isOwnerOrAdmin(currentUser, order.get())) {
+            orderService.payOrder(id, paymentMethod);
+            return success();
+        }
+        return redirectForUser(currentUser);
+    }
+
+    @PutMapping("/{id}/ship")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<Void> shipOrder(@PathVariable Long id) {
+        orderService.shipOrder(id);
+        return success();
+    }
+
+    @PutMapping("/{id}/deliver")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<Void> deliverOrder(@PathVariable Long id) {
+        orderService.deliverOrder(id);
+        return success();
+    }
+
+    @GetMapping("/{id}/detail")
+    @PreAuthorize("hasRole('ADMIN') or hasRole('CONSUMER')")
+    public ResponseEntity<?> getOrderDetail(@PathVariable Long id,
+                                            @AuthenticationPrincipal CustomUserDetails currentUser) {
+        Order detail = orderService.findOrderDetail(id);
+        if (detail == null) {
+            return notFound("订单不存在");
+        }
+        if (isOwnerOrAdmin(currentUser, detail)) {
+            return success(detail);
+        }
+        return redirectForUser(currentUser);
+    }
+
+    private boolean isOwnerOrAdmin(CustomUserDetails currentUser, Order order) {
+        if (currentUser == null) {
+            return false;
+        }
+        if ("admin".equalsIgnoreCase(currentUser.getUserType())) {
+            return true;
+        }
+        if (order.getConsumer() == null) {
+            return false;
+        }
+        return order.getConsumer().getId() != null && order.getConsumer().getId().equals(currentUser.getId());
+    }
+
+    private ResponseEntity<?> redirectForUser(CustomUserDetails currentUser) {
+        String target = "/login";
+        if (currentUser != null) {
+            switch (currentUser.getUserType().toLowerCase()) {
+                case "admin" -> target = "/admin/overview";
+                case "supplier" -> target = "/supplier/workbench";
+                case "consumer" -> target = "/consumer/dashboard";
+                default -> target = "/login";
+            }
+        }
+        HttpHeaders headers = new HttpHeaders();
+        headers.set(HttpHeaders.LOCATION, target);
+        return new ResponseEntity<>(headers, HttpStatus.FOUND);
+    }
+}

@@ -1,14 +1,15 @@
 package com.example.silkmall.controller;
 
 import com.example.silkmall.dto.CategoryDTO;
+import com.example.silkmall.dto.CategoryOptionDTO;
 import com.example.silkmall.entity.Category;
 import com.example.silkmall.service.CategoryService;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.Pageable;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.dao.EmptyResultDataAccessException;
 import java.util.List;
 import java.util.Optional;
 
@@ -34,18 +35,23 @@ public class CategoryController extends BaseController {
     
     @PostMapping
     public ResponseEntity<?> createCategory(@RequestBody CategoryDTO categoryDTO) {
-        if (categoryService.existsByName(categoryDTO.getName())) {
+        String name = categoryDTO.getName() != null ? categoryDTO.getName().trim() : "";
+        if (name.isEmpty()) {
+            return badRequest("分类名称不能为空");
+        }
+
+        if (categoryService.existsByName(name)) {
             return badRequest("分类名称已存在");
         }
-        
+
         // 创建Category实体对象
         Category category = new Category();
-        category.setName(categoryDTO.getName());
+        category.setName(name);
         category.setDescription(categoryDTO.getDescription());
-        category.setSortOrder(categoryDTO.getSortOrder());
+        category.setSortOrder(categoryDTO.getSortOrder() != null ? categoryDTO.getSortOrder() : 0);
         category.setIcon(categoryDTO.getIcon());
         category.setEnabled(categoryDTO.getEnabled() != null ? categoryDTO.getEnabled() : true);
-        
+
         // 设置父分类
         if (categoryDTO.getParentId() != null) {
             Category parent = new Category();
@@ -61,11 +67,22 @@ public class CategoryController extends BaseController {
         // 检查分类是否存在
         Category existingCategory = categoryService.findById(id)
                 .orElseThrow(() -> new RuntimeException("分类不存在"));
-        
+
+        String name = categoryDTO.getName() != null ? categoryDTO.getName().trim() : "";
+        if (name.isEmpty()) {
+            return badRequest("分类名称不能为空");
+        }
+
+        if (categoryService.existsByNameExcludingId(name, id)) {
+            return badRequest("分类名称已存在");
+        }
+
         // 更新分类信息
-        existingCategory.setName(categoryDTO.getName());
+        existingCategory.setName(name);
         existingCategory.setDescription(categoryDTO.getDescription());
-        existingCategory.setSortOrder(categoryDTO.getSortOrder());
+        if (categoryDTO.getSortOrder() != null) {
+            existingCategory.setSortOrder(categoryDTO.getSortOrder());
+        }
         existingCategory.setIcon(categoryDTO.getIcon());
         existingCategory.setEnabled(categoryDTO.getEnabled() != null ? categoryDTO.getEnabled() : true);
         
@@ -82,19 +99,30 @@ public class CategoryController extends BaseController {
     }
     
     @DeleteMapping("/{id}")
-    public ResponseEntity<Void> deleteCategory(@PathVariable Long id) {
-        categoryService.deleteById(id);
-        return success();
+    public ResponseEntity<?> deleteCategory(@PathVariable Long id) {
+        try {
+            categoryService.deleteById(id);
+            return success();
+        } catch (EmptyResultDataAccessException ex) {
+            return notFound("分类不存在");
+        } catch (DataIntegrityViolationException ex) {
+            return badRequest("该分类下仍有关联商品，无法删除");
+        }
     }
     
     @GetMapping
     public ResponseEntity<List<Category>> getAllCategories() {
         return success(categoryService.findAll());
     }
-    
+
     @GetMapping("/enabled")
     public ResponseEntity<List<Category>> getEnabledCategories() {
         return success(categoryService.findEnabledCategories());
+    }
+
+    @GetMapping("/options")
+    public ResponseEntity<List<CategoryOptionDTO>> getCategoryOptions() {
+        return success(categoryService.findAllOptions());
     }
     
     @GetMapping("/parent/{parentId}")

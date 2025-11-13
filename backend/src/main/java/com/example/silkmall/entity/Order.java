@@ -22,10 +22,21 @@ public class Order {
     private String shippingAddress;
     private String recipientName;
     private String recipientPhone;
+    private String consumerLookupId;
     private Date orderTime;
     private Date paymentTime;
     private Date shippingTime;
     private Date deliveryTime;
+
+    @ManyToOne
+    @JoinColumn(name = "managing_admin_id")
+    private Admin managingAdmin;
+
+    private String payoutStatus;
+    private BigDecimal adminHoldingAmount;
+    private Date inTransitTime;
+    private Date consumerConfirmationTime;
+    private Date adminApprovalTime;
     
     @ManyToOne
     @JoinColumn(name = "consumer_id")
@@ -107,9 +118,17 @@ public class Order {
     public String getRecipientPhone() {
         return recipientPhone;
     }
-    
+
     public void setRecipientPhone(String recipientPhone) {
         this.recipientPhone = recipientPhone;
+    }
+
+    public String getConsumerLookupId() {
+        return consumerLookupId;
+    }
+
+    public void setConsumerLookupId(String consumerLookupId) {
+        this.consumerLookupId = consumerLookupId;
     }
     
     public Date getOrderTime() {
@@ -139,9 +158,57 @@ public class Order {
     public Date getDeliveryTime() {
         return deliveryTime;
     }
-    
+
     public void setDeliveryTime(Date deliveryTime) {
         this.deliveryTime = deliveryTime;
+    }
+
+    public Admin getManagingAdmin() {
+        return managingAdmin;
+    }
+
+    public void setManagingAdmin(Admin managingAdmin) {
+        this.managingAdmin = managingAdmin;
+    }
+
+    public String getPayoutStatus() {
+        return payoutStatus;
+    }
+
+    public void setPayoutStatus(String payoutStatus) {
+        this.payoutStatus = payoutStatus;
+    }
+
+    public BigDecimal getAdminHoldingAmount() {
+        return adminHoldingAmount;
+    }
+
+    public void setAdminHoldingAmount(BigDecimal adminHoldingAmount) {
+        this.adminHoldingAmount = adminHoldingAmount;
+    }
+
+    public Date getInTransitTime() {
+        return inTransitTime;
+    }
+
+    public void setInTransitTime(Date inTransitTime) {
+        this.inTransitTime = inTransitTime;
+    }
+
+    public Date getConsumerConfirmationTime() {
+        return consumerConfirmationTime;
+    }
+
+    public void setConsumerConfirmationTime(Date consumerConfirmationTime) {
+        this.consumerConfirmationTime = consumerConfirmationTime;
+    }
+
+    public Date getAdminApprovalTime() {
+        return adminApprovalTime;
+    }
+
+    public void setAdminApprovalTime(Date adminApprovalTime) {
+        this.adminApprovalTime = adminApprovalTime;
     }
     
     public Consumer getConsumer() {

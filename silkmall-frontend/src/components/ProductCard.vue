@@ -1,8 +1,25 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, withDefaults } from 'vue'
 import type { ProductSummary } from '@/types'
 
-const props = defineProps<{ product: ProductSummary }>()
+const props = withDefaults(defineProps<{ product: ProductSummary; addingToCart?: boolean }>(), {
+  addingToCart: false,
+})
+
+const emit = defineEmits<{
+  (e: 'purchase', product: ProductSummary): void
+  (e: 'view-detail', product: ProductSummary): void
+  (e: 'add-to-cart', product: ProductSummary): void
+}>()
+
+function openDetail() {
+  emit('view-detail', props.product)
+}
+
+function addToCart() {
+  if (props.addingToCart) return
+  emit('add-to-cart', props.product)
+}
 
 const statusLabel = computed(() => {
   const labelMap: Record<string, string> = {
@@ -25,10 +42,21 @@ const fallbackLetter = computed(() => props.product.name?.charAt(0)?.toUpperCase
 const formattedPrice = computed(() =>
   new Intl.NumberFormat('zh-CN', { style: 'currency', currency: 'CNY' }).format(props.product.price)
 )
+
+const canPurchase = computed(() => props.product.status === 'ON_SALE' && props.product.stock > 1)
+const canAddToCart = computed(() => props.product.status === 'ON_SALE' && props.product.stock > 0)
 </script>
 
 <template>
-  <article class="product-card">
+  <article
+    class="product-card"
+    role="button"
+    tabindex="0"
+    :aria-label="`查看商品详情：${product.name}`"
+    @click="openDetail"
+    @keydown.enter.prevent.stop="openDetail"
+    @keydown.space.prevent.stop="openDetail"
+  >
     <div class="media">
       <div class="image-frame" role="img" :aria-label="product.name">
         <img v-if="product.mainImage" :src="product.mainImage" :alt="product.name" loading="lazy" />
@@ -60,6 +88,24 @@ const formattedPrice = computed(() =>
         <span>供应商：{{ product.supplierName }}</span>
         <span v-if="product.supplierLevel">等级：{{ product.supplierLevel }}</span>
       </footer>
+      <div class="actions">
+        <button
+          type="button"
+          class="add-to-cart"
+          :disabled="!canAddToCart || props.addingToCart"
+          @click.stop="addToCart"
+        >
+          {{ props.addingToCart ? '加入中…' : '加入购物车' }}
+        </button>
+        <button
+          type="button"
+          class="buy"
+          :disabled="!canPurchase"
+          @click.stop="emit('purchase', product)"
+        >
+          {{ canPurchase ? '点击购买' : '暂不可购' }}
+        </button>
+      </div>
     </div>
   </article>
 </template>
@@ -75,11 +121,17 @@ const formattedPrice = computed(() =>
   box-shadow: 0 18px 40px rgba(15, 23, 42, 0.08);
   backdrop-filter: blur(6px);
   transition: transform 0.25s ease, box-shadow 0.25s ease;
+  cursor: pointer;
 }
 
 .product-card:hover {
   transform: translateY(-6px);
   box-shadow: 0 24px 48px rgba(15, 23, 42, 0.12);
+}
+
+.product-card:focus-visible {
+  outline: 3px solid rgba(111, 169, 173, 0.65);
+  outline-offset: 4px;
 }
 
 .media {
@@ -188,6 +240,63 @@ const formattedPrice = computed(() =>
   gap: 0.75rem;
   font-size: 0.8rem;
   color: rgba(17, 24, 39, 0.65);
+}
+
+
+.actions {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.actions button {
+  border-radius: 999px;
+  padding: 0.5rem 1.35rem;
+  font-size: 0.9rem;
+  font-weight: 600;
+  transition: transform 0.2s ease, box-shadow 0.2s ease, opacity 0.2s ease,
+    background-color 0.2s ease, color 0.2s ease;
+}
+
+.actions .add-to-cart {
+  border: 1px solid rgba(111, 169, 173, 0.45);
+  background: rgba(255, 255, 255, 0.85);
+  color: #0f172a;
+  cursor: pointer;
+}
+
+.actions .add-to-cart:hover:not(:disabled) {
+  background: rgba(111, 169, 173, 0.12);
+  box-shadow: 0 12px 28px rgba(111, 169, 173, 0.18);
+}
+
+.actions .add-to-cart:disabled {
+  cursor: not-allowed;
+  opacity: 0.65;
+  box-shadow: none;
+}
+
+.actions .buy {
+  border: none;
+  background: linear-gradient(135deg, rgba(242, 177, 66, 0.85), rgba(111, 169, 173, 0.85));
+  color: #fff;
+  box-shadow: 0 16px 36px rgba(242, 177, 66, 0.22);
+  cursor: pointer;
+}
+
+.actions .buy:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 22px 44px rgba(242, 177, 66, 0.3);
+}
+
+.actions .buy:disabled {
+  cursor: not-allowed;
+  background: rgba(15, 23, 42, 0.1);
+  color: rgba(15, 23, 42, 0.45);
+  box-shadow: none;
+  transform: none;
 }
 
 @media (max-width: 768px) {

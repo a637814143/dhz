@@ -2,6 +2,7 @@ package com.example.silkmall.entity;
 
 import jakarta.persistence.*;
 import lombok.Data;
+import java.math.BigDecimal;
 import java.util.Date;
 
 @Data
@@ -20,6 +21,7 @@ public abstract class User {
     private Date updatedAt;
     private String role;
     private boolean enabled;
+    private BigDecimal walletBalance;
     
     public Long getId() {
         return id;
@@ -96,19 +98,33 @@ public abstract class User {
     public boolean isEnabled() {
         return enabled;
     }
-    
+
     public void setEnabled(boolean enabled) {
         this.enabled = enabled;
     }
-    
+
+    public BigDecimal getWalletBalance() {
+        return walletBalance;
+    }
+
+    public void setWalletBalance(BigDecimal walletBalance) {
+        this.walletBalance = walletBalance;
+    }
+
     @PrePersist
     protected void onCreate() {
         createdAt = new Date();
         updatedAt = new Date();
+        if (walletBalance == null) {
+            walletBalance = BigDecimal.valueOf(1000L);
+        }
     }
-    
+
     @PreUpdate
     protected void onUpdate() {
         updatedAt = new Date();
+        if (walletBalance == null) {
+            walletBalance = BigDecimal.ZERO;
+        }
     }
 }

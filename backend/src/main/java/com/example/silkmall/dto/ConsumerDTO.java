@@ -1,12 +1,16 @@
 package com.example.silkmall.dto;
 
+import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.Pattern;
+import jakarta.validation.constraints.Size;
 
 public class ConsumerDTO {
     private Long id;
-    
+
+    @Size(max = 50, message = "用户名长度不能超过50个字符")
     private String username;
+
+    @Email(message = "邮箱格式不正确")
     private String email;
     private String phone;
     private String address;
