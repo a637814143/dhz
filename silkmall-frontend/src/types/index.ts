@@ -308,6 +308,34 @@ export interface ProductReview {
   createdAt: string
 }
 
+export interface WeeklyOrderDetail {
+  id: number
+  orderNo: string
+  totalAmount: number
+  totalQuantity: number
+  status: string
+  orderTime: string
+}
+
+export interface WeeklyProductPerformance {
+  productId: number | null
+  productName: string
+  supplierId: number | null
+  supplierName: string
+  quantitySold: number
+  totalRevenue: number
+}
+
+export interface WeeklySalesStatistics {
+  weekStart: string
+  weekEnd: string
+  orderCount: number
+  totalUnitsSold: number
+  totalSalesAmount: number
+  orders: WeeklyOrderDetail[]
+  productPerformances: WeeklyProductPerformance[]
+}
+
 export interface ReturnRequest {
   id: number
   orderId: number
