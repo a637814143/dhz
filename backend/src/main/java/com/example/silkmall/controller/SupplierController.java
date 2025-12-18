@@ -4,7 +4,9 @@ import com.example.silkmall.entity.Supplier;
 import com.example.silkmall.service.SupplierService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
@@ -21,7 +23,50 @@ public class SupplierController extends BaseController {
     public SupplierController(SupplierService supplierService) {
         this.supplierService = supplierService;
     }
-    
+
+    @GetMapping
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<Page<Supplier>> listSuppliers(
+            @RequestParam(value = "keyword", required = false) String keyword,
+            @RequestParam(value = "status", required = false) String status,
+            @RequestParam(value = "level", required = false) String level,
+            @RequestParam(value = "enabled", required = false) Boolean enabled,
+            @RequestParam(value = "page", defaultValue = "0") int page,
+            @RequestParam(value = "size", defaultValue = "10") int size,
+            @RequestParam(value = "sortBy", required = false) String sortBy,
+            @RequestParam(value = "sortDirection", required = false) String sortDirection) {
+
+        String sanitizedKeyword = keyword != null ? keyword.trim() : null;
+        if (sanitizedKeyword != null && sanitizedKeyword.isEmpty()) {
+            sanitizedKeyword = null;
+        }
+
+        String sanitizedStatus = status != null ? status.trim() : null;
+        if (sanitizedStatus != null && sanitizedStatus.isEmpty()) {
+            sanitizedStatus = null;
+        }
+
+        String sanitizedLevel = level != null ? level.trim() : null;
+        if (sanitizedLevel != null && sanitizedLevel.isEmpty()) {
+            sanitizedLevel = null;
+        }
+
+        Sort.Direction direction = "ASC".equalsIgnoreCase(sortDirection)
+                ? Sort.Direction.ASC
+                : Sort.Direction.DESC;
+        String sortProperty = (sortBy != null && !sortBy.trim().isEmpty()) ? sortBy.trim() : "createdAt";
+        Pageable pageable = PageRequest.of(Math.max(page, 0), Math.max(size, 1), direction, sortProperty);
+
+        Page<Supplier> result = supplierService.search(
+                sanitizedKeyword,
+                sanitizedStatus,
+                sanitizedLevel,
+                enabled,
+                pageable
+        );
+        return success(result);
+    }
+
     @GetMapping("/{id}")
     @PreAuthorize("hasRole('ADMIN') or (hasRole('SUPPLIER') and #id == principal.id)")
     public ResponseEntity<?> getSupplierById(@PathVariable Long id) {
@@ -97,6 +142,20 @@ public class SupplierController extends BaseController {
         target.setCompanyName(normalize(source.getCompanyName(), target.getCompanyName()));
         target.setBusinessLicense(normalize(source.getBusinessLicense(), target.getBusinessLicense()));
         target.setContactPerson(normalize(source.getContactPerson(), target.getContactPerson()));
+
+        if (source.getSupplierLevel() != null) {
+            target.setSupplierLevel(source.getSupplierLevel());
+        }
+
+        if (source.getStatus() != null) {
+            target.setStatus(source.getStatus());
+        }
+
+        if (source.getRole() != null) {
+            target.setRole(source.getRole());
+        }
+
+        target.setEnabled(source.isEnabled());
     }
 
     private String normalize(String value, String fallback) {
