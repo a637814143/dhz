@@ -1,5 +1,10 @@
 package com.example.silkmall.service.impl;
 
+import com.example.silkmall.dto.WeeklyOrderDTO;
+import com.example.silkmall.dto.WeeklyOrderItemDTO;
+import com.example.silkmall.dto.WeeklyProductPerformanceDTO;
+import com.example.silkmall.dto.WeeklySalesBucketDTO;
+import com.example.silkmall.dto.WeeklySalesReportDTO;
 import com.example.silkmall.entity.Admin;
 import com.example.silkmall.entity.Consumer;
 import com.example.silkmall.entity.Order;
@@ -22,6 +27,10 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.time.DayOfWeek;
+import java.time.LocalDate;
+import java.time.ZoneId;
+import java.util.ArrayList;
 import java.util.Date;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -570,6 +579,100 @@ public class OrderServiceImpl extends BaseServiceImpl<Order, Long> implements Or
         return orderRepository.findDetailedById(id)
                 .orElseThrow(() -> new RuntimeException("订单不存在"));
     }
+
+    @Override
+    public WeeklySalesReportDTO getWeeklySalesReport(int weeks) {
+        int resolvedWeeks = weeks > 0 ? Math.min(weeks, 52) : 8;
+        ZoneId zoneId = ZoneId.systemDefault();
+        LocalDate today = LocalDate.now(zoneId);
+        LocalDate currentWeekStart = today.with(DayOfWeek.MONDAY);
+        LocalDate earliestWeekStart = currentWeekStart.minusWeeks(resolvedWeeks - 1L);
+        LocalDate exclusiveEnd = currentWeekStart.plusWeeks(1);
+
+        Date startDate = Date.from(earliestWeekStart.atStartOfDay(zoneId).toInstant());
+        Date endDate = Date.from(exclusiveEnd.atStartOfDay(zoneId).toInstant());
+
+        List<Order> orders = orderRepository.findByOrderTimeBetween(startDate, endDate);
+
+        Map<LocalDate, WeeklySalesBucketDTO> bucketMap = new LinkedHashMap<>();
+        Map<LocalDate, Map<String, WeeklyProductPerformanceDTO>> performanceIndex = new LinkedHashMap<>();
+
+        for (int i = 0; i < resolvedWeeks; i++) {
+            LocalDate weekStart = currentWeekStart.minusWeeks(i);
+            WeeklySalesBucketDTO bucket = new WeeklySalesBucketDTO();
+            bucket.setWeekStart(weekStart);
+            bucket.setWeekEnd(weekStart.plusDays(6));
+            bucket.setTotalOrders(0);
+            bucket.setTotalQuantity(0);
+            bucket.setTotalRevenue(BigDecimal.ZERO);
+            bucket.setOrders(new ArrayList<>());
+            bucket.setProductPerformances(new ArrayList<>());
+            bucketMap.put(weekStart, bucket);
+            performanceIndex.put(weekStart, new LinkedHashMap<>());
+        }
+
+        for (Order order : orders) {
+            if (order.getOrderTime() == null) {
+                continue;
+            }
+            LocalDate orderDate = order.getOrderTime().toInstant().atZone(zoneId).toLocalDate();
+            LocalDate weekStart = orderDate.with(DayOfWeek.MONDAY);
+            WeeklySalesBucketDTO bucket = bucketMap.get(weekStart);
+            if (bucket == null) {
+                continue;
+            }
+            if (order.getPaymentTime() == null) {
+                continue;
+            }
+            if (CANCELLED.equals(order.getStatus()) || REVOKED.equals(order.getStatus())) {
+                continue;
+            }
+
+            WeeklyOrderDTO weeklyOrder = toWeeklyOrderDto(order);
+            bucket.getOrders().add(weeklyOrder);
+
+            BigDecimal amount = Optional.ofNullable(weeklyOrder.getTotalAmount()).orElse(BigDecimal.ZERO);
+            bucket.setTotalRevenue(bucket.getTotalRevenue().add(amount));
+
+            int quantity = Optional.ofNullable(order.getTotalQuantity()).orElse(0);
+            bucket.setTotalQuantity(bucket.getTotalQuantity() + quantity);
+            bucket.setTotalOrders(bucket.getTotalOrders() + 1);
+
+            Map<String, WeeklyProductPerformanceDTO> perfMap = performanceIndex.get(weekStart);
+            for (WeeklyOrderItemDTO itemDto : weeklyOrder.getItems()) {
+                String key = buildPerformanceKey(itemDto.getProductId(), itemDto.getSupplierId());
+                WeeklyProductPerformanceDTO performance = perfMap.computeIfAbsent(key, k -> {
+                    WeeklyProductPerformanceDTO dto = new WeeklyProductPerformanceDTO();
+                    dto.setProductId(itemDto.getProductId());
+                    dto.setProductName(itemDto.getProductName());
+                    dto.setSupplierId(itemDto.getSupplierId());
+                    dto.setSupplierName(itemDto.getSupplierName());
+                    dto.setQuantity(0);
+                    dto.setSalesAmount(BigDecimal.ZERO);
+                    return dto;
+                });
+
+                int itemQuantity = Optional.ofNullable(itemDto.getQuantity()).orElse(0);
+                BigDecimal lineAmount = Optional.ofNullable(itemDto.getTotalPrice()).orElse(BigDecimal.ZERO);
+                performance.setQuantity(performance.getQuantity() + itemQuantity);
+                performance.setSalesAmount(performance.getSalesAmount().add(lineAmount));
+            }
+        }
+
+        List<WeeklySalesBucketDTO> buckets = bucketMap.entrySet().stream()
+                .sorted(Map.Entry.<LocalDate, WeeklySalesBucketDTO>comparingByKey().reversed())
+                .map(entry -> {
+                    WeeklySalesBucketDTO bucket = entry.getValue();
+                    Map<String, WeeklyProductPerformanceDTO> perfMap = performanceIndex.getOrDefault(entry.getKey(), Map.of());
+                    bucket.setProductPerformances(new ArrayList<>(perfMap.values()));
+                    return bucket;
+                })
+                .toList();
+
+        WeeklySalesReportDTO report = new WeeklySalesReportDTO();
+        report.setWeeks(buckets);
+        return report;
+    }
     
     // 生成订单编号
     private String generateOrderNo() {
@@ -721,6 +824,46 @@ public class OrderServiceImpl extends BaseServiceImpl<Order, Long> implements Or
             return PageRequest.of(candidate.getPageNumber(), candidate.getPageSize(), sort);
         }
         return PageRequest.of(0, 20, sort);
+    }
+
+    private WeeklyOrderDTO toWeeklyOrderDto(Order order) {
+        WeeklyOrderDTO dto = new WeeklyOrderDTO();
+        dto.setId(order.getId());
+        dto.setOrderNo(order.getOrderNo());
+        dto.setTotalAmount(order.getTotalAmount());
+        dto.setTotalQuantity(order.getTotalQuantity());
+        dto.setStatus(order.getStatus());
+        dto.setOrderTime(order.getOrderTime());
+        dto.setPaymentTime(order.getPaymentTime());
+
+        List<WeeklyOrderItemDTO> items = Optional.ofNullable(order.getOrderItems())
+                .orElse(List.of())
+                .stream()
+                .map(this::toWeeklyOrderItemDto)
+                .collect(Collectors.toCollection(ArrayList::new));
+        dto.setItems(items);
+        return dto;
+    }
+
+    private WeeklyOrderItemDTO toWeeklyOrderItemDto(OrderItem item) {
+        WeeklyOrderItemDTO dto = new WeeklyOrderItemDTO();
+        if (item.getProduct() != null) {
+            dto.setProductId(item.getProduct().getId());
+            dto.setProductName(item.getProduct().getName());
+            if (item.getProduct().getSupplier() != null) {
+                dto.setSupplierId(item.getProduct().getSupplier().getId());
+                dto.setSupplierName(item.getProduct().getSupplier().getCompanyName());
+            }
+        }
+        dto.setQuantity(item.getQuantity());
+        dto.setTotalPrice(item.getTotalPrice());
+        return dto;
+    }
+
+    private String buildPerformanceKey(Long productId, Long supplierId) {
+        String productKey = productId == null ? "unknown" : productId.toString();
+        String supplierKey = supplierId == null ? "none" : supplierId.toString();
+        return productKey + "-" + supplierKey;
     }
 
     private Map<Long, BigDecimal> collectSupplierAmounts(Order order) {
