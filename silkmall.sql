@@ -27,4 +27,7 @@ CREATE TABLE IF NOT EXISTS `product_size_allocations` (
   CONSTRAINT `fk_product_size_product` FOREIGN KEY (`product_id`) REFERENCES `products` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
+ALTER TABLE `order_items`
+    ADD COLUMN IF NOT EXISTS `size_label` varchar(20) NULL AFTER `total_price`;
+
 SET FOREIGN_KEY_CHECKS = 1;

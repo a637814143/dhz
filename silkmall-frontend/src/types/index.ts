@@ -74,6 +74,7 @@ export interface PurchaseOrderItemPayload {
     id: number
   }
   quantity: number
+  sizeLabel?: string | null
 }
 
 export interface PurchaseOrderPayload {
