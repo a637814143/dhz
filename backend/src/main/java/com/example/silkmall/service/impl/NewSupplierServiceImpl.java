@@ -4,11 +4,18 @@ import com.example.silkmall.entity.Supplier;
 import com.example.silkmall.repository.NewSupplierRepository;
 import com.example.silkmall.service.SupplierService;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Primary;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
+
+import jakarta.persistence.criteria.Predicate;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.Optional;
-import org.springframework.context.annotation.Primary;
 
 @Service
 @Primary
@@ -85,21 +92,22 @@ public class NewSupplierServiceImpl implements SupplierService {
         if (existsByEmail(supplier.getEmail())) {
             throw new RuntimeException("邮箱已存在");
         }
-        
+
         // 加密密码
         supplier.setPassword(passwordEncoder.encode(supplier.getPassword()));
-        supplier.setEnabled(true);
-        
+
         // 新供应商默认状态为待审核
         if (supplier.getStatus() == null || supplier.getStatus().isEmpty()) {
             supplier.setStatus("PENDING");
         }
-        
+
         // 默认供应商等级
         if (supplier.getSupplierLevel() == null || supplier.getSupplierLevel().isEmpty()) {
             supplier.setSupplierLevel("BRONZE");
         }
-        
+
+        supplier.setEnabled(supplier.isEnabled());
+
         return newSupplierRepository.save(supplier);
     }
     
@@ -163,8 +171,46 @@ public class NewSupplierServiceImpl implements SupplierService {
     public void updateSupplierLevel(Long id, String level) {
         Supplier supplier = findById(id)
                 .orElseThrow(() -> new RuntimeException("供应商不存在"));
-        
+
         supplier.setSupplierLevel(level);
         newSupplierRepository.save(supplier);
+    }
+
+    @Override
+    public Page<Supplier> search(String keyword, String status, String level, Boolean enabled, Pageable pageable) {
+        Specification<Supplier> specification = buildSpecification(keyword, status, level, enabled);
+        return newSupplierRepository.findAll(specification, pageable);
+    }
+
+    private Specification<Supplier> buildSpecification(String keyword, String status, String level, Boolean enabled) {
+        return (root, query, criteriaBuilder) -> {
+            List<Predicate> predicates = new ArrayList<>();
+
+            if (keyword != null && !keyword.trim().isEmpty()) {
+                String pattern = "%" + keyword.trim().toLowerCase(Locale.ROOT) + "%";
+                predicates.add(criteriaBuilder.or(
+                        criteriaBuilder.like(criteriaBuilder.lower(root.get("username")), pattern),
+                        criteriaBuilder.like(criteriaBuilder.lower(root.get("email")), pattern),
+                        criteriaBuilder.like(criteriaBuilder.lower(root.get("phone")), pattern),
+                        criteriaBuilder.like(criteriaBuilder.lower(root.get("companyName")), pattern)
+                ));
+            }
+
+            if (status != null && !status.trim().isEmpty()) {
+                predicates.add(criteriaBuilder.equal(root.get("status"), status.trim()));
+            }
+
+            if (level != null && !level.trim().isEmpty()) {
+                predicates.add(criteriaBuilder.equal(root.get("supplierLevel"), level.trim()));
+            }
+
+            if (enabled != null) {
+                predicates.add(criteriaBuilder.equal(root.get("enabled"), enabled));
+            }
+
+            return predicates.isEmpty()
+                    ? criteriaBuilder.conjunction()
+                    : criteriaBuilder.and(predicates.toArray(new Predicate[0]));
+        };
     }
 }
