@@ -754,11 +754,12 @@ function goToNextPage() {
               <option v-for="option in unitOptions" :key="option" :value="option"></option>
             </datalist>
           </label>
-          <div class="size-allocation-row">
-            <label>
-              <span>库存数量</span>
-              <input v-model.number="productForm.stock" type="number" min="0" />
-            </label>
+          <label>
+            <span>库存数量</span>
+            <input v-model.number="productForm.stock" type="number" min="0" />
+          </label>
+          <div class="size-allocation-row full">
+            <span class="size-allocation-row__label">按尺码分配库存</span>
             <button type="button" class="secondary" @click="openSizeAllocation">分配尺码库存</button>
           </div>
           <label class="full">
@@ -1259,6 +1260,16 @@ tbody tr:nth-child(odd) {
   grid-template-columns: 1fr auto;
   align-items: end;
   gap: 0.75rem;
+}
+
+.size-allocation-row.full {
+  grid-column: 1 / -1;
+  align-items: center;
+}
+
+.size-allocation-row__label {
+  font-weight: 700;
+  color: rgba(15, 23, 42, 0.78);
 }
 
 .size-panel {
