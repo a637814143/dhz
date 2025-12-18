@@ -1708,8 +1708,8 @@ const shortcutLinks = [
                 </tr>
               </tbody>
             </table>
+            <p v-if="cartSelectionError" class="panel-error">{{ cartSelectionError }}</p>
           </div>
-          <p v-if="cartSelectionError" class="panel-error">{{ cartSelectionError }}</p>
           <p v-else class="empty">购物车空空如也，快去产品中心挑选吧。</p>
         </section>
 
