@@ -2149,14 +2149,24 @@ const shortcutLinks = [
                       class="review-form"
                       @submit.prevent="submitReview"
                     >
-                      <label>
+                      <div class="review-field rating-field">
                         <span>评分</span>
-                        <select v-model.number="reviewForm.rating" :disabled="submittingReview">
-                          <option v-for="score in [5, 4, 3, 2, 1]" :key="score" :value="score">
-                            {{ score }} 分
-                          </option>
-                        </select>
-                      </label>
+                        <div class="rating-options" role="radiogroup" aria-label="评分">
+                          <label
+                            v-for="score in [5, 4, 3, 2, 1]"
+                            :key="score"
+                            class="rating-option"
+                          >
+                            <input
+                              v-model.number="reviewForm.rating"
+                              type="radio"
+                              :value="score"
+                              :disabled="submittingReview"
+                            />
+                            <span class="rating-number">{{ score }}</span>
+                          </label>
+                        </div>
+                      </div>
                       <label>
                         <span>评价内容</span>
                         <textarea
@@ -3188,11 +3198,46 @@ const shortcutLinks = [
   background: rgba(79, 70, 229, 0.08);
 }
 
-.review-form label {
+.review-form label,
+.review-form .review-field {
   display: grid;
   gap: 0.4rem;
   font-weight: 600;
   color: rgba(17, 24, 39, 0.68);
+}
+
+.review-form .rating-options {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.review-form .rating-option {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.35rem 0.6rem;
+  border: 1px solid rgba(17, 24, 39, 0.16);
+  border-radius: 999px;
+  background: #fff;
+  cursor: pointer;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.review-form .rating-option:hover {
+  border-color: rgba(79, 70, 229, 0.5);
+  box-shadow: 0 4px 10px rgba(79, 70, 229, 0.08);
+}
+
+.review-form .rating-option input {
+  width: 1rem;
+  height: 1rem;
+}
+
+.review-form .rating-number {
+  font-weight: 700;
+  color: rgba(17, 24, 39, 0.82);
 }
 
 .review-form select,
