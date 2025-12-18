@@ -69,6 +69,24 @@ export interface CartItem {
   product: CartItemProduct
 }
 
+export interface CartCheckoutPayload {
+  itemIds: number[]
+  paymentMethod?: string | null
+}
+
+export interface CartCheckoutResult {
+  id: number
+  orderNo: string
+  status: string
+  totalAmount: number
+  totalQuantity: number
+  consumerLookupId?: string
+  paymentMethod?: string | null
+  shippingAddress?: string | null
+  recipientName?: string | null
+  recipientPhone?: string | null
+}
+
 export interface ConsumerFavorite {
   id: number
   createdAt?: string | null

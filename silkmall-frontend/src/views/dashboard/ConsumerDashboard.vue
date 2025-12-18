@@ -7,6 +7,8 @@ import type {
   Announcement,
   CartItem,
   ConsumerFavorite,
+  CartCheckoutPayload,
+  CartCheckoutResult,
   ConsumerAddress,
   HomepageContent,
   OrderDetail,
@@ -55,6 +57,9 @@ const cartItems = ref<CartItem[]>([])
 const cartLoading = ref(false)
 const cartError = ref<string | null>(null)
 const removingCartItemId = ref<number | null>(null)
+const selectingCartItems = ref(false)
+const selectedCartItemIds = ref<Set<number>>(new Set())
+const cartSelectionError = ref<string | null>(null)
 const favorites = ref<ConsumerFavorite[]>([])
 const favoritesLoading = ref(false)
 const favoritesError = ref<string | null>(null)
@@ -158,6 +163,15 @@ const cartTotalQuantity = computed(() =>
 )
 const cartTotalAmount = computed(() =>
   cartItems.value.reduce(
+    (total, item) => total + (item.subtotal ?? item.unitPrice * item.quantity),
+    0
+  )
+)
+const selectedCartItemsList = computed(() =>
+  cartItems.value.filter((item) => selectedCartItemIds.value.has(item.id))
+)
+const selectedCartTotalAmount = computed(() =>
+  selectedCartItemsList.value.reduce(
     (total, item) => total + (item.subtotal ?? item.unitPrice * item.quantity),
     0
   )
@@ -396,15 +410,46 @@ async function loadCart() {
   }
   cartLoading.value = true
   cartError.value = null
+  cartSelectionError.value = null
   try {
     const { data } = await api.get<CartItem[]>('/cart')
     cartItems.value = data ?? []
+    if (!cartItems.value.length) {
+      selectedCartItemIds.value = new Set()
+      selectingCartItems.value = false
+    }
   } catch (err) {
     cartItems.value = []
     cartError.value = err instanceof Error ? err.message : '加载购物车失败'
   } finally {
     cartLoading.value = false
   }
+}
+
+function toggleCartSelectionMode() {
+  selectingCartItems.value = !selectingCartItems.value
+  cartSelectionError.value = null
+  if (!selectingCartItems.value) {
+    selectedCartItemIds.value = new Set()
+  }
+}
+
+function isCartItemSelected(item: CartItem) {
+  return selectedCartItemIds.value.has(item.id)
+}
+
+function toggleCartItemSelection(item: CartItem) {
+  cartSelectionError.value = null
+  if (!selectingCartItems.value) {
+    selectingCartItems.value = true
+  }
+  const updated = new Set(selectedCartItemIds.value)
+  if (updated.has(item.id)) {
+    updated.delete(item.id)
+  } else {
+    updated.add(item.id)
+  }
+  selectedCartItemIds.value = updated
 }
 
 async function loadFavorites() {
@@ -646,10 +691,40 @@ async function removeCartItem(item: CartItem) {
   try {
     await api.delete(`/cart/${item.id}`)
     cartItems.value = cartItems.value.filter((entry) => entry.id !== item.id)
+    selectedCartItemIds.value.delete(item.id)
   } catch (err) {
     cartError.value = err instanceof Error ? err.message : '移除购物车商品失败'
   } finally {
     removingCartItemId.value = null
+  }
+}
+
+async function checkoutCart() {
+  if (!selectedCartItemIds.value.size) {
+    cartSelectionError.value = '请先选择要结算的商品'
+    return
+  }
+  cartSelectionError.value = null
+  try {
+    const payload: CartCheckoutPayload = {
+      itemIds: Array.from(selectedCartItemIds.value),
+    }
+    const { data } = await api.post<CartCheckoutResult>('/cart/checkout', payload)
+    selectingCartItems.value = false
+    selectedCartItemIds.value = new Set()
+    await loadCart()
+    const summary: OrderSummary = {
+      id: data.id,
+      orderNo: data.orderNo,
+      status: data.status,
+      totalAmount: data.totalAmount,
+      totalQuantity: data.totalQuantity,
+      orderTime: new Date().toISOString(),
+    }
+    orders.value.unshift(summary)
+    openPaymentDialog(summary)
+  } catch (err) {
+    cartSelectionError.value = err instanceof Error ? err.message : '结算失败，请稍后再试'
   }
 }
 
@@ -1532,6 +1607,28 @@ const shortcutLinks = [
               <span v-if="hasCartItems" class="cart-summary">
                 共 {{ cartTotalQuantity }} 件商品，小计 {{ formatCurrency(cartTotalAmount) }}
               </span>
+              <span v-if="selectingCartItems && hasCartItems" class="cart-summary selected">
+                已选 {{ selectedCartItemsList.length }} 件，合计
+                {{ formatCurrency(selectedCartTotalAmount) }}
+              </span>
+              <button
+                v-if="hasCartItems"
+                type="button"
+                class="panel-action-button"
+                :disabled="cartLoading"
+                @click="toggleCartSelectionMode"
+              >
+                {{ selectingCartItems ? '取消选择' : '选择' }}
+              </button>
+              <button
+                v-if="hasCartItems"
+                type="button"
+                class="panel-action-button primary"
+                :disabled="cartLoading || !selectedCartItemIds.size"
+                @click="checkoutCart"
+              >
+                去结算
+              </button>
               <button type="button" class="panel-action-button" @click="loadCart" :disabled="cartLoading">
                 {{ cartLoading ? '刷新中…' : '刷新' }}
               </button>
@@ -1543,6 +1640,7 @@ const shortcutLinks = [
             <table class="dashboard-table cart-table">
               <thead>
                 <tr>
+                  <th v-if="selectingCartItems" scope="col" class="col-select">选择</th>
                   <th scope="col" class="col-product">商品</th>
                   <th scope="col">单价</th>
                   <th scope="col">数量</th>
@@ -1552,6 +1650,17 @@ const shortcutLinks = [
               </thead>
               <tbody>
                 <tr v-for="item in cartItems" :key="item.id">
+                  <td v-if="selectingCartItems" class="col-select">
+                    <button
+                      type="button"
+                      class="cart-select-circle"
+                      :class="{ selected: isCartItemSelected(item) }"
+                      @click="toggleCartItemSelection(item)"
+                      :aria-pressed="isCartItemSelected(item)"
+                    >
+                      <span v-if="isCartItemSelected(item)" class="dot" aria-hidden="true"></span>
+                    </button>
+                  </td>
                   <td class="col-product">
                     <div class="cart-product">
                       <div class="image">
@@ -1600,6 +1709,7 @@ const shortcutLinks = [
               </tbody>
             </table>
           </div>
+          <p v-if="cartSelectionError" class="panel-error">{{ cartSelectionError }}</p>
           <p v-else class="empty">购物车空空如也，快去产品中心挑选吧。</p>
         </section>
 
@@ -2331,6 +2441,17 @@ const shortcutLinks = [
   transition: background 0.2s ease, color 0.2s ease, transform 0.2s ease;
 }
 
+.panel-action-button.primary {
+  background: #4f46e5;
+  color: #fff;
+  border-color: #4f46e5;
+}
+
+.panel-action-button.primary:hover {
+  background: #4338ca;
+  color: #fff;
+}
+
 .panel-action-button:hover {
   background: rgba(79, 70, 229, 0.14);
   color: #312e81;
@@ -2565,8 +2686,18 @@ const shortcutLinks = [
   font-size: 0.9rem;
 }
 
+.cart-summary.selected {
+  color: #4338ca;
+  font-weight: 700;
+}
+
 .cart-table .col-product {
   width: 45%;
+}
+
+.cart-table .col-select {
+  width: 70px;
+  text-align: center;
 }
 
 .cart-product {
@@ -2590,6 +2721,32 @@ const shortcutLinks = [
   width: 100%;
   height: 100%;
   object-fit: cover;
+}
+
+.cart-select-circle {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: 2px solid rgba(79, 70, 229, 0.4);
+  background: #fff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.cart-select-circle.selected {
+  background: rgba(79, 70, 229, 0.12);
+  border-color: #4f46e5;
+  box-shadow: inset 0 0 0 3px #fff;
+}
+
+.cart-select-circle .dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #4f46e5;
 }
 
 .cart-product .image .placeholder {
