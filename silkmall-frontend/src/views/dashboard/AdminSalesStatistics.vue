@@ -1,12 +1,14 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import api from '@/services/api'
 import type { WeeklySalesReport } from '@/types'
 
 const weeklySales = ref<WeeklySalesReport | null>(null)
 const weeklyLoading = ref(false)
 const weeklyError = ref<string | null>(null)
-const selectedWeeks = ref(6)
+const currentWeekIndex = ref(0)
+const weekSearchDate = ref('')
+const weeksToFetch = 12
 
 function formatCurrency(amount?: number | string | null) {
   const numeric = typeof amount === 'string' ? Number(amount) : amount
@@ -48,14 +50,65 @@ async function loadWeeklySales() {
   weeklyError.value = null
   try {
     const { data } = await api.get<WeeklySalesReport>('/analytics/weekly-sales', {
-      params: { weeks: selectedWeeks.value },
+      params: { weeks: weeksToFetch },
     })
     weeklySales.value = data ?? null
+    currentWeekIndex.value = 0
   } catch (err) {
     weeklySales.value = null
     weeklyError.value = err instanceof Error ? err.message : '加载周度销售数据失败'
   } finally {
     weeklyLoading.value = false
+  }
+}
+
+const sortedWeeks = computed(() => {
+  const weeks = weeklySales.value?.weeks ?? []
+  return [...weeks].sort((a, b) => {
+    const aDate = new Date(a.weekStart).getTime()
+    const bDate = new Date(b.weekStart).getTime()
+    return Number.isNaN(bDate) || Number.isNaN(aDate) ? 0 : bDate - aDate
+  })
+})
+
+const totalWeeks = computed(() => sortedWeeks.value.length)
+
+const pageIndicator = computed(() => {
+  if (totalWeeks.value <= 0) return '0/0'
+  return `${currentWeekIndex.value + 1}/${totalWeeks.value}`
+})
+
+const canGoPreviousWeek = computed(() => totalWeeks.value > 0 && currentWeekIndex.value > 0)
+const canGoNextWeek = computed(
+  () => totalWeeks.value > 0 && currentWeekIndex.value + 1 < sortedWeeks.value.length
+)
+
+const currentWeek = computed(() => sortedWeeks.value[currentWeekIndex.value])
+
+function goPreviousWeek() {
+  if (!canGoPreviousWeek.value || weeklyLoading.value) return
+  currentWeekIndex.value -= 1
+}
+
+function goNextWeek() {
+  if (!canGoNextWeek.value || weeklyLoading.value) return
+  currentWeekIndex.value += 1
+}
+
+function handleWeekSearch() {
+  if (!weekSearchDate.value) return
+  const searchDate = new Date(`${weekSearchDate.value}T00:00:00`)
+  if (Number.isNaN(searchDate.getTime())) return
+
+  const targetIndex = sortedWeeks.value.findIndex((week) => {
+    const start = new Date(week.weekStart)
+    const end = new Date(week.weekEnd)
+    if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return false
+    return searchDate >= start && searchDate <= end
+  })
+
+  if (targetIndex >= 0) {
+    currentWeekIndex.value = targetIndex
   }
 }
 
@@ -86,34 +139,54 @@ onMounted(() => {
           <div class="panel-title" id="weekly-sales-title">周度销售统计</div>
           <p class="panel-subtitle">查看每周订单与商品表现，同名商品会按供应商分开统计。</p>
         </div>
-        <label class="weeks-selector">
-          <span>统计周数</span>
-          <select v-model.number="selectedWeeks" @change="loadWeeklySales" :disabled="weeklyLoading">
-            <option :value="4">4 周</option>
-            <option :value="6">6 周</option>
-            <option :value="8">8 周</option>
-            <option :value="12">12 周</option>
-          </select>
-        </label>
+        <nav class="week-pagination" aria-label="周度翻页">
+          <button
+            type="button"
+            class="pager-button"
+            :disabled="!canGoPreviousWeek || weeklyLoading"
+            @click="goPreviousWeek"
+          >
+            上一周
+          </button>
+          <div class="week-search">
+            <label for="week-search-input">输入日期</label>
+            <input
+              id="week-search-input"
+              v-model="weekSearchDate"
+              type="date"
+              :disabled="!totalWeeks || weeklyLoading"
+              @change="handleWeekSearch"
+            />
+          </div>
+          <button
+            type="button"
+            class="pager-button"
+            :disabled="!canGoNextWeek || weeklyLoading"
+            @click="goNextWeek"
+          >
+            下一周
+          </button>
+        </nav>
       </header>
       <div v-if="weeklyLoading" class="placeholder">正在加载周度数据…</div>
       <div v-else-if="weeklyError" class="placeholder is-error">{{ weeklyError }}</div>
-      <div v-else-if="!weeklySales?.weeks?.length" class="placeholder">暂无销售记录</div>
-      <div v-else class="weekly-grid">
-        <article v-for="week in weeklySales?.weeks" :key="week.weekStart" class="week-card">
+      <div v-else-if="!currentWeek" class="placeholder">暂无销售记录</div>
+      <div v-else class="week-single">
+        <div class="pagination-status">共 {{ totalWeeks }} 周，当前 {{ pageIndicator }}</div>
+        <article :key="currentWeek.weekStart" class="week-card">
           <header class="week-card__header">
             <div>
-              <div class="week-label">{{ formatWeekRange(week.weekStart, week.weekEnd) }}</div>
+              <div class="week-label">{{ formatWeekRange(currentWeek.weekStart, currentWeek.weekEnd) }}</div>
               <p class="panel-subtitle">
-                订单 {{ formatNumber(week.totalOrders) }} · 销量 {{ formatNumber(week.totalQuantity) }}
+                订单 {{ formatNumber(currentWeek.totalOrders) }} · 销量 {{ formatNumber(currentWeek.totalQuantity) }}
               </p>
             </div>
-            <div class="week-amount">{{ formatCurrency(week.totalRevenue) }}</div>
+            <div class="week-amount">{{ formatCurrency(currentWeek.totalRevenue) }}</div>
           </header>
           <div class="week-columns">
             <div class="week-column">
               <h4>订单明细</h4>
-              <table v-if="week.orders?.length" class="compact-table">
+              <table v-if="currentWeek.orders?.length" class="compact-table">
                 <thead>
                   <tr>
                     <th scope="col">订单号</th>
@@ -124,7 +197,7 @@ onMounted(() => {
                   </tr>
                 </thead>
                 <tbody>
-                  <tr v-for="order in week.orders" :key="order.id">
+                  <tr v-for="order in currentWeek.orders" :key="order.id">
                     <td>{{ order.orderNo }}</td>
                     <td>{{ formatDate(order.paymentTime) }}</td>
                     <td>{{ formatCurrency(order.totalAmount) }}</td>
@@ -148,7 +221,7 @@ onMounted(() => {
             </div>
             <div class="week-column">
               <h4>商品表现</h4>
-              <table v-if="week.productPerformances?.length" class="compact-table">
+              <table v-if="currentWeek.productPerformances?.length" class="compact-table">
                 <thead>
                   <tr>
                     <th scope="col">商品 / 供应商</th>
@@ -157,7 +230,10 @@ onMounted(() => {
                   </tr>
                 </thead>
                 <tbody>
-                  <tr v-for="product in week.productPerformances" :key="`${product.productId}-${product.supplierId}`">
+                  <tr
+                    v-for="product in currentWeek.productPerformances"
+                    :key="`${product.productId}-${product.supplierId}`"
+                  >
                     <td>
                       <div class="product-line">
                         <span class="product-name">{{ product.productName || '未命名商品' }}</span>
@@ -281,29 +357,58 @@ onMounted(() => {
   gap: 12px;
 }
 
-.weeks-selector {
+.week-pagination {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 12px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
 }
 
-.weeks-selector span {
+.week-search {
+  display: flex;
+  align-items: center;
+  gap: 6px;
   color: #4a5b6a;
   font-weight: 600;
 }
 
-.weeks-selector select {
+.week-search input[type='date'] {
   padding: 8px 10px;
   border-radius: 8px;
   border: 1px solid #cbd5e1;
   background: #f8fafc;
-  min-width: 120px;
+  min-width: 160px;
 }
 
-.weekly-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
-  gap: 16px;
+.week-single {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.pagination-status {
+  color: rgba(71, 85, 105, 0.75);
+  font-weight: 600;
+}
+
+.pager-button {
+  padding: 8px 14px;
+  border-radius: 999px;
+  border: 1px solid rgba(148, 163, 184, 0.55);
+  background: rgba(226, 232, 240, 0.6);
+  color: rgba(30, 41, 59, 0.8);
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  min-width: 84px;
+}
+
+.pager-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .week-card {
