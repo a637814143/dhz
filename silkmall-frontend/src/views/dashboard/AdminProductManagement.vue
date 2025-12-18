@@ -759,6 +759,17 @@ function goToNextPage() {
               </option>
             </select>
           </label>
+          <div class="size-allocation-row full">
+            <div class="size-allocation-row__content">
+              <span class="size-allocation-row__label">选择尺码并分配库存（可选）</span>
+              <p class="size-allocation-row__hint">点击后选择尺码并填写数量，合计需等于库存</p>
+            </div>
+            <button type="button" class="primary" @click="openSizeAllocation">选择尺码</button>
+          </div>
+          <label class="full">
+            <span>主图地址</span>
+            <input v-model="productForm.mainImage" type="text" placeholder="https://" />
+          </label>
           <label>
             <span>供应商</span>
             <select v-model.number="productForm.supplierId">
@@ -796,17 +807,6 @@ function goToNextPage() {
           <label>
             <span>库存数量</span>
             <input v-model.number="productForm.stock" type="number" min="0" />
-          </label>
-          <div class="size-allocation-row full">
-            <div class="size-allocation-row__content">
-              <span class="size-allocation-row__label">选择尺码并分配库存</span>
-              <p class="size-allocation-row__hint">点击后选择尺码并填写数量（合计需等于库存）</p>
-            </div>
-            <button type="button" class="primary" @click="openSizeAllocation">选择尺码</button>
-          </div>
-          <label class="full">
-            <span>主图地址</span>
-            <input v-model="productForm.mainImage" type="text" placeholder="https://" />
           </label>
           <label class="full">
             <span>商品描述</span>
