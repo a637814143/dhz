@@ -53,6 +53,10 @@ const addingCartProductId = ref<number | null>(null)
 const cartSuccessMessage = ref<string | null>(null)
 const cartErrorMessage = ref<string | null>(null)
 const cartMessageTimer = ref<number | null>(null)
+const favoritingProductId = ref<number | null>(null)
+const favoriteSuccessMessage = ref<string | null>(null)
+const favoriteErrorMessage = ref<string | null>(null)
+const favoriteMessageTimer = ref<number | null>(null)
 const authPromptMessage = ref<string | null>(null)
 const authPromptTimer = ref<number | null>(null)
 const router = useRouter()
@@ -293,6 +297,13 @@ function clearCartMessageTimer() {
   }
 }
 
+function clearFavoriteMessageTimer() {
+  if (favoriteMessageTimer.value) {
+    clearTimeout(favoriteMessageTimer.value)
+    favoriteMessageTimer.value = null
+  }
+}
+
 async function addProductToCart(product: ProductSummary) {
   if (!product?.id) return
   if (!isAuthenticated.value) {
@@ -326,6 +337,40 @@ async function addProductToCart(product: ProductSummary) {
     }, 6000)
   } finally {
     addingCartProductId.value = null
+  }
+}
+
+async function addProductToFavorite(product: ProductSummary) {
+  if (!product?.id) return
+  if (!isAuthenticated.value) {
+    showLoginPrompt('请登录后再收藏商品')
+    return
+  }
+  if (!isConsumerAccount.value) {
+    showLoginPrompt('请注册并登录消费者账户后即可收藏商品')
+    return
+  }
+  favoriteErrorMessage.value = null
+  favoriteSuccessMessage.value = null
+  favoritingProductId.value = product.id
+  try {
+    await api.post('/favorites', { productId: product.id })
+    favoriteSuccessMessage.value = `已收藏「${product.name}」`
+    clearFavoriteMessageTimer()
+    favoriteMessageTimer.value = window.setTimeout(() => {
+      favoriteSuccessMessage.value = null
+      favoriteMessageTimer.value = null
+    }, 4000)
+  } catch (err) {
+    const message = err instanceof Error ? err.message : '收藏商品失败'
+    favoriteErrorMessage.value = message
+    clearFavoriteMessageTimer()
+    favoriteMessageTimer.value = window.setTimeout(() => {
+      favoriteErrorMessage.value = null
+      favoriteMessageTimer.value = null
+    }, 6000)
+  } finally {
+    favoritingProductId.value = null
   }
 }
 
@@ -509,6 +554,14 @@ onBeforeUnmount(() => {
         <p v-if="cartErrorMessage" class="notice notice--error">{{ cartErrorMessage }}</p>
       </transition>
       <transition name="fade">
+        <p v-if="favoriteSuccessMessage" class="notice notice--success">
+          {{ favoriteSuccessMessage }}
+        </p>
+      </transition>
+      <transition name="fade">
+        <p v-if="favoriteErrorMessage" class="notice notice--error">{{ favoriteErrorMessage }}</p>
+      </transition>
+      <transition name="fade">
         <p v-if="purchaseSuccessMessage" class="notice notice--success">{{ purchaseSuccessMessage }}</p>
       </transition>
 
@@ -522,9 +575,11 @@ onBeforeUnmount(() => {
           :key="item.id"
           :product="item"
           :adding-to-cart="addingCartProductId === item.id"
+          :favoriting="favoritingProductId === item.id"
           @purchase="openPurchaseDialog"
           @view-detail="goToProductDetail"
           @add-to-cart="addProductToCart"
+          @favorite="addProductToFavorite"
         />
       </div>
 
