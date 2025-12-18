@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import api from '@/services/api'
-import type { PageResponse } from '@/types'
 
 interface SupplierRecord {
   id: number
@@ -14,11 +13,15 @@ interface SupplierRecord {
   contactPerson: string | null
   supplierLevel: string | null
   status: string | null
-  enabled: boolean | null
-  walletBalance?: number | null
-  joinDate?: string | null
-  createdAt?: string | null
-  updatedAt?: string | null
+  enabled: boolean
+}
+
+interface PageResponse<T> {
+  content: T[]
+  totalElements: number
+  totalPages: number
+  number: number
+  size: number
 }
 
 const loading = ref(false)
@@ -29,48 +32,13 @@ const PAGE_SIZE = 8
 
 const filters = reactive({
   keyword: '',
-  status: 'all' as 'all' | string,
-  level: 'all' as 'all' | string,
   enabled: 'all' as 'all' | 'true' | 'false',
+  supplierLevel: 'all' as 'all' | string,
+  status: 'all' as 'all' | string,
 })
-
-const pagination = reactive({
-  page: 0,
-  size: PAGE_SIZE,
-})
-
-const statusOptions = [
-  { label: '全部状态', value: 'all' },
-  { label: '待审核', value: 'PENDING' },
-  { label: '已通过', value: 'APPROVED' },
-  { label: '已驳回', value: 'REJECTED' },
-]
-
-const levelOptions = [
-  { label: '全部等级', value: 'all' },
-  { label: '青铜', value: 'BRONZE' },
-  { label: '白银', value: 'SILVER' },
-  { label: '黄金', value: 'GOLD' },
-  { label: '铂金', value: 'PLATINUM' },
-  { label: '钻石', value: 'DIAMOND' },
-]
-
-const enabledOptions = [
-  { label: '启停状态', value: 'all' },
-  { label: '启用', value: 'true' },
-  { label: '停用', value: 'false' },
-]
 
 const createDialogOpen = ref(false)
 const editDialogOpen = ref(false)
-const detailDialogOpen = ref(false)
-
-const createError = ref<string | null>(null)
-const editError = ref<string | null>(null)
-
-const submittingCreate = ref(false)
-const submittingEdit = ref(false)
-const deletingId = ref<number | null>(null)
 
 const createForm = reactive({
   username: '',
@@ -95,12 +63,40 @@ const editForm = reactive({
   companyName: '',
   businessLicense: '',
   contactPerson: '',
-  supplierLevel: '',
-  status: '',
+  supplierLevel: 'BRONZE',
+  status: 'PENDING',
   enabled: true as boolean | null,
 })
 
-const detailRecord = ref<SupplierRecord | null>(null)
+const submittingCreate = ref(false)
+const submittingEdit = ref(false)
+
+const levelOptions = [
+  { label: '全部等级', value: 'all' },
+  { label: '青铜', value: 'BRONZE' },
+  { label: '白银', value: 'SILVER' },
+  { label: '黄金', value: 'GOLD' },
+  { label: '铂金', value: 'PLATINUM' },
+  { label: '钻石', value: 'DIAMOND' },
+]
+
+const statusOptions = [
+  { label: '全部状态', value: 'all' },
+  { label: '待审核', value: 'PENDING' },
+  { label: '已通过', value: 'APPROVED' },
+  { label: '已拒绝', value: 'REJECTED' },
+]
+
+const enabledOptions = [
+  { label: '全部启停', value: 'all' },
+  { label: '启用', value: 'true' },
+  { label: '停用', value: 'false' },
+]
+
+const pagination = reactive({
+  page: 0,
+  size: PAGE_SIZE,
+})
 
 const hasSuppliers = computed(() => suppliers.value.length > 0)
 
@@ -114,13 +110,8 @@ const pageIndicator = computed(() => {
   return `${pagination.page + 1}/${totalPages.value}`
 })
 
-const canGoPreviousPage = computed(
-  () => totalPages.value > 0 && pagination.page > 0
-)
-
-const canGoNextPage = computed(
-  () => totalPages.value > 0 && pagination.page + 1 < totalPages.value
-)
+const canGoPreviousPage = computed(() => totalPages.value > 0 && pagination.page > 0)
+const canGoNextPage = computed(() => totalPages.value > 0 && pagination.page + 1 < totalPages.value)
 
 async function loadSuppliers() {
   loading.value = true
@@ -129,25 +120,48 @@ async function loadSuppliers() {
     const params: Record<string, unknown> = {
       page: pagination.page,
       size: PAGE_SIZE,
-      sortBy: 'createdAt',
-      sortDirection: 'DESC',
     }
-    const keyword = filters.keyword.trim()
-    if (keyword) params.keyword = keyword
-    if (filters.status !== 'all') params.status = filters.status
-    if (filters.level !== 'all') params.level = filters.level
-    if (filters.enabled !== 'all') params.enabled = filters.enabled === 'true'
+    if (filters.keyword.trim()) {
+      params.keyword = filters.keyword.trim()
+    }
+    if (filters.enabled !== 'all') {
+      params.enabled = filters.enabled === 'true'
+    }
+    if (filters.supplierLevel !== 'all') {
+      params.supplierLevel = filters.supplierLevel
+    }
+    if (filters.status !== 'all') {
+      params.status = filters.status
+    }
 
+    const requestedPage = params.page as number
     const { data } = await api.get<PageResponse<SupplierRecord>>('/suppliers', { params })
-    suppliers.value = Array.isArray(data.content) ? data.content : []
-    total.value = typeof data.totalElements === 'number' ? data.totalElements : suppliers.value.length
-    pagination.page = typeof data.number === 'number' ? data.number : pagination.page
+    const items = Array.isArray(data.content) ? data.content : []
+    const totalElements = typeof data.totalElements === 'number' ? data.totalElements : 0
+    const backendPage = typeof data.number === 'number' ? data.number : requestedPage
+    const calculatedTotalPages = PAGE_SIZE > 0 ? Math.ceil(totalElements / PAGE_SIZE) : 0
+    const safePage = calculatedTotalPages > 0 ? Math.min(backendPage, calculatedTotalPages - 1) : 0
+
+    if (calculatedTotalPages > 0 && backendPage >= calculatedTotalPages && requestedPage !== safePage) {
+      pagination.page = safePage
+      await loadSuppliers()
+      return
+    }
+
+    suppliers.value = items
+    total.value = totalElements
+    pagination.page = safePage
     pagination.size = PAGE_SIZE
   } catch (err) {
     error.value = err instanceof Error ? err.message : '加载供应商数据失败'
   } finally {
     loading.value = false
   }
+}
+
+function openCreateDialog() {
+  resetCreateForm()
+  createDialogOpen.value = true
 }
 
 function resetCreateForm() {
@@ -162,242 +176,108 @@ function resetCreateForm() {
   createForm.supplierLevel = 'BRONZE'
   createForm.status = 'PENDING'
   createForm.enabled = true
-  createError.value = null
 }
 
-function resetEditForm() {
-  editForm.id = 0
-  editForm.username = ''
-  editForm.email = ''
-  editForm.phone = ''
-  editForm.address = ''
-  editForm.companyName = ''
-  editForm.businessLicense = ''
-  editForm.contactPerson = ''
-  editForm.supplierLevel = ''
-  editForm.status = ''
-  editForm.enabled = true
-  editError.value = null
-}
-
-function openCreateDialog() {
-  resetCreateForm()
-  createDialogOpen.value = true
+function openEditDialog(record: SupplierRecord) {
+  editForm.id = record.id
+  editForm.username = record.username
+  editForm.email = record.email ?? ''
+  editForm.phone = record.phone ?? ''
+  editForm.address = record.address ?? ''
+  editForm.companyName = record.companyName ?? ''
+  editForm.businessLicense = record.businessLicense ?? ''
+  editForm.contactPerson = record.contactPerson ?? ''
+  editForm.supplierLevel = record.supplierLevel ?? 'BRONZE'
+  editForm.status = record.status ?? 'PENDING'
+  editForm.enabled = record.enabled
+  editDialogOpen.value = true
 }
 
 function closeDialogs() {
   createDialogOpen.value = false
   editDialogOpen.value = false
-  detailDialogOpen.value = false
-  createError.value = null
-  editError.value = null
-}
-
-async function fetchSupplierDetail(id: number) {
-  const { data } = await api.get<SupplierRecord>(`/suppliers/${id}`)
-  return data
-}
-
-async function openEditDialog(record: SupplierRecord) {
-  try {
-    const detail = await fetchSupplierDetail(record.id)
-    editForm.id = detail.id
-    editForm.username = detail.username ?? ''
-    editForm.email = detail.email ?? ''
-    editForm.phone = detail.phone ?? ''
-    editForm.address = detail.address ?? ''
-    editForm.companyName = detail.companyName ?? ''
-    editForm.businessLicense = detail.businessLicense ?? ''
-    editForm.contactPerson = detail.contactPerson ?? ''
-    editForm.supplierLevel = detail.supplierLevel ?? 'BRONZE'
-    editForm.status = detail.status ?? 'PENDING'
-    editForm.enabled = detail.enabled ?? true
-    editError.value = null
-    editDialogOpen.value = true
-  } catch (err) {
-    const message = err instanceof Error ? err.message : '加载供应商详情失败'
-    window.alert(message)
-  }
-}
-
-async function openDetailDialog(record: SupplierRecord) {
-  try {
-    detailRecord.value = await fetchSupplierDetail(record.id)
-    detailDialogOpen.value = true
-  } catch (err) {
-    const message = err instanceof Error ? err.message : '加载供应商详情失败'
-    window.alert(message)
-  }
-}
-
-function formatStatus(status?: string | null) {
-  if (!status) return '未设置'
-  switch (status.toUpperCase()) {
-    case 'APPROVED':
-      return '已通过'
-    case 'REJECTED':
-      return '已驳回'
-    case 'PENDING':
-      return '待审核'
-    default:
-      return status
-  }
-}
-
-function formatLevel(level?: string | null) {
-  if (!level) return '未评级'
-  const normalized = level.toUpperCase()
-  const mapping: Record<string, string> = {
-    BRONZE: '青铜',
-    SILVER: '白银',
-    GOLD: '黄金',
-    PLATINUM: '铂金',
-    DIAMOND: '钻石',
-  }
-  return mapping[normalized] ?? level
-}
-
-function formatEnabled(enabled: boolean | null | undefined) {
-  if (enabled === null || enabled === undefined) return '未知'
-  return enabled ? '启用' : '停用'
-}
-
-function formatNumber(value?: number | null) {
-  if (typeof value !== 'number' || Number.isNaN(value)) return '0'
-  return new Intl.NumberFormat('zh-CN').format(value)
-}
-
-function formatDateTime(value?: string | null) {
-  if (!value) return '—'
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) return '—'
-  return date.toLocaleString('zh-CN', { hour12: false })
-}
-
-function membershipBadge(level?: string | null) {
-  const normalized = level?.toUpperCase()
-  switch (normalized) {
-    case 'DIAMOND':
-      return 'badge-diamond'
-    case 'PLATINUM':
-      return 'badge-platinum'
-    case 'GOLD':
-      return 'badge-gold'
-    case 'SILVER':
-      return 'badge-silver'
-    case 'BRONZE':
-      return 'badge-bronze'
-    default:
-      return 'badge-unknown'
-  }
 }
 
 async function submitCreate() {
-  const username = createForm.username.trim()
-  const password = createForm.password.trim()
-  const email = createForm.email.trim()
-  const companyName = createForm.companyName.trim()
-
-  if (!username) {
-    createError.value = '请填写登录账号'
-    return
-  }
-  if (password.length < 6) {
-    createError.value = '密码长度至少 6 位'
-    return
-  }
-  if (!email) {
-    createError.value = '请填写联系邮箱'
-    return
-  }
-  if (!companyName) {
-    createError.value = '请填写公司名称'
-    return
-  }
-
-  const payload: Record<string, unknown> = {
-    username,
-    password,
-    email,
-    phone: createForm.phone.trim() || null,
-    address: createForm.address.trim() || null,
-    companyName,
-    businessLicense: createForm.businessLicense.trim() || null,
-    contactPerson: createForm.contactPerson.trim() || null,
-    supplierLevel: createForm.supplierLevel,
-    status: createForm.status,
-    enabled: createForm.enabled,
-  }
-
+  if (submittingCreate.value) return
   submittingCreate.value = true
-  createError.value = null
+  error.value = null
   try {
-    await api.post('/users/suppliers', payload)
+    await api.post('/suppliers', {
+      username: createForm.username.trim(),
+      password: createForm.password,
+      email: createForm.email.trim() || null,
+      phone: createForm.phone.trim() || null,
+      address: createForm.address.trim() || null,
+      companyName: createForm.companyName.trim(),
+      businessLicense: createForm.businessLicense.trim() || null,
+      contactPerson: createForm.contactPerson.trim(),
+      supplierLevel: createForm.supplierLevel,
+      status: createForm.status,
+      enabled: createForm.enabled,
+    })
     closeDialogs()
     await loadSuppliers()
   } catch (err) {
-    createError.value = err instanceof Error ? err.message : '创建供应商失败'
+    error.value = err instanceof Error ? err.message : '创建供应商失败'
   } finally {
     submittingCreate.value = false
   }
 }
 
 async function submitEdit() {
-  if (!editForm.id) return
-  const username = editForm.username.trim()
-  const email = editForm.email.trim()
-  const companyName = editForm.companyName.trim()
-
-  if (!username) {
-    editError.value = '账号不能为空'
-    return
-  }
-  if (!email) {
-    editError.value = '邮箱不能为空'
-    return
-  }
-  if (!companyName) {
-    editError.value = '公司名称不能为空'
-    return
-  }
-
-  const payload: Record<string, unknown> = {
-    username,
-    email,
-    phone: editForm.phone.trim() || null,
-    address: editForm.address.trim() || null,
-    companyName,
-    businessLicense: editForm.businessLicense.trim() || null,
-    contactPerson: editForm.contactPerson.trim() || null,
-    supplierLevel: editForm.supplierLevel || null,
-    status: editForm.status || null,
-    enabled: editForm.enabled,
-  }
-
+  if (submittingEdit.value || !editForm.id) return
   submittingEdit.value = true
-  editError.value = null
+  error.value = null
   try {
-    await api.put(`/users/suppliers/${editForm.id}`, payload)
+    const payload = {
+      username: editForm.username.trim(),
+      email: editForm.email.trim() || null,
+      phone: editForm.phone.trim() || null,
+      address: editForm.address.trim() || null,
+      companyName: editForm.companyName.trim(),
+      businessLicense: editForm.businessLicense.trim() || null,
+      contactPerson: editForm.contactPerson.trim(),
+      supplierLevel: editForm.supplierLevel,
+      status: editForm.status,
+      enabled: editForm.enabled,
+    }
+    await api.put(`/suppliers/${editForm.id}`, payload)
     closeDialogs()
     await loadSuppliers()
   } catch (err) {
-    editError.value = err instanceof Error ? err.message : '更新供应商失败'
+    error.value = err instanceof Error ? err.message : '更新供应商失败'
   } finally {
     submittingEdit.value = false
   }
 }
 
 async function deleteSupplier(id: number) {
-  if (!window.confirm('确定要删除该供应商吗？此操作不可撤销。')) return
-  deletingId.value = id
+  if (!window.confirm('确定要删除该供应商吗？此操作无法撤销。')) return
   try {
     await api.delete(`/suppliers/${id}`)
     await loadSuppliers()
   } catch (err) {
-    const message = err instanceof Error ? err.message : '删除供应商失败'
-    window.alert(message)
-  } finally {
-    deletingId.value = null
+    error.value = err instanceof Error ? err.message : '删除供应商失败'
+  }
+}
+
+function supplierLevelLabel(level: string | null) {
+  const option = levelOptions.find((item) => item.value === level)
+  if (option) return option.label
+  return level ? level : '未分级'
+}
+
+function supplierStatusLabel(status: string | null) {
+  switch (status) {
+    case 'APPROVED':
+      return '已通过'
+    case 'REJECTED':
+      return '已拒绝'
+    case 'PENDING':
+      return '待审核'
+    default:
+      return status || '未知'
   }
 }
 
@@ -419,6 +299,10 @@ watch(
 onMounted(() => {
   loadSuppliers()
 })
+
+function formatStatus(record: SupplierRecord) {
+  return record.enabled ? '启用' : '停用'
+}
 </script>
 
 <template>
@@ -426,37 +310,37 @@ onMounted(() => {
     <header class="page-header">
       <div>
         <h1>供应商账号管理</h1>
-        <p>集中展示并维护所有供应商资料，支持新增、编辑、查看与删除操作。</p>
+        <p>查看和维护供应商账号信息，支持添加、编辑、停用与删除。</p>
       </div>
       <button type="button" class="primary" @click="openCreateDialog">新增供应商</button>
     </header>
 
-    <section class="filters" aria-label="筛选条件">
+    <section class="filters" aria-label="筛选器">
       <div class="filter-group">
         <label>
           <span>关键词</span>
-          <input v-model="filters.keyword" type="search" placeholder="按账号、公司、邮箱或电话搜索" />
+          <input v-model="filters.keyword" type="search" placeholder="按账号、邮箱、电话或公司搜索" />
         </label>
         <label>
-          <span>状态</span>
-          <select v-model="filters.status">
-            <option v-for="option in statusOptions" :key="option.value" :value="option.value">
+          <span>启用状态</span>
+          <select v-model="filters.enabled">
+            <option v-for="option in enabledOptions" :key="option.value" :value="option.value">
               {{ option.label }}
             </option>
           </select>
         </label>
         <label>
           <span>供应商等级</span>
-          <select v-model="filters.level">
+          <select v-model="filters.supplierLevel">
             <option v-for="option in levelOptions" :key="option.value" :value="option.value">
               {{ option.label }}
             </option>
           </select>
         </label>
         <label>
-          <span>启停状态</span>
-          <select v-model="filters.enabled">
-            <option v-for="option in enabledOptions" :key="option.value" :value="option.value">
+          <span>审核状态</span>
+          <select v-model="filters.status">
+            <option v-for="option in statusOptions" :key="option.value" :value="option.value">
               {{ option.label }}
             </option>
           </select>
@@ -468,79 +352,56 @@ onMounted(() => {
     <div v-else-if="error" class="placeholder is-error">{{ error }}</div>
     <template v-else>
       <section class="panel">
-        <table v-if="hasSuppliers" class="data-table">
-          <thead>
-            <tr>
-              <th scope="col">ID</th>
-              <th scope="col">账号 / 公司</th>
-              <th scope="col">联系人</th>
-              <th scope="col">联系方式</th>
-              <th scope="col">等级</th>
-              <th scope="col">审核状态</th>
-              <th scope="col">启用</th>
-              <th scope="col" class="actions">操作</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-for="record in suppliers" :key="record.id">
-              <td>{{ record.id }}</td>
-              <td>
-                <div class="cell-main">
-                  <strong>{{ record.companyName ?? record.username }}</strong>
-                  <span class="sub">{{ record.username }}</span>
-                  <span v-if="record.businessLicense" class="sub">许可证：{{ record.businessLicense }}</span>
-                </div>
-              </td>
-              <td>
-                <div class="cell-main">
-                  <span>{{ record.contactPerson ?? '—' }}</span>
-                  <span v-if="record.address" class="sub">{{ record.address }}</span>
-                </div>
-              </td>
-              <td>
-                <div class="cell-main">
-                  <span>{{ record.phone ?? '—' }}</span>
-                  <span v-if="record.email" class="sub">{{ record.email }}</span>
-                </div>
-              </td>
-              <td>
-                <span :class="['level-badge', membershipBadge(record.supplierLevel)]">
-                  {{ formatLevel(record.supplierLevel) }}
-                </span>
-              </td>
-              <td>
-                <span class="status-pill" :class="record.status?.toUpperCase()">
-                  {{ formatStatus(record.status) }}
-                </span>
-              </td>
-              <td>
-                <span :class="['status-pill', record.enabled ? 'is-active' : 'is-disabled']">
-                  {{ formatEnabled(record.enabled) }}
-                </span>
-              </td>
-              <td class="actions">
-                <button type="button" class="link" @click="openDetailDialog(record)">查看</button>
-                <button type="button" class="link" @click="openEditDialog(record)">编辑</button>
-                <button
-                  type="button"
-                  class="link is-danger"
-                  :disabled="deletingId === record.id"
-                  @click="deleteSupplier(record.id)"
-                >
-                  删除
-                </button>
-              </td>
-            </tr>
-          </tbody>
-        </table>
-        <p v-else class="empty">暂无供应商记录，点击右上角按钮新增供应商账号。</p>
+        <div v-if="hasSuppliers" class="table-wrapper">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th scope="col">ID</th>
+                <th scope="col">账号/企业</th>
+                <th scope="col">联系方式</th>
+                <th scope="col">等级</th>
+                <th scope="col">审核状态</th>
+                <th scope="col">启用</th>
+                <th scope="col" class="actions">操作</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="record in suppliers" :key="record.id">
+                <td>{{ record.id }}</td>
+                <td>
+                  <div class="cell-main">
+                    <strong>{{ record.username }}</strong>
+                    <span v-if="record.companyName" class="sub">{{ record.companyName }}</span>
+                    <span v-if="record.businessLicense" class="sub">许可证：{{ record.businessLicense }}</span>
+                  </div>
+                </td>
+                <td>
+                  <div class="cell-main">
+                    <span>{{ record.phone ?? '—' }}</span>
+                    <span v-if="record.email" class="sub">{{ record.email }}</span>
+                  </div>
+                </td>
+                <td>{{ supplierLevelLabel(record.supplierLevel) }}</td>
+                <td>{{ supplierStatusLabel(record.status) }}</td>
+                <td>
+                  <span :class="['status-pill', record.enabled ? 'is-active' : 'is-disabled']">
+                    {{ formatStatus(record) }}
+                  </span>
+                </td>
+                <td class="actions">
+                  <button type="button" class="link" @click="openEditDialog(record)">编辑</button>
+                  <button type="button" class="link is-danger" @click="deleteSupplier(record.id)">删除</button>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <div v-else class="placeholder">暂无供应商数据，点击右上角新增供应商。</div>
 
-        <nav
-          v-if="hasSuppliers && totalPages > 0"
-          class="pagination-footer"
-          aria-label="供应商分页"
-        >
-          <span class="pagination-status">共 {{ formatNumber(total) }} 个供应商</span>
+        <nav class="pagination-footer" aria-label="分页导航">
+          <div class="pagination-status">
+            共 {{ total }} 条记录，当前第 {{ pagination.page + 1 }} 页
+          </div>
           <div class="pagination-controls">
             <button
               type="button"
@@ -574,8 +435,8 @@ onMounted(() => {
           <form class="dialog__content" @submit.prevent="submitCreate">
             <div class="grid">
               <label>
-                <span>登录账号</span>
-                <input v-model="createForm.username" type="text" placeholder="请输入供应商登录账号" required />
+                <span>账号</span>
+                <input v-model="createForm.username" type="text" placeholder="请输入用户名" required />
               </label>
               <label>
                 <span>登录密码</span>
@@ -585,59 +446,56 @@ onMounted(() => {
             <div class="grid">
               <label>
                 <span>邮箱</span>
-                <input v-model="createForm.email" type="email" placeholder="name@example.com" required />
+                <input v-model="createForm.email" type="email" placeholder="name@example.com" />
               </label>
               <label>
                 <span>联系电话</span>
-                <input v-model="createForm.phone" type="tel" placeholder="请输入联系电话" />
+                <input v-model="createForm.phone" type="tel" placeholder="请输入联系方式" />
               </label>
             </div>
             <label>
               <span>联系地址</span>
-              <input v-model="createForm.address" type="text" placeholder="请输入联系地址" />
+              <input v-model="createForm.address" type="text" placeholder="如：上海市浦东新区" />
             </label>
             <div class="grid">
               <label>
                 <span>公司名称</span>
-                <input v-model="createForm.companyName" type="text" placeholder="请输入公司名称" required />
+                <input v-model="createForm.companyName" type="text" placeholder="请输入公司名" required />
               </label>
               <label>
-                <span>营业执照编号</span>
-                <input v-model="createForm.businessLicense" type="text" placeholder="可选，营业执照信息" />
+                <span>营业执照号</span>
+                <input v-model="createForm.businessLicense" type="text" placeholder="可选" />
               </label>
             </div>
+            <label>
+              <span>联系人</span>
+              <input v-model="createForm.contactPerson" type="text" placeholder="请输入联系人" required />
+            </label>
             <div class="grid">
-              <label>
-                <span>联系人</span>
-                <input v-model="createForm.contactPerson" type="text" placeholder="可选，联系人姓名" />
-              </label>
               <label>
                 <span>供应商等级</span>
                 <select v-model="createForm.supplierLevel">
-                  <option value="BRONZE">青铜</option>
-                  <option value="SILVER">白银</option>
-                  <option value="GOLD">黄金</option>
-                  <option value="PLATINUM">铂金</option>
-                  <option value="DIAMOND">钻石</option>
+                  <option v-for="option in levelOptions.slice(1)" :key="option.value" :value="option.value">
+                    {{ option.label }}
+                  </option>
                 </select>
               </label>
               <label>
                 <span>审核状态</span>
                 <select v-model="createForm.status">
-                  <option value="PENDING">待审核</option>
-                  <option value="APPROVED">已通过</option>
-                  <option value="REJECTED">已驳回</option>
+                  <option v-for="option in statusOptions.slice(1)" :key="option.value" :value="option.value">
+                    {{ option.label }}
+                  </option>
+                </select>
+              </label>
+              <label>
+                <span>启用状态</span>
+                <select v-model="createForm.enabled">
+                  <option :value="true">启用</option>
+                  <option :value="false">停用</option>
                 </select>
               </label>
             </div>
-            <label>
-              <span>启用状态</span>
-              <select v-model="createForm.enabled">
-                <option :value="true">启用</option>
-                <option :value="false">停用</option>
-              </select>
-            </label>
-            <p v-if="createError" class="form-error">{{ createError }}</p>
             <footer class="dialog__footer">
               <button type="button" @click="closeDialogs">取消</button>
               <button type="submit" class="primary" :disabled="submittingCreate">
@@ -657,66 +515,63 @@ onMounted(() => {
           <form class="dialog__content" @submit.prevent="submitEdit">
             <div class="grid">
               <label>
-                <span>登录账号</span>
-                <input v-model="editForm.username" type="text" placeholder="请输入登录账号" required />
+                <span>账号</span>
+                <input v-model="editForm.username" type="text" required />
               </label>
               <label>
                 <span>邮箱</span>
-                <input v-model="editForm.email" type="email" placeholder="name@example.com" required />
+                <input v-model="editForm.email" type="email" />
               </label>
             </div>
             <div class="grid">
               <label>
                 <span>联系电话</span>
-                <input v-model="editForm.phone" type="tel" placeholder="请输入联系电话" />
-              </label>
-              <label>
-                <span>联系地址</span>
-                <input v-model="editForm.address" type="text" placeholder="请输入联系地址" />
-              </label>
-            </div>
-            <div class="grid">
-              <label>
-                <span>公司名称</span>
-                <input v-model="editForm.companyName" type="text" placeholder="请输入公司名称" required />
-              </label>
-              <label>
-                <span>营业执照编号</span>
-                <input v-model="editForm.businessLicense" type="text" placeholder="可选，营业执照信息" />
-              </label>
-            </div>
-            <div class="grid">
-              <label>
-                <span>联系人</span>
-                <input v-model="editForm.contactPerson" type="text" placeholder="可选，联系人姓名" />
+                <input v-model="editForm.phone" type="tel" />
               </label>
               <label>
                 <span>供应商等级</span>
                 <select v-model="editForm.supplierLevel">
-                  <option value="BRONZE">青铜</option>
-                  <option value="SILVER">白银</option>
-                  <option value="GOLD">黄金</option>
-                  <option value="PLATINUM">铂金</option>
-                  <option value="DIAMOND">钻石</option>
-                </select>
-              </label>
-              <label>
-                <span>审核状态</span>
-                <select v-model="editForm.status">
-                  <option value="PENDING">待审核</option>
-                  <option value="APPROVED">已通过</option>
-                  <option value="REJECTED">已驳回</option>
+                  <option v-for="option in levelOptions.slice(1)" :key="option.value" :value="option.value">
+                    {{ option.label }}
+                  </option>
                 </select>
               </label>
             </div>
             <label>
-              <span>启用状态</span>
-              <select v-model="editForm.enabled">
-                <option :value="true">启用</option>
-                <option :value="false">停用</option>
-              </select>
+              <span>联系地址</span>
+              <input v-model="editForm.address" type="text" />
             </label>
-            <p v-if="editError" class="form-error">{{ editError }}</p>
+            <div class="grid">
+              <label>
+                <span>公司名称</span>
+                <input v-model="editForm.companyName" type="text" required />
+              </label>
+              <label>
+                <span>营业执照号</span>
+                <input v-model="editForm.businessLicense" type="text" />
+              </label>
+            </div>
+            <label>
+              <span>联系人</span>
+              <input v-model="editForm.contactPerson" type="text" required />
+            </label>
+            <div class="grid">
+              <label>
+                <span>审核状态</span>
+                <select v-model="editForm.status">
+                  <option v-for="option in statusOptions.slice(1)" :key="option.value" :value="option.value">
+                    {{ option.label }}
+                  </option>
+                </select>
+              </label>
+              <label>
+                <span>启用状态</span>
+                <select v-model="editForm.enabled">
+                  <option :value="true">启用</option>
+                  <option :value="false">停用</option>
+                </select>
+              </label>
+            </div>
             <footer class="dialog__footer">
               <button type="button" @click="closeDialogs">取消</button>
               <button type="submit" class="primary" :disabled="submittingEdit">
@@ -726,85 +581,13 @@ onMounted(() => {
           </form>
         </div>
       </div>
-
-      <div v-if="detailDialogOpen && detailRecord" class="dialog-backdrop" role="dialog" aria-modal="true">
-        <div class="dialog dialog--wide">
-          <header class="dialog__header">
-            <h2>供应商详情</h2>
-            <button type="button" class="close-btn" aria-label="关闭" @click="closeDialogs">×</button>
-          </header>
-          <section class="dialog__content detail">
-            <dl>
-              <div>
-                <dt>账号</dt>
-                <dd>{{ detailRecord.username }}</dd>
-              </div>
-              <div>
-                <dt>公司名称</dt>
-                <dd>{{ detailRecord.companyName ?? '—' }}</dd>
-              </div>
-              <div>
-                <dt>联系方式</dt>
-                <dd>
-                  <span>{{ detailRecord.phone ?? '—' }}</span>
-                  <span v-if="detailRecord.email" class="sub">{{ detailRecord.email }}</span>
-                </dd>
-              </div>
-              <div>
-                <dt>联系地址</dt>
-                <dd>{{ detailRecord.address ?? '—' }}</dd>
-              </div>
-              <div>
-                <dt>联系人</dt>
-                <dd>{{ detailRecord.contactPerson ?? '—' }}</dd>
-              </div>
-              <div>
-                <dt>营业执照</dt>
-                <dd>{{ detailRecord.businessLicense ?? '—' }}</dd>
-              </div>
-              <div>
-                <dt>等级</dt>
-                <dd>{{ formatLevel(detailRecord.supplierLevel) }}</dd>
-              </div>
-              <div>
-                <dt>审核状态</dt>
-                <dd>{{ formatStatus(detailRecord.status) }}</dd>
-              </div>
-              <div>
-                <dt>启用状态</dt>
-                <dd>{{ formatEnabled(detailRecord.enabled) }}</dd>
-              </div>
-              <div>
-                <dt>账户余额</dt>
-                <dd>{{ typeof detailRecord.walletBalance === 'number' ? detailRecord.walletBalance.toFixed(2) : '—' }}</dd>
-              </div>
-              <div>
-                <dt>加入时间</dt>
-                <dd>{{ formatDateTime(detailRecord.joinDate) }}</dd>
-              </div>
-              <div>
-                <dt>创建时间</dt>
-                <dd>{{ formatDateTime(detailRecord.createdAt) }}</dd>
-              </div>
-              <div>
-                <dt>最近更新</dt>
-                <dd>{{ formatDateTime(detailRecord.updatedAt) }}</dd>
-              </div>
-            </dl>
-          </section>
-          <footer class="dialog__footer">
-            <button type="button" @click="closeDialogs">关闭</button>
-          </footer>
-        </div>
-      </div>
     </teleport>
   </section>
 </template>
 
 <style scoped>
 .management-shell {
-  display: flex;
-  flex-direction: column;
+  display: grid;
   gap: 1.5rem;
 }
 
@@ -812,36 +595,35 @@ onMounted(() => {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  gap: 1.5rem;
+  padding: 1.8rem;
+  border-radius: 20px;
+  background: linear-gradient(120deg, rgba(45, 212, 191, 0.18), rgba(59, 130, 246, 0.12));
 }
 
 .page-header h1 {
-  margin: 0;
-  font-size: 1.75rem;
-  font-weight: 700;
+  font-size: 1.8rem;
+  margin-bottom: 0.35rem;
 }
 
 .page-header p {
-  margin: 0.35rem 0 0;
-  color: rgba(71, 85, 105, 0.75);
+  color: rgba(15, 23, 42, 0.65);
 }
 
-.primary {
-  padding: 0.6rem 1.4rem;
+.page-header .primary {
+  padding: 0.6rem 1.6rem;
   border-radius: 999px;
-  background: linear-gradient(135deg, #f97316, #fbbf24);
-  color: #fff;
   border: none;
+  background: linear-gradient(135deg, #0ea5e9, #22d3ee);
+  color: #fff;
   font-weight: 600;
   cursor: pointer;
-  box-shadow: 0 15px 30px rgba(249, 115, 22, 0.25);
 }
 
 .filters {
   background: rgba(255, 255, 255, 0.95);
-  padding: 1.25rem 1.5rem;
-  border-radius: 20px;
-  box-shadow: 0 15px 30px rgba(15, 23, 42, 0.06);
+  border-radius: 18px;
+  padding: 1.4rem;
+  box-shadow: 0 12px 24px rgba(15, 23, 42, 0.08);
 }
 
 .filter-group {
@@ -860,7 +642,7 @@ onMounted(() => {
 .filter-group select {
   padding: 0.55rem 0.75rem;
   border-radius: 10px;
-  border: 1px solid rgba(148, 163, 184, 0.35);
+  border: 1px solid rgba(148, 163, 184, 0.4);
   background: #fff;
 }
 
@@ -871,148 +653,91 @@ onMounted(() => {
   box-shadow: 0 20px 40px rgba(15, 23, 42, 0.08);
 }
 
+.table-wrapper {
+  border: 1px solid rgba(59, 130, 246, 0.18);
+  border-radius: 18px;
+  background: rgba(239, 246, 255, 0.85);
+  overflow: hidden;
+  overflow-x: auto;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7);
+}
+
 .data-table {
   width: 100%;
   border-collapse: collapse;
+  min-width: 960px;
 }
 
 .data-table th,
 .data-table td {
-  padding: 0.9rem 0.75rem;
+  padding: 0.9rem 1rem;
   text-align: left;
-  border-bottom: 1px solid rgba(148, 163, 184, 0.2);
-  vertical-align: top;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.25);
 }
 
-.data-table th {
-  font-weight: 600;
-  color: rgba(15, 23, 42, 0.65);
+.data-table thead {
+  background: rgba(96, 165, 250, 0.12);
+}
+
+.data-table tbody tr:hover {
+  background: rgba(96, 165, 250, 0.08);
 }
 
 .cell-main {
   display: grid;
-  gap: 0.25rem;
+  gap: 0.3rem;
 }
 
 .cell-main .sub {
-  font-size: 0.8rem;
-  color: rgba(71, 85, 105, 0.7);
+  color: rgba(71, 85, 105, 0.8);
+  font-size: 0.9rem;
 }
 
 .status-pill {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0.25rem 0.6rem;
+  padding: 0.3rem 0.75rem;
   border-radius: 999px;
-  font-size: 0.78rem;
+  font-size: 0.85rem;
   font-weight: 600;
-  background: rgba(148, 163, 184, 0.16);
-  color: rgba(30, 41, 59, 0.75);
-}
-
-.status-pill.APPROVED {
-  background: rgba(34, 197, 94, 0.16);
-  color: #166534;
-}
-
-.status-pill.REJECTED {
-  background: rgba(248, 113, 113, 0.16);
-  color: #991b1b;
-}
-
-.status-pill.PENDING {
-  background: rgba(56, 189, 248, 0.16);
-  color: #075985;
 }
 
 .status-pill.is-active {
-  background: rgba(34, 197, 94, 0.16);
-  color: #166534;
+  background: rgba(34, 197, 94, 0.15);
+  color: #15803d;
 }
 
 .status-pill.is-disabled {
-  background: rgba(248, 113, 113, 0.16);
-  color: #991b1b;
-}
-
-.level-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.3rem;
-  padding: 0.25rem 0.65rem;
-  border-radius: 999px;
-  font-size: 0.78rem;
-  font-weight: 600;
-  background: rgba(79, 70, 229, 0.12);
-  color: #4338ca;
-}
-
-.level-badge.badge-gold {
-  background: rgba(234, 179, 8, 0.18);
-  color: #854d0e;
-}
-
-.level-badge.badge-platinum {
-  background: rgba(148, 163, 184, 0.18);
-  color: #0f172a;
-}
-
-.level-badge.badge-silver {
-  background: rgba(148, 163, 184, 0.22);
-  color: #334155;
-}
-
-.level-badge.badge-bronze {
-  background: rgba(217, 119, 6, 0.18);
-  color: #78350f;
-}
-
-.level-badge.badge-diamond {
-  background: rgba(14, 165, 233, 0.18);
-  color: #0f172a;
-}
-
-.level-badge.badge-unknown {
-  background: rgba(148, 163, 184, 0.18);
-  color: rgba(30, 41, 59, 0.7);
+  background: rgba(248, 113, 113, 0.15);
+  color: #b91c1c;
 }
 
 .actions {
   display: flex;
-  gap: 0.6rem;
-  align-items: center;
+  gap: 0.75rem;
 }
 
 .actions .link {
-  border: none;
   background: none;
+  border: none;
   color: #2563eb;
   cursor: pointer;
-  padding: 0;
+  padding: 0.25rem 0.5rem;
 }
 
-.actions .link.is-danger {
-  color: #dc2626;
+.actions .is-danger {
+  color: #e11d48;
 }
 
 .placeholder {
-  padding: 1.6rem;
-  border-radius: 16px;
-  background: rgba(255, 255, 255, 0.92);
   text-align: center;
-  color: rgba(71, 85, 105, 0.75);
+  padding: 2.5rem;
+  border-radius: 16px;
+  background: rgba(248, 250, 252, 0.85);
+  color: rgba(71, 85, 105, 0.9);
 }
 
 .placeholder.is-error {
-  background: rgba(248, 113, 113, 0.18);
-  color: #7f1d1d;
-}
-
-.empty {
-  text-align: center;
-  color: rgba(71, 85, 105, 0.75);
-  padding: 1rem 0;
+  color: #b91c1c;
+  background: rgba(254, 242, 242, 0.9);
 }
 
 .pagination-footer {
@@ -1064,135 +789,78 @@ onMounted(() => {
 .dialog-backdrop {
   position: fixed;
   inset: 0;
-  background: rgba(15, 23, 42, 0.45);
+  background: rgba(15, 23, 42, 0.35);
   display: grid;
   place-items: center;
-  padding: 2rem 1rem;
-  z-index: 50;
+  padding: 1.5rem;
+  z-index: 1000;
 }
 
 .dialog {
-  width: min(760px, 100%);
   background: #fff;
-  border-radius: 24px;
-  box-shadow: 0 25px 60px rgba(15, 23, 42, 0.25);
-  display: flex;
-  flex-direction: column;
+  border-radius: 20px;
+  width: min(720px, 100%);
   max-height: 90vh;
-}
-
-.dialog--wide {
-  width: min(880px, 100%);
+  overflow: auto;
+  box-shadow: 0 40px 70px rgba(15, 23, 42, 0.18);
 }
 
 .dialog__header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 1.25rem 1.5rem 1rem;
-  border-bottom: 1px solid rgba(226, 232, 240, 0.75);
+  padding: 1.2rem 1.6rem;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.2);
 }
 
 .dialog__content {
-  padding: 1.25rem 1.5rem;
   display: grid;
   gap: 1rem;
-  overflow-y: auto;
+  padding: 1.6rem;
 }
 
-.dialog__content.detail {
-  gap: 0.8rem;
+.dialog__content label {
+  display: grid;
+  gap: 0.4rem;
+}
+
+.dialog__content input,
+.dialog__content select {
+  padding: 0.6rem 0.75rem;
+  border-radius: 10px;
+  border: 1px solid rgba(148, 163, 184, 0.4);
 }
 
 .dialog__footer {
   display: flex;
   justify-content: flex-end;
-  gap: 0.75rem;
-  padding: 1.25rem 1.5rem 1.5rem;
-  border-top: 1px solid rgba(226, 232, 240, 0.75);
+  gap: 0.8rem;
+  padding: 0 1.6rem 1.6rem;
 }
 
 .dialog__footer button {
-  padding: 0.55rem 1.3rem;
+  border: none;
   border-radius: 999px;
-  border: 1px solid transparent;
+  padding: 0.55rem 1.4rem;
   cursor: pointer;
-  background: rgba(148, 163, 184, 0.18);
 }
 
 .dialog__footer .primary {
-  background: linear-gradient(135deg, #f97316, #fbbf24);
+  background: linear-gradient(135deg, #0ea5e9, #22d3ee);
   color: #fff;
-  border: none;
 }
 
 .close-btn {
   border: none;
   background: none;
-  font-size: 1.5rem;
+  font-size: 1.8rem;
+  line-height: 1;
   cursor: pointer;
 }
 
 .grid {
   display: grid;
   gap: 1rem;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-}
-
-label {
-  display: grid;
-  gap: 0.4rem;
-  font-size: 0.9rem;
-}
-
-input,
-select {
-  padding: 0.55rem 0.75rem;
-  border-radius: 12px;
-  border: 1px solid rgba(203, 213, 225, 0.8);
-  background: #fff;
-}
-
-.form-error {
-  margin: 0;
-  color: #dc2626;
-  font-size: 0.85rem;
-}
-
-.detail dl {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  gap: 1rem 1.5rem;
-}
-
-.detail dt {
-  font-weight: 600;
-  color: rgba(30, 41, 59, 0.75);
-}
-
-.detail dd {
-  margin: 0.2rem 0 0;
-  color: rgba(30, 41, 59, 0.85);
-}
-
-.detail dd .sub {
-  display: block;
-  color: rgba(71, 85, 105, 0.7);
-  font-size: 0.85rem;
-}
-
-@media (max-width: 720px) {
-  .page-header {
-    flex-direction: column;
-    align-items: flex-start;
-  }
-
-  .filters {
-    padding: 1rem;
-  }
-
-  .dialog {
-    max-height: 95vh;
-  }
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
 }
 </style>
