@@ -714,6 +714,7 @@ function formatNumber(value?: number | null) {
         <RouterLink class="manage-link" to="/admin/orders">订单管理</RouterLink>
         <RouterLink class="manage-link" to="/admin/consumers">采购账号管理</RouterLink>
         <RouterLink class="manage-link" to="/admin/suppliers">供应商账号管理</RouterLink>
+        <RouterLink class="manage-link" to="/admin/sales">销售统计</RouterLink>
       </nav>
     </header>
 

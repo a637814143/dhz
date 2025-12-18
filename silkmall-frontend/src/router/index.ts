@@ -10,6 +10,7 @@ const AdminConsumerManagement = () => import('../views/dashboard/AdminConsumerMa
 const AdminSupplierManagement = () => import('../views/dashboard/AdminSupplierManagement.vue')
 const AdminProductManagement = () => import('../views/dashboard/AdminProductManagement.vue')
 const AdminOrderManagement = () => import('../views/dashboard/AdminOrderManagement.vue')
+const AdminSalesStatistics = () => import('../views/dashboard/AdminSalesStatistics.vue')
 const ProductDetailView = () => import('../views/ProductDetailView.vue')
 
 const router = createRouter({
@@ -90,6 +91,12 @@ const router = createRouter({
       path: '/admin/suppliers',
       name: 'admin-suppliers',
       component: AdminSupplierManagement,
+      meta: { requiresAuth: true, roles: ['admin'] },
+    },
+    {
+      path: '/admin/sales',
+      name: 'admin-sales',
+      component: AdminSalesStatistics,
       meta: { requiresAuth: true, roles: ['admin'] },
     },
   ],

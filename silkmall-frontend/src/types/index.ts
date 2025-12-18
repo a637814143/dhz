@@ -292,6 +292,49 @@ export interface AdminOrderSummary {
   items: AdminOrderItem[]
 }
 
+export interface WeeklyOrderItem {
+  productId?: number | null
+  productName?: string | null
+  supplierId?: number | null
+  supplierName?: string | null
+  quantity: number
+  totalPrice: number
+}
+
+export interface WeeklyOrderSummary {
+  id: number
+  orderNo: string
+  totalAmount: number
+  totalQuantity: number
+  status?: string | null
+  orderTime?: string | null
+  paymentTime?: string | null
+  items: WeeklyOrderItem[]
+}
+
+export interface WeeklyProductPerformance {
+  productId?: number | null
+  productName?: string | null
+  supplierId?: number | null
+  supplierName?: string | null
+  quantity: number
+  salesAmount: number
+}
+
+export interface WeeklySalesBucket {
+  weekStart: string
+  weekEnd: string
+  totalOrders: number
+  totalQuantity: number
+  totalRevenue: number
+  orders: WeeklyOrderSummary[]
+  productPerformances: WeeklyProductPerformance[]
+}
+
+export interface WeeklySalesReport {
+  weeks: WeeklySalesBucket[]
+}
+
 export interface ProductReview {
   id: number
   orderId: number
