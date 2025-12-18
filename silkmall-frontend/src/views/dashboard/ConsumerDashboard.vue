@@ -6,6 +6,7 @@ import { useAuthState } from '@/services/authState'
 import type {
   Announcement,
   CartItem,
+  ConsumerFavorite,
   ConsumerAddress,
   HomepageContent,
   OrderDetail,
@@ -54,6 +55,11 @@ const cartItems = ref<CartItem[]>([])
 const cartLoading = ref(false)
 const cartError = ref<string | null>(null)
 const removingCartItemId = ref<number | null>(null)
+const favorites = ref<ConsumerFavorite[]>([])
+const favoritesLoading = ref(false)
+const favoritesError = ref<string | null>(null)
+const removingFavoriteId = ref<number | null>(null)
+const favoriteMessage = ref<string | null>(null)
 const redeemCodeInput = ref('')
 const redeeming = ref(false)
 const redeemMessage = ref<string | null>(null)
@@ -146,6 +152,7 @@ const maskedIdCard = computed(() => maskIdCard(profile.value?.idCard))
 const defaultAddress = computed(() => addresses.value.find((item) => item.isDefault))
 const hasAddresses = computed(() => addresses.value.length > 0)
 const hasCartItems = computed(() => cartItems.value.length > 0)
+const hasFavorites = computed(() => favorites.value.length > 0)
 const cartTotalQuantity = computed(() =>
   cartItems.value.reduce((total, item) => total + (item.quantity ?? 0), 0)
 )
@@ -400,6 +407,25 @@ async function loadCart() {
   }
 }
 
+async function loadFavorites() {
+  if (!state.user) {
+    favorites.value = []
+    return
+  }
+  favoritesLoading.value = true
+  favoritesError.value = null
+  favoriteMessage.value = null
+  try {
+    const { data } = await api.get<ConsumerFavorite[]>('/favorites')
+    favorites.value = data ?? []
+  } catch (err) {
+    favorites.value = []
+    favoritesError.value = err instanceof Error ? err.message : '加载收藏夹失败'
+  } finally {
+    favoritesLoading.value = false
+  }
+}
+
 async function loadAddresses() {
   if (!state.user) {
     addresses.value = []
@@ -435,6 +461,7 @@ async function bootstrap() {
       loadHomeContent(),
       loadWallet(),
       loadCart(),
+      loadFavorites(),
       loadReviews(),
       loadAddresses(),
     ])
@@ -623,6 +650,22 @@ async function removeCartItem(item: CartItem) {
     cartError.value = err instanceof Error ? err.message : '移除购物车商品失败'
   } finally {
     removingCartItemId.value = null
+  }
+}
+
+async function removeFavorite(item: ConsumerFavorite) {
+  if (!item?.id) return
+  favoritesError.value = null
+  favoriteMessage.value = null
+  removingFavoriteId.value = item.id
+  try {
+    await api.delete(`/favorites/${item.id}`)
+    favorites.value = favorites.value.filter((entry) => entry.id !== item.id)
+    favoriteMessage.value = '已移除收藏'
+  } catch (err) {
+    favoritesError.value = err instanceof Error ? err.message : '移除收藏失败'
+  } finally {
+    removingFavoriteId.value = null
   }
 }
 
@@ -1396,6 +1439,90 @@ const shortcutLinks = [
           <p v-else class="empty">您还没有保存收货地址，请添加一个常用地址。</p>
           <p v-if="addressMessage" class="panel-success">{{ addressMessage }}</p>
           <p v-if="addressActionError" class="panel-error">{{ addressActionError }}</p>
+        </section>
+
+        <section class="panel favorites full-row table-panel" aria-labelledby="favorites-title">
+          <div class="panel-title-row">
+            <div class="panel-title" id="favorites-title">我的收藏</div>
+            <div class="panel-actions">
+              <span v-if="favoriteMessage" class="panel-success">{{ favoriteMessage }}</span>
+              <button type="button" class="panel-action-button" @click="loadFavorites" :disabled="favoritesLoading">
+                {{ favoritesLoading ? '刷新中…' : '刷新' }}
+              </button>
+            </div>
+          </div>
+          <p v-if="favoritesLoading" class="empty">收藏加载中…</p>
+          <p v-else-if="favoritesError" class="empty is-error">{{ favoritesError }}</p>
+          <div v-else-if="hasFavorites" class="table-container scrollable-table">
+            <table class="dashboard-table favorites-table">
+              <thead>
+                <tr>
+                  <th scope="col" class="col-product">商品</th>
+                  <th scope="col">价格</th>
+                  <th scope="col">库存</th>
+                  <th scope="col">收藏时间</th>
+                  <th scope="col" class="col-actions">操作</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="item in favorites" :key="item.id">
+                  <td class="col-product">
+                    <div class="cart-product">
+                      <div class="image">
+                        <img
+                          v-if="item.product?.mainImage"
+                          :src="item.product.mainImage"
+                          :alt="item.product?.name ?? '商品图片'"
+                          loading="lazy"
+                        />
+                        <span v-else class="placeholder">{{ item.product?.name?.charAt(0)?.toUpperCase() ?? '藏' }}</span>
+                      </div>
+                      <div class="info">
+                        <strong class="name">{{ item.product?.name ?? '未命名商品' }}</strong>
+                        <span v-if="item.createdAt" class="added-time">
+                          收藏时间：{{ formatDateTime(item.createdAt) }}
+                        </span>
+                        <span
+                          v-if="item.product?.status && item.product.status !== 'ON_SALE'"
+                          class="status-tag"
+                        >
+                          状态：{{ item.product.status }}
+                        </span>
+                      </div>
+                    </div>
+                  </td>
+                  <td>{{ formatCurrency(item.product?.price ?? 0) }}</td>
+                  <td>{{ item.product?.stock ?? '—' }}</td>
+                  <td>{{ item.createdAt ? formatDateTime(item.createdAt) : '—' }}</td>
+                  <td class="actions-cell">
+                    <RouterLink
+                      v-if="item.product?.id"
+                      class="link-button"
+                      :to="`/product/${item.product.id}`"
+                    >
+                      查看
+                    </RouterLink>
+                    <RouterLink
+                      v-if="item.product?.id"
+                      class="link-button"
+                      :to="`/product/${item.product.id}`"
+                    >
+                      去购买
+                    </RouterLink>
+                    <button
+                      type="button"
+                      class="link-button danger"
+                      :disabled="removingFavoriteId === item.id"
+                      @click="removeFavorite(item)"
+                    >
+                      {{ removingFavoriteId === item.id ? '移除中…' : '移除' }}
+                    </button>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <p v-else class="empty">还没有收藏商品，前往产品中心点击“收藏商品”试试吧。</p>
         </section>
 
         <section class="panel cart full-row table-panel" aria-labelledby="cart-title">

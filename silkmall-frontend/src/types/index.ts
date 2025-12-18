@@ -69,6 +69,12 @@ export interface CartItem {
   product: CartItemProduct
 }
 
+export interface ConsumerFavorite {
+  id: number
+  createdAt?: string | null
+  product?: ProductSummary | null
+}
+
 export interface PurchaseOrderItemPayload {
   product: {
     id: number

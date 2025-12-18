@@ -2,14 +2,19 @@
 import { computed, withDefaults } from 'vue'
 import type { ProductSummary } from '@/types'
 
-const props = withDefaults(defineProps<{ product: ProductSummary; addingToCart?: boolean }>(), {
-  addingToCart: false,
-})
+const props = withDefaults(
+  defineProps<{ product: ProductSummary; addingToCart?: boolean; favoriting?: boolean }>(),
+  {
+    addingToCart: false,
+    favoriting: false,
+  }
+)
 
 const emit = defineEmits<{
   (e: 'purchase', product: ProductSummary): void
   (e: 'view-detail', product: ProductSummary): void
   (e: 'add-to-cart', product: ProductSummary): void
+  (e: 'favorite', product: ProductSummary): void
 }>()
 
 function openDetail() {
@@ -19,6 +24,11 @@ function openDetail() {
 function addToCart() {
   if (props.addingToCart) return
   emit('add-to-cart', props.product)
+}
+
+function addToFavorite() {
+  if (props.favoriting) return
+  emit('favorite', props.product)
 }
 
 const statusLabel = computed(() => {
@@ -96,6 +106,14 @@ const canAddToCart = computed(() => props.product.status === 'ON_SALE' && props.
           @click.stop="addToCart"
         >
           {{ props.addingToCart ? '加入中…' : '加入购物车' }}
+        </button>
+        <button
+          type="button"
+          class="favorite"
+          :disabled="props.favoriting"
+          @click.stop="addToFavorite"
+        >
+          {{ props.favoriting ? '收藏中…' : '收藏商品' }}
         </button>
         <button
           type="button"
@@ -273,6 +291,24 @@ const canAddToCart = computed(() => props.product.status === 'ON_SALE' && props.
 }
 
 .actions .add-to-cart:disabled {
+  cursor: not-allowed;
+  opacity: 0.65;
+  box-shadow: none;
+}
+
+.actions .favorite {
+  border: 1px solid rgba(242, 177, 66, 0.55);
+  background: rgba(242, 177, 66, 0.12);
+  color: #b45309;
+  cursor: pointer;
+}
+
+.actions .favorite:hover:not(:disabled) {
+  background: rgba(242, 177, 66, 0.18);
+  box-shadow: 0 12px 28px rgba(242, 177, 66, 0.18);
+}
+
+.actions .favorite:disabled {
   cursor: not-allowed;
   opacity: 0.65;
   box-shadow: none;
