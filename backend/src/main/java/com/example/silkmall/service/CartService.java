@@ -1,7 +1,6 @@
 package com.example.silkmall.service;
 
 import com.example.silkmall.entity.CartItem;
-import com.example.silkmall.entity.Order;
 
 import java.util.List;
 
@@ -15,7 +14,5 @@ public interface CartService extends BaseService<CartItem, Long> {
     void removeItem(Long consumerId, Long itemId);
 
     void clearCart(Long consumerId);
-
-    Order checkout(Long consumerId, List<Long> itemIds, String paymentMethod);
 }
 

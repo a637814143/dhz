@@ -3,11 +3,17 @@ package com.example.silkmall.service.impl;
 import com.example.silkmall.entity.Supplier;
 import com.example.silkmall.repository.SupplierRepository;
 import com.example.silkmall.service.SupplierService;
+import jakarta.persistence.criteria.Predicate;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
+import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
+import java.util.Locale;
 
 @Service
 public class SupplierServiceImpl extends UserServiceImpl<Supplier> implements SupplierService {
@@ -27,6 +33,13 @@ public class SupplierServiceImpl extends UserServiceImpl<Supplier> implements Su
     @Override
     public List<Supplier> findBySupplierLevel(String level) {
         return supplierRepository.findBySupplierLevel(level);
+    }
+
+    @Override
+    public Page<Supplier> search(String keyword, Boolean enabled, String supplierLevel, String status,
+                                 Pageable pageable) {
+        Specification<Supplier> specification = buildSpecification(keyword, enabled, supplierLevel, status);
+        return supplierRepository.findAll(specification, pageable);
     }
     
     @Override
@@ -75,7 +88,40 @@ public class SupplierServiceImpl extends UserServiceImpl<Supplier> implements Su
         if (supplier.getJoinDate() == null) {
             supplier.setJoinDate(new Date());
         }
-        
+
         return super.register(supplier);
+    }
+
+    private Specification<Supplier> buildSpecification(String keyword, Boolean enabled, String supplierLevel,
+                                                       String status) {
+        return (root, query, criteriaBuilder) -> {
+            List<Predicate> predicates = new ArrayList<>();
+
+            if (keyword != null && !keyword.trim().isEmpty()) {
+                String pattern = "%" + keyword.trim().toLowerCase(Locale.ROOT) + "%";
+                predicates.add(criteriaBuilder.or(
+                        criteriaBuilder.like(criteriaBuilder.lower(root.get("username")), pattern),
+                        criteriaBuilder.like(criteriaBuilder.lower(root.get("email")), pattern),
+                        criteriaBuilder.like(criteriaBuilder.lower(root.get("phone")), pattern),
+                        criteriaBuilder.like(criteriaBuilder.lower(root.get("companyName")), pattern)
+                ));
+            }
+
+            if (enabled != null) {
+                predicates.add(criteriaBuilder.equal(root.get("enabled"), enabled));
+            }
+
+            if (supplierLevel != null && !supplierLevel.isEmpty()) {
+                predicates.add(criteriaBuilder.equal(root.get("supplierLevel"), supplierLevel));
+            }
+
+            if (status != null && !status.isEmpty()) {
+                predicates.add(criteriaBuilder.equal(root.get("status"), status));
+            }
+
+            return predicates.isEmpty()
+                    ? criteriaBuilder.conjunction()
+                    : criteriaBuilder.and(predicates.toArray(new Predicate[0]));
+        };
     }
 }

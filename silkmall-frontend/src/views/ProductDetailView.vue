@@ -3,7 +3,7 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter, RouterLink } from 'vue-router'
 import api from '@/services/api'
 import PurchaseDialog from '@/components/PurchaseDialog.vue'
-import type { ProductDetail, PurchaseOrderResult } from '@/types'
+import type { ProductDetail, ProductSummary, PurchaseOrderResult } from '@/types'
 import { useAuthState } from '@/services/authState'
 
 const route = useRoute()
@@ -91,7 +91,7 @@ const purchaseButtonText = computed(() => {
   return isPurchasable.value ? '立即购买' : '暂不可购'
 })
 
-const purchaseTarget = computed<ProductDetail | null>(() => product.value ?? null)
+const purchaseTarget = computed<ProductSummary | null>(() => (product.value ? (product.value as ProductSummary) : null))
 
 const createdAtText = computed(() => {
   if (!product.value?.createdAt) {

@@ -1,10 +1,15 @@
 package com.example.silkmall.controller;
 
+import com.example.silkmall.dto.SupplierCreateRequest;
+import com.example.silkmall.dto.SupplierDTO;
 import com.example.silkmall.entity.Supplier;
 import com.example.silkmall.service.SupplierService;
+import jakarta.validation.Valid;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
+import org.springframework.data.web.PageableDefault;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
@@ -21,28 +26,73 @@ public class SupplierController extends BaseController {
     public SupplierController(SupplierService supplierService) {
         this.supplierService = supplierService;
     }
-    
+
+    @GetMapping
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<Page<SupplierDTO>> listSuppliers(
+            @RequestParam(value = "keyword", required = false) String keyword,
+            @RequestParam(value = "enabled", required = false) Boolean enabled,
+            @RequestParam(value = "supplierLevel", required = false) String supplierLevel,
+            @RequestParam(value = "status", required = false) String status,
+            @PageableDefault(sort = "createdAt", direction = Sort.Direction.DESC) Pageable pageable) {
+        String sanitizedKeyword = keyword != null ? keyword.trim() : null;
+        if (sanitizedKeyword != null && sanitizedKeyword.isEmpty()) {
+            sanitizedKeyword = null;
+        }
+        Page<SupplierDTO> result = supplierService
+                .search(sanitizedKeyword, enabled, normalize(supplierLevel, null), normalize(status, null), pageable)
+                .map(this::toDto);
+        return success(result);
+    }
+
     @GetMapping("/{id}")
     @PreAuthorize("hasRole('ADMIN') or (hasRole('SUPPLIER') and #id == principal.id)")
     public ResponseEntity<?> getSupplierById(@PathVariable Long id) {
         Optional<Supplier> supplier = supplierService.findById(id);
         if (supplier.isPresent()) {
-            return success(supplier.get());
+            return success(toDto(supplier.get()));
         } else {
             return notFound("供应商不存在");
         }
     }
-    
+
+    @PostMapping
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<?> createSupplier(@Valid @RequestBody SupplierCreateRequest request) {
+        Supplier supplier = new Supplier();
+        supplier.setUsername(normalize(request.getUsername(), null));
+        supplier.setPassword(request.getPassword());
+        supplier.setEmail(normalize(request.getEmail(), null));
+        supplier.setPhone(normalize(request.getPhone(), null));
+        supplier.setAddress(normalize(request.getAddress(), null));
+        supplier.setCompanyName(normalize(request.getCompanyName(), null));
+        supplier.setBusinessLicense(normalize(request.getBusinessLicense(), null));
+        supplier.setContactPerson(normalize(request.getContactPerson(), null));
+        supplier.setSupplierLevel(normalize(request.getSupplierLevel(), null));
+        supplier.setStatus(normalize(request.getStatus(), null));
+        supplier.setRole("supplier");
+        supplier.setEnabled(Boolean.TRUE.equals(request.getEnabled()));
+
+        Supplier saved = supplierService.register(supplier);
+
+        if (Boolean.FALSE.equals(request.getEnabled())) {
+            supplierService.disable(saved.getId());
+            saved = supplierService.findById(saved.getId()).orElse(saved);
+        }
+
+        return created(toDto(saved));
+    }
+
     @PutMapping("/{id}")
     @PreAuthorize("hasRole('ADMIN') or (hasRole('SUPPLIER') and #id == principal.id)")
-    public ResponseEntity<?> updateSupplier(@PathVariable Long id, @RequestBody Supplier request) {
+    public ResponseEntity<?> updateSupplier(@PathVariable Long id, @Valid @RequestBody SupplierDTO request) {
         Supplier existing = supplierService.findById(id)
                 .orElseThrow(() -> new RuntimeException("供应商不存在"));
 
         applyUpdates(request, existing);
 
         Supplier saved = supplierService.save(existing);
-        return success(saved);
+        return success(toDto(saved));
     }
     
     @DeleteMapping("/{id}")
@@ -88,7 +138,7 @@ public class SupplierController extends BaseController {
         return success();
     }
 
-    private void applyUpdates(Supplier source, Supplier target) {
+    private void applyUpdates(SupplierDTO source, Supplier target) {
         target.setUsername(normalize(source.getUsername(), target.getUsername()));
         target.setEmail(normalize(source.getEmail(), target.getEmail()));
         target.setPhone(normalize(source.getPhone(), target.getPhone()));
@@ -97,6 +147,27 @@ public class SupplierController extends BaseController {
         target.setCompanyName(normalize(source.getCompanyName(), target.getCompanyName()));
         target.setBusinessLicense(normalize(source.getBusinessLicense(), target.getBusinessLicense()));
         target.setContactPerson(normalize(source.getContactPerson(), target.getContactPerson()));
+        target.setSupplierLevel(normalize(source.getSupplierLevel(), target.getSupplierLevel()));
+        target.setStatus(normalize(source.getStatus(), target.getStatus()));
+        if (source.getEnabled() != null) {
+            target.setEnabled(source.getEnabled());
+        }
+    }
+
+    private SupplierDTO toDto(Supplier supplier) {
+        SupplierDTO dto = new SupplierDTO();
+        dto.setId(supplier.getId());
+        dto.setUsername(supplier.getUsername());
+        dto.setEmail(supplier.getEmail());
+        dto.setPhone(supplier.getPhone());
+        dto.setAddress(supplier.getAddress());
+        dto.setCompanyName(supplier.getCompanyName());
+        dto.setBusinessLicense(supplier.getBusinessLicense());
+        dto.setContactPerson(supplier.getContactPerson());
+        dto.setSupplierLevel(supplier.getSupplierLevel());
+        dto.setStatus(supplier.getStatus());
+        dto.setEnabled(supplier.isEnabled());
+        return dto;
     }
 
     private String normalize(String value, String fallback) {

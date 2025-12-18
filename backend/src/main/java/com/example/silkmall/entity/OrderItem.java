@@ -16,7 +16,6 @@ public class OrderItem {
     private Integer quantity;
     private BigDecimal unitPrice;
     private BigDecimal totalPrice;
-    private String sizeLabel;
     private Date createdAt;
     
     @ManyToOne
@@ -64,15 +63,7 @@ public class OrderItem {
     public void setTotalPrice(BigDecimal totalPrice) {
         this.totalPrice = totalPrice;
     }
-
-    public String getSizeLabel() {
-        return sizeLabel;
-    }
-
-    public void setSizeLabel(String sizeLabel) {
-        this.sizeLabel = sizeLabel;
-    }
-
+    
     public Date getCreatedAt() {
         return createdAt;
     }

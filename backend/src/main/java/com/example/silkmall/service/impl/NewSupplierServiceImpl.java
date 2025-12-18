@@ -3,12 +3,18 @@ package com.example.silkmall.service.impl;
 import com.example.silkmall.entity.Supplier;
 import com.example.silkmall.repository.NewSupplierRepository;
 import com.example.silkmall.service.SupplierService;
+import jakarta.persistence.criteria.Predicate;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Primary;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.Optional;
-import org.springframework.context.annotation.Primary;
 
 @Service
 @Primary
@@ -75,6 +81,13 @@ public class NewSupplierServiceImpl implements SupplierService {
     @Override
     public List<Supplier> findBySupplierLevel(String level) {
         return newSupplierRepository.findBySupplierLevel(level);
+    }
+
+    @Override
+    public Page<Supplier> search(String keyword, Boolean enabled, String supplierLevel, String status,
+                                 Pageable pageable) {
+        Specification<Supplier> specification = buildSpecification(keyword, enabled, supplierLevel, status);
+        return newSupplierRepository.findAll(specification, pageable);
     }
     
     @Override
@@ -163,8 +176,41 @@ public class NewSupplierServiceImpl implements SupplierService {
     public void updateSupplierLevel(Long id, String level) {
         Supplier supplier = findById(id)
                 .orElseThrow(() -> new RuntimeException("供应商不存在"));
-        
+
         supplier.setSupplierLevel(level);
         newSupplierRepository.save(supplier);
+    }
+
+    private Specification<Supplier> buildSpecification(String keyword, Boolean enabled, String supplierLevel,
+                                                       String status) {
+        return (root, query, criteriaBuilder) -> {
+            List<Predicate> predicates = new ArrayList<>();
+
+            if (keyword != null && !keyword.trim().isEmpty()) {
+                String pattern = "%" + keyword.trim().toLowerCase(Locale.ROOT) + "%";
+                predicates.add(criteriaBuilder.or(
+                        criteriaBuilder.like(criteriaBuilder.lower(root.get("username")), pattern),
+                        criteriaBuilder.like(criteriaBuilder.lower(root.get("email")), pattern),
+                        criteriaBuilder.like(criteriaBuilder.lower(root.get("phone")), pattern),
+                        criteriaBuilder.like(criteriaBuilder.lower(root.get("companyName")), pattern)
+                ));
+            }
+
+            if (enabled != null) {
+                predicates.add(criteriaBuilder.equal(root.get("enabled"), enabled));
+            }
+
+            if (supplierLevel != null && !supplierLevel.isEmpty()) {
+                predicates.add(criteriaBuilder.equal(root.get("supplierLevel"), supplierLevel));
+            }
+
+            if (status != null && !status.isEmpty()) {
+                predicates.add(criteriaBuilder.equal(root.get("status"), status));
+            }
+
+            return predicates.isEmpty()
+                    ? criteriaBuilder.conjunction()
+                    : criteriaBuilder.and(predicates.toArray(new Predicate[0]));
+        };
     }
 }

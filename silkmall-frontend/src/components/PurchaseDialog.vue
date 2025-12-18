@@ -1,12 +1,17 @@
 <script setup lang="ts">
 import { computed, reactive, ref, watch } from 'vue'
 import api from '@/services/api'
-import type { ConsumerAddress, ProductDetail, PurchaseOrderPayload, PurchaseOrderResult } from '@/types'
+import type {
+  ConsumerAddress,
+  ProductSummary,
+  PurchaseOrderPayload,
+  PurchaseOrderResult,
+} from '@/types'
 import { useAuthState } from '@/services/authState'
 
 const props = defineProps<{
   open: boolean
-  product: ProductDetail | null
+  product: ProductSummary | null
 }>()
 
 const emit = defineEmits<{
@@ -32,28 +37,6 @@ const addressBook = ref<ConsumerAddress[]>([])
 const addressBookLoading = ref(false)
 const addressBookError = ref<string | null>(null)
 const selectedAddressId = ref<number | 'manual'>('manual')
-const selectedSizeLabel = ref<string | null>(null)
-
-const sizeOptions = computed(() => {
-  if (!props.product?.sizeAllocations?.length) {
-    return [] as { label: string; quantity: number }[]
-  }
-  return (
-    props.product.sizeAllocations
-      ?.map((allocation) => ({
-        label: allocation.sizeLabel?.trim() ?? '',
-        quantity: allocation.quantity ?? 0,
-      }))
-      .filter((option) => option.label)
-      .map((option) => ({ ...option, quantity: Math.max(0, option.quantity) })) ?? []
-  )
-})
-
-const hasSizeOptions = computed(() => sizeOptions.value.length > 0)
-
-const selectedSize = computed(() =>
-  sizeOptions.value.find((option) => option.label === selectedSizeLabel.value) ?? null
-)
 
 watch(
   () => props.open,
@@ -67,28 +50,10 @@ watch(
 
 const maxQuantity = computed(() => props.product?.stock ?? 0)
 
-const resolvedMaxQuantity = computed(() => {
-  if (hasSizeOptions.value) {
-    return selectedSize.value?.quantity ?? 0
-  }
-  return maxQuantity.value
-})
-
 const totalAmount = computed(() => {
   if (!props.product) return 0
-  const effectiveQty = Math.min(Math.max(1, form.quantity), Math.max(0, resolvedMaxQuantity.value))
-  if (effectiveQty <= 0) return 0
-  return Number((props.product.price * effectiveQty).toFixed(2))
+  return Number((props.product.price * Math.max(1, form.quantity)).toFixed(2))
 })
-
-watch(
-  () => resolvedMaxQuantity.value,
-  (max) => {
-    if (max > 0 && form.quantity > max) {
-      form.quantity = max
-    }
-  }
-)
 
 function resetForm() {
   form.consumerLookupId = generateConsumerLookupId()
@@ -103,14 +68,6 @@ function resetForm() {
   addressBookError.value = null
   addressBookLoading.value = false
   selectedAddressId.value = 'manual'
-  initializeSizeSelection()
-}
-
-function initializeSizeSelection() {
-  selectedSizeLabel.value = null
-  if (!hasSizeOptions.value) return
-  const available = sizeOptions.value.find((option) => option.quantity > 0)
-  selectedSizeLabel.value = (available ?? sizeOptions.value[0]).label
 }
 
 async function loadAddressBook() {
@@ -215,21 +172,6 @@ function validate() {
     return false
   }
 
-  if (hasSizeOptions.value) {
-    if (!selectedSize.value) {
-      error.value = '请选择尺码'
-      return false
-    }
-    if (selectedSize.value.quantity <= 0) {
-      error.value = '该尺码已售完，请选择其他尺码'
-      return false
-    }
-    if (form.quantity > selectedSize.value.quantity) {
-      error.value = '购买数量超过该尺码的可用库存，请调整数量'
-      return false
-    }
-  }
-
   error.value = null
   return true
 }
@@ -251,7 +193,6 @@ async function submit() {
         {
           product: { id: props.product.id },
           quantity: form.quantity,
-          sizeLabel: selectedSizeLabel.value,
         },
       ],
     }
@@ -290,29 +231,6 @@ async function submit() {
           </div>
 
           <form class="purchase-form" @submit.prevent="submit">
-            <section v-if="hasSizeOptions" class="size-selector">
-              <header class="size-selector__header">选择尺码</header>
-              <div class="size-options" role="list">
-                <button
-                  v-for="option in sizeOptions"
-                  :key="option.label"
-                  type="button"
-                  class="size-option"
-                  :class="{
-                    'is-selected': option.label === selectedSizeLabel,
-                    'is-soldout': option.quantity <= 0,
-                  }"
-                  :disabled="option.quantity <= 0"
-                  @click="selectedSizeLabel = option.label"
-                >
-                  <span class="size-label">{{ option.label }}</span>
-                  <small v-if="option.quantity > 0" class="size-quantity">剩余 {{ option.quantity }} 件</small>
-                  <small v-else class="size-quantity is-soldout">该尺码已售完</small>
-                </button>
-              </div>
-              <p class="size-selector__hint">请选择需要的尺码后再填写购买数量。</p>
-            </section>
-
             <label>
               <span>消费者ID</span>
               <input v-model="form.consumerLookupId" type="text" readonly />
@@ -403,15 +321,8 @@ async function submit() {
                   v-model.number="form.quantity"
                   type="number"
                   min="1"
-                  :max="resolvedMaxQuantity"
-                  :placeholder="
-                    resolvedMaxQuantity > 0
-                      ? `最多 ${resolvedMaxQuantity} 件`
-                      : hasSizeOptions
-                        ? '请选择尺码'
-                        : '暂不可购'
-                  "
-                  :disabled="resolvedMaxQuantity === 0"
+                  :max="maxQuantity"
+                  :placeholder="`最多 ${maxQuantity} 件`"
                   required
                 />
               </label>
@@ -537,70 +448,6 @@ async function submit() {
   gap: 0.35rem;
   font-size: 0.9rem;
   color: rgba(15, 23, 42, 0.75);
-}
-
-.size-selector {
-  display: grid;
-  gap: 0.5rem;
-  padding: 0.75rem;
-  border-radius: 0.75rem;
-  background: rgba(242, 177, 66, 0.12);
-  border: 1px solid rgba(242, 177, 66, 0.35);
-}
-
-.size-selector__header {
-  font-weight: 700;
-  color: #5c2c0c;
-}
-
-.size-options {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
-  gap: 0.5rem;
-}
-
-.size-option {
-  border: 1px solid rgba(15, 23, 42, 0.12);
-  border-radius: 0.75rem;
-  padding: 0.5rem 0.75rem;
-  background: #fff;
-  text-align: left;
-  cursor: pointer;
-  display: grid;
-  gap: 0.15rem;
-  transition: border 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
-}
-
-.size-option .size-label {
-  font-weight: 700;
-  color: rgba(15, 23, 42, 0.85);
-}
-
-.size-option .size-quantity {
-  font-size: 0.82rem;
-  color: rgba(15, 23, 42, 0.55);
-}
-
-.size-option.is-selected {
-  border-color: rgba(92, 44, 12, 0.55);
-  box-shadow: 0 10px 24px rgba(92, 44, 12, 0.18);
-  transform: translateY(-1px);
-}
-
-.size-option.is-soldout {
-  opacity: 0.65;
-  cursor: not-allowed;
-  border-style: dashed;
-}
-
-.size-quantity.is-soldout {
-  color: #b91c1c;
-}
-
-.size-selector__hint {
-  margin: 0;
-  font-size: 0.85rem;
-  color: rgba(92, 44, 12, 0.8);
 }
 
 .address-selector {

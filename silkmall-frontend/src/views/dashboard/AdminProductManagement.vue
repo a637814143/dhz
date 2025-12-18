@@ -5,7 +5,6 @@ import type {
   CategoryOption,
   PageResponse,
   ProductOverview,
-  ProductSizeAllocation,
   ProductSummary,
   SupplierOption,
 } from '@/types'
@@ -24,7 +23,6 @@ interface ProductDetail {
   updatedAt?: string | null
   category?: { id: number; name?: string | null } | null
   supplier?: { id: number; companyName?: string | null } | null
-  sizeAllocations?: ProductSizeAllocation[] | null
 }
 
 const PRODUCT_EVENT_NAME = 'silkmall:products:changed'
@@ -95,21 +93,6 @@ const statusOptions = [
 ]
 
 const unitOptions = ['件', '条', '个', '箱']
-const sizeOptions = ['S', 'M', 'L', 'XL', '2XL', '3XL']
-
-const sizeAllocationOpen = ref(false)
-const sizeAllocations = reactive<Record<string, number>>(
-  sizeOptions.reduce((result, size) => {
-    result[size] = 0
-    return result
-  }, {} as Record<string, number>),
-)
-
-const sizeAllocationTotal = computed(() =>
-  sizeOptions.reduce((total, size) => total + (Number(sizeAllocations[size]) || 0), 0),
-)
-
-const sizeAllocationRemaining = computed(() => Number(productForm.stock || 0) - sizeAllocationTotal.value)
 
 function formatCurrency(amount?: number | null) {
   if (typeof amount !== 'number' || Number.isNaN(amount)) {
@@ -148,38 +131,6 @@ function resetProductForm() {
   productForm.mainImage = ''
   productFormError.value = null
   productFormMessage.value = null
-  sizeAllocationOpen.value = false
-  resetSizeAllocations(0)
-}
-
-function resetSizeAllocations(stock?: number) {
-  const stockValue = Number.isFinite(stock) ? Math.max(0, Number(stock)) : 0
-  sizeOptions.forEach((size, index) => {
-    sizeAllocations[size] = index === 0 ? stockValue : 0
-  })
-}
-
-function applySizeAllocationsFromDetail(detail: ProductDetail) {
-  const allocations = Array.isArray(detail.sizeAllocations) ? detail.sizeAllocations : []
-  if (allocations.length === 0) {
-    sizeAllocationOpen.value = false
-    resetSizeAllocations(productForm.stock)
-    return
-  }
-
-  const normalized: Record<string, number> = {}
-  allocations.forEach((item) => {
-    if (!item) return
-    const sizeLabel = typeof item.sizeLabel === 'string' ? item.sizeLabel.trim().toUpperCase() : ''
-    if (!sizeLabel) return
-    const quantity = Number(item.quantity)
-    normalized[sizeLabel] = Number.isFinite(quantity) ? Math.max(0, quantity) : 0
-  })
-
-  sizeAllocationOpen.value = true
-  sizeOptions.forEach((size) => {
-    sizeAllocations[size] = normalized[size.toUpperCase()] ?? 0
-  })
 }
 
 function extractNumericId(value: unknown): number | null {
@@ -396,29 +347,16 @@ async function openProductForm(product?: ProductSummary) {
     productForm.categoryId = data.category?.id ?? 0
     productForm.supplierId = data.supplier?.id ?? 0
     productForm.mainImage = data.mainImage ?? ''
-    applySizeAllocationsFromDetail(data)
   } else {
     resetProductForm()
-    resetSizeAllocations(productForm.stock)
-    sizeAllocationOpen.value = false
   }
+
   productDialogOpen.value = true
 }
 
 function cancelProductForm() {
   productDialogOpen.value = false
   resetProductForm()
-}
-
-function openSizeAllocation() {
-  if (!sizeAllocationOpen.value) {
-    resetSizeAllocations(productForm.stock)
-  }
-  sizeAllocationOpen.value = true
-}
-
-function closeSizeAllocation() {
-  sizeAllocationOpen.value = false
 }
 
 async function saveProduct() {
@@ -451,21 +389,6 @@ async function saveProduct() {
     return
   }
 
-  if (sizeAllocationOpen.value && stock > 0 && sizeAllocationTotal.value !== stock) {
-    productFormError.value = '尺码数量未分配完成，请确保总计等于库存数量'
-    return
-  }
-
-  const sizeAllocationPayload =
-    sizeAllocationOpen.value && stock >= 0
-      ? sizeOptions.map((size) => ({
-          sizeLabel: size,
-          quantity: Number.isFinite(Number(sizeAllocations[size]))
-            ? Math.max(0, Number(sizeAllocations[size]))
-            : 0,
-        }))
-      : null
-
   const payload: Record<string, unknown> = {
     name,
     description: productForm.description.trim() || null,
@@ -475,10 +398,6 @@ async function saveProduct() {
     status: productForm.status,
     mainImage: productForm.mainImage.trim() || null,
     supplier: { id: productForm.supplierId },
-  }
-
-  if (sizeAllocationPayload && sizeAllocationPayload.length > 0) {
-    payload.sizeAllocations = sizeAllocationPayload
   }
 
   if (productForm.categoryId > 0) {
@@ -759,17 +678,6 @@ function goToNextPage() {
               </option>
             </select>
           </label>
-          <div class="size-allocation-row full">
-            <div class="size-allocation-row__content">
-              <span class="size-allocation-row__label">选择尺码并分配库存（可选）</span>
-              <p class="size-allocation-row__hint">点击后选择尺码并填写数量，合计需等于库存</p>
-            </div>
-            <button type="button" class="primary" @click="openSizeAllocation">选择尺码</button>
-          </div>
-          <label class="full">
-            <span>主图地址</span>
-            <input v-model="productForm.mainImage" type="text" placeholder="https://" />
-          </label>
           <label>
             <span>供应商</span>
             <select v-model.number="productForm.supplierId">
@@ -809,30 +717,13 @@ function goToNextPage() {
             <input v-model.number="productForm.stock" type="number" min="0" />
           </label>
           <label class="full">
+            <span>主图地址</span>
+            <input v-model="productForm.mainImage" type="text" placeholder="https://" />
+          </label>
+          <label class="full">
             <span>商品描述</span>
             <textarea v-model="productForm.description" rows="4" placeholder="简要介绍商品亮点"></textarea>
           </label>
-        </div>
-
-        <div v-if="sizeAllocationOpen" class="size-panel">
-          <div class="size-panel__header">
-            <div>
-              <p class="size-panel__title">按尺码分配库存</p>
-              <p class="size-panel__hint">请为每个尺码填写数量，合计需与库存一致。</p>
-            </div>
-            <button type="button" class="ghost" @click="closeSizeAllocation">收起</button>
-          </div>
-          <div class="size-grid">
-            <label v-for="size in sizeOptions" :key="size">
-              <span>{{ size }}</span>
-              <input v-model.number="sizeAllocations[size]" type="number" min="0" />
-            </label>
-          </div>
-          <p :class="['size-summary', { 'is-error': sizeAllocationRemaining !== 0 }]">
-            已分配：{{ formatNumber(sizeAllocationTotal) }} / 库存：{{ formatNumber(productForm.stock) }}
-            <span v-if="sizeAllocationRemaining > 0">（剩余待分配 {{ formatNumber(sizeAllocationRemaining) }}）</span>
-            <span v-else-if="sizeAllocationRemaining < 0">（已超出库存 {{ formatNumber(Math.abs(sizeAllocationRemaining)) }}）</span>
-          </p>
         </div>
 
         <p v-if="productFormError" class="form-error">{{ productFormError }}</p>
@@ -1295,91 +1186,6 @@ tbody tr:nth-child(odd) {
 
 .grid textarea {
   resize: vertical;
-}
-
-.size-allocation-row {
-  display: grid;
-  grid-template-columns: 1fr auto;
-  align-items: end;
-  gap: 0.75rem;
-}
-
-.size-allocation-row.full {
-  grid-column: 1 / -1;
-  align-items: center;
-}
-
-.size-allocation-row__content {
-  display: grid;
-  gap: 0.2rem;
-}
-
-.size-allocation-row__label {
-  font-weight: 700;
-  color: rgba(15, 23, 42, 0.78);
-}
-
-.size-allocation-row__hint {
-  margin: 0;
-  color: rgba(15, 23, 42, 0.55);
-  font-size: 0.9rem;
-}
-
-.size-panel {
-  margin-top: -0.25rem;
-  padding: 1rem 1.25rem;
-  border-radius: 16px;
-  background: rgba(37, 99, 235, 0.06);
-  display: grid;
-  gap: 0.75rem;
-}
-
-.size-panel__header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.5rem;
-}
-
-.size-panel__title {
-  font-weight: 700;
-  margin: 0;
-  color: rgba(15, 23, 42, 0.85);
-}
-
-.size-panel__hint {
-  margin: 0.1rem 0 0;
-  color: rgba(15, 23, 42, 0.6);
-}
-
-.size-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
-  gap: 0.75rem;
-}
-
-.size-grid label {
-  display: grid;
-  gap: 0.35rem;
-  padding: 0.75rem;
-  border-radius: 12px;
-  background: #fff;
-  border: 1px solid rgba(15, 23, 42, 0.08);
-  font-weight: 700;
-}
-
-.size-grid input {
-  border-radius: 0.5rem;
-}
-
-.size-summary {
-  margin: 0;
-  font-weight: 700;
-  color: #2563eb;
-}
-
-.size-summary.is-error {
-  color: #dc2626;
 }
 
 .form-error {

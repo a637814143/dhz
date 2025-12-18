@@ -2,7 +2,6 @@ package com.example.silkmall.service.impl;
 
 import com.example.silkmall.dto.ProductOverviewDTO;
 import com.example.silkmall.entity.Product;
-import com.example.silkmall.entity.ProductSizeAllocation;
 import com.example.silkmall.repository.ProductRepository;
 import com.example.silkmall.service.ProductService;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -14,7 +13,6 @@ import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 
@@ -173,12 +171,10 @@ public class ProductServiceImpl extends BaseServiceImpl<Product, Long> implement
     
     @Override
     public Product save(Product product) {
-        Product existing = null;
-        if (product.getId() != null) {
-            existing = productRepository.findById(product.getId()).orElse(null);
-            if (existing != null && product.getCreatedAt() == null) {
-                product.setCreatedAt(existing.getCreatedAt());
-            }
+        if (product.getId() != null && product.getCreatedAt() == null) {
+            productRepository.findById(product.getId())
+                    .map(Product::getCreatedAt)
+                    .ifPresent(product::setCreatedAt);
         }
         // 初始化销量为0
         if (product.getSales() == null) {
@@ -197,43 +193,8 @@ public class ProductServiceImpl extends BaseServiceImpl<Product, Long> implement
             String trimmedUnit = product.getUnit().trim();
             product.setUnit(trimmedUnit.isEmpty() ? null : trimmedUnit);
         }
-        syncSizeAllocations(product, existing);
+
         return super.save(product);
-    }
-
-    private void syncSizeAllocations(Product product, Product existing) {
-        List<ProductSizeAllocation> allocations = product.getSizeAllocations();
-        if (allocations == null) {
-            if (existing != null) {
-                product.setSizeAllocations(existing.getSizeAllocations());
-            }
-            return;
-        }
-
-        List<ProductSizeAllocation> normalized = new ArrayList<>();
-        int allocatedTotal = 0;
-
-        for (ProductSizeAllocation allocation : allocations) {
-            if (allocation == null) {
-                continue;
-            }
-            String sizeLabel = allocation.getSizeLabel() == null ? "" : allocation.getSizeLabel().trim();
-            if (sizeLabel.isEmpty()) {
-                continue;
-            }
-            int quantity = allocation.getQuantity() == null ? 0 : Math.max(0, allocation.getQuantity());
-            allocation.setSizeLabel(sizeLabel);
-            allocation.setQuantity(quantity);
-            allocation.setProduct(product);
-            normalized.add(allocation);
-            allocatedTotal += quantity;
-        }
-
-        if (!normalized.isEmpty() && product.getStock() != null && allocatedTotal != product.getStock()) {
-            throw new IllegalArgumentException("尺码数量未分配完成，请确保总计等于库存数量");
-        }
-
-        product.setSizeAllocations(normalized.isEmpty() ? null : normalized);
     }
 
     @Override
