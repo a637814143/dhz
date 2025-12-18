@@ -1,5 +1,6 @@
 package com.example.silkmall.service;
 
+import com.example.silkmall.dto.WeeklySalesStatisticsDTO;
 import com.example.silkmall.entity.Order;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -24,4 +25,5 @@ public interface OrderService extends BaseService<Order, Long> {
     void approvePayout(Long id);
     Order findOrderDetail(Long id);
     Order updateContactInfo(Long id, String shippingAddress, String recipientName, String recipientPhone);
+    List<WeeklySalesStatisticsDTO> getWeeklySalesStats(int weeks);
 }
