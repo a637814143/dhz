@@ -8,6 +8,8 @@ import type {
   NewsItem,
   ProductOverview,
   ProductSummary,
+  WeeklyOrderDetail,
+  WeeklyProductPerformance,
   WeeklySalesStatistics,
   CategoryOption,
   SupplierOption,
@@ -162,11 +164,101 @@ async function loadHomeContent() {
 }
 
 async function loadWeeklySales() {
-  const response = await api.get<unknown>('/admins/analytics/weekly-sales', {
-    params: { weeks: 6 },
-  })
-  const parsed = unwrapData<WeeklySalesStatistics[]>(response.data)
-  weeklyStats.value = Array.isArray(parsed) ? parsed : []
+  try {
+    const response = await api.get<unknown>('/admins/analytics/weekly-sales', {
+      params: { weeks: 6 },
+    })
+    const parsed = unwrapData<WeeklySalesStatistics[]>(response.data)
+    weeklyStats.value = normaliseWeeklyStats(parsed ?? [])
+  } catch (err) {
+    console.warn('加载周销售数据失败', err)
+    weeklyStats.value = []
+  }
+}
+
+function normaliseWeeklyStats(payload: unknown): WeeklySalesStatistics[] {
+  if (!Array.isArray(payload)) {
+    return []
+  }
+
+  const coerceOrders = (raw: unknown): WeeklyOrderDetail[] => {
+    if (!Array.isArray(raw)) return []
+    return raw
+      .map((item) => {
+        if (!item || typeof item !== 'object') return null
+        const source = item as Record<string, unknown>
+        const id = Number(source.id)
+        const totalAmount = Number(source.totalAmount)
+        const totalQuantity = Number(source.totalQuantity)
+        const orderTime =
+          typeof source.orderTime === 'string' ? source.orderTime : String(source.orderTime ?? '')
+        return {
+          id: Number.isFinite(id) ? id : 0,
+          orderNo: typeof source.orderNo === 'string' ? source.orderNo : String(source.orderNo ?? ''),
+          totalAmount: Number.isFinite(totalAmount) ? totalAmount : 0,
+          totalQuantity: Number.isFinite(totalQuantity) ? totalQuantity : 0,
+          status: typeof source.status === 'string' ? source.status : '未知',
+          orderTime: orderTime || '',
+        }
+      })
+      .filter((item): item is WeeklyOrderDetail => !!item && !!item.orderNo)
+  }
+
+  const coercePerformance = (raw: unknown): WeeklyProductPerformance[] => {
+    if (!Array.isArray(raw)) return []
+    return raw
+      .map((item) => {
+        if (!item || typeof item !== 'object') return null
+        const source = item as Record<string, unknown>
+        const productId = Number(source.productId)
+        const supplierId = Number(source.supplierId)
+        const quantitySold = Number(source.quantitySold)
+        const totalRevenue = Number(source.totalRevenue)
+        return {
+          productId: Number.isFinite(productId) ? productId : null,
+          productName:
+            typeof source.productName === 'string'
+              ? source.productName
+              : String(source.productName ?? '未知商品'),
+          supplierId: Number.isFinite(supplierId) ? supplierId : null,
+          supplierName:
+            typeof source.supplierName === 'string'
+              ? source.supplierName
+              : String(source.supplierName ?? '未知供应商'),
+          quantitySold: Number.isFinite(quantitySold) ? quantitySold : 0,
+          totalRevenue: Number.isFinite(totalRevenue) ? totalRevenue : 0,
+        }
+      })
+      .filter((item): item is WeeklyProductPerformance => !!item)
+  }
+
+  return payload
+    .map((item) => {
+      if (!item || typeof item !== 'object') return null
+      const source = item as Record<string, unknown>
+      const orders = coerceOrders(source.orders)
+      const performances = coercePerformance(source.productPerformances)
+      const sumUnits = orders.reduce((total, order) => total + (order.totalQuantity ?? 0), 0)
+      const sumRevenue = performances.reduce((total, perf) => total + (perf.totalRevenue ?? 0), 0)
+      const orderCount = Number(source.orderCount)
+      const totalUnitsSold = Number(source.totalUnitsSold)
+      const totalSalesAmount = Number(source.totalSalesAmount)
+      const weekStart = typeof source.weekStart === 'string' ? source.weekStart : ''
+      const weekEnd = typeof source.weekEnd === 'string' ? source.weekEnd : ''
+
+      if (!weekStart || !weekEnd) return null
+
+      return {
+        weekStart,
+        weekEnd,
+        orderCount: Number.isFinite(orderCount) ? orderCount : orders.length,
+        totalUnitsSold: Number.isFinite(totalUnitsSold) ? totalUnitsSold : sumUnits,
+        totalSalesAmount: Number.isFinite(totalSalesAmount) ? totalSalesAmount : sumRevenue,
+        orders,
+        productPerformances: performances,
+      }
+    })
+    .filter((item): item is WeeklySalesStatistics => item !== null)
 }
 
 async function loadWallet() {
