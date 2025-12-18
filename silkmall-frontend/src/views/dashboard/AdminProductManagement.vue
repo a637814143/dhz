@@ -759,8 +759,11 @@ function goToNextPage() {
             <input v-model.number="productForm.stock" type="number" min="0" />
           </label>
           <div class="size-allocation-row full">
-            <span class="size-allocation-row__label">按尺码分配库存</span>
-            <button type="button" class="secondary" @click="openSizeAllocation">分配尺码库存</button>
+            <div class="size-allocation-row__content">
+              <span class="size-allocation-row__label">选择尺码并分配库存</span>
+              <p class="size-allocation-row__hint">点击后选择尺码并填写数量（合计需等于库存）</p>
+            </div>
+            <button type="button" class="primary" @click="openSizeAllocation">选择尺码</button>
           </div>
           <label class="full">
             <span>主图地址</span>
@@ -1267,9 +1270,20 @@ tbody tr:nth-child(odd) {
   align-items: center;
 }
 
+.size-allocation-row__content {
+  display: grid;
+  gap: 0.2rem;
+}
+
 .size-allocation-row__label {
   font-weight: 700;
   color: rgba(15, 23, 42, 0.78);
+}
+
+.size-allocation-row__hint {
+  margin: 0;
+  color: rgba(15, 23, 42, 0.55);
+  font-size: 0.9rem;
 }
 
 .size-panel {
