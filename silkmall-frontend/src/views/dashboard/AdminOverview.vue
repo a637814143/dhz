@@ -10,7 +10,6 @@ import type {
   ProductSummary,
   CategoryOption,
   SupplierOption,
-  WeeklySalesReport,
 } from '@/types'
 
 interface ProductDetail {
@@ -34,10 +33,6 @@ const overview = ref<ProductOverview | null>(null)
 const announcements = ref<Announcement[]>([])
 const news = ref<NewsItem[]>([])
 const hotProducts = ref<ProductSummary[]>([])
-const weeklySales = ref<WeeklySalesReport | null>(null)
-const weeklyLoading = ref(false)
-const weeklyError = ref<string | null>(null)
-const selectedWeeks = ref(6)
 const loading = ref(true)
 const error = ref<string | null>(null)
 
@@ -162,22 +157,6 @@ async function loadHomeContent() {
   announcements.value = parsed.announcements
   news.value = parsed.news
   hotProducts.value = parsed.hotSales.slice(0, 5)
-}
-
-async function loadWeeklySales() {
-  weeklyLoading.value = true
-  weeklyError.value = null
-  try {
-    const { data } = await api.get<WeeklySalesReport>('/analytics/weekly-sales', {
-      params: { weeks: selectedWeeks.value },
-    })
-    weeklySales.value = data ?? null
-  } catch (err) {
-    weeklySales.value = null
-    weeklyError.value = err instanceof Error ? err.message : '加载周度销售数据失败'
-  } finally {
-    weeklyLoading.value = false
-  }
 }
 
 async function loadWallet() {
@@ -668,7 +647,7 @@ async function bootstrap() {
   loading.value = true
   error.value = null
   try {
-    await Promise.all([loadOverview(), loadHomeContent(), loadWallet(), loadWeeklySales()])
+    await Promise.all([loadOverview(), loadHomeContent(), loadWallet()])
   } catch (err) {
     error.value = err instanceof Error ? err.message : '加载管理数据失败'
   } finally {
@@ -717,21 +696,6 @@ function formatDate(value?: string | Date | null) {
   return date.toLocaleString('zh-CN', { hour12: false })
 }
 
-function formatDateOnly(value?: string | Date | null) {
-  if (!value) return '—'
-  const date = typeof value === 'string' ? new Date(value) : value
-  if (Number.isNaN(date.getTime())) return '—'
-  return date.toLocaleDateString('zh-CN')
-}
-
-function formatWeekRange(start?: string | null, end?: string | null) {
-  const startText = formatDateOnly(start)
-  const endText = formatDateOnly(end)
-  if (startText === '—' && endText === '—') return '—'
-  if (endText === '—') return startText
-  return `${startText} - ${endText}`
-}
-
 function formatNumber(value?: number | null) {
   if (typeof value !== 'number' || Number.isNaN(value)) return '0'
   return new Intl.NumberFormat('zh-CN').format(value)
@@ -750,6 +714,7 @@ function formatNumber(value?: number | null) {
         <RouterLink class="manage-link" to="/admin/orders">订单管理</RouterLink>
         <RouterLink class="manage-link" to="/admin/consumers">采购账号管理</RouterLink>
         <RouterLink class="manage-link" to="/admin/suppliers">供应商账号管理</RouterLink>
+        <RouterLink class="manage-link" to="/admin/sales">销售统计</RouterLink>
       </nav>
     </header>
 
@@ -815,103 +780,6 @@ function formatNumber(value?: number | null) {
             <span>累计销量</span>
             <strong>{{ formatNumber(overview?.totalSalesVolume) }}</strong>
           </div>
-        </div>
-      </section>
-
-      <section class="panel weekly-sales" aria-labelledby="weekly-sales-title">
-        <header class="weekly-sales-header">
-          <div>
-            <div class="panel-title" id="weekly-sales-title">周度销售统计</div>
-            <p class="panel-subtitle">查看每周订单与商品表现，同名商品会按供应商分开统计。</p>
-          </div>
-          <label class="weeks-selector">
-            <span>统计周数</span>
-            <select v-model.number="selectedWeeks" @change="loadWeeklySales" :disabled="weeklyLoading">
-              <option :value="4">4 周</option>
-              <option :value="6">6 周</option>
-              <option :value="8">8 周</option>
-              <option :value="12">12 周</option>
-            </select>
-          </label>
-        </header>
-        <div v-if="weeklyLoading" class="placeholder">正在加载周度数据…</div>
-        <div v-else-if="weeklyError" class="placeholder is-error">{{ weeklyError }}</div>
-        <div v-else-if="!weeklySales?.weeks?.length" class="placeholder">暂无销售记录</div>
-        <div v-else class="weekly-grid">
-          <article v-for="week in weeklySales?.weeks" :key="week.weekStart" class="week-card">
-            <header class="week-card__header">
-              <div>
-                <div class="week-label">{{ formatWeekRange(week.weekStart, week.weekEnd) }}</div>
-                <p class="panel-subtitle">
-                  订单 {{ formatNumber(week.totalOrders) }} · 销量 {{ formatNumber(week.totalQuantity) }}
-                </p>
-              </div>
-              <div class="week-amount">{{ formatCurrency(week.totalRevenue) }}</div>
-            </header>
-            <div class="week-columns">
-              <div class="week-column">
-                <h4>订单明细</h4>
-                <table v-if="week.orders?.length" class="compact-table">
-                  <thead>
-                    <tr>
-                      <th scope="col">订单号</th>
-                      <th scope="col">支付时间</th>
-                      <th scope="col">金额</th>
-                      <th scope="col">数量</th>
-                      <th scope="col">商品/供应商</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    <tr v-for="order in week.orders" :key="order.id">
-                      <td>{{ order.orderNo }}</td>
-                      <td>{{ formatDate(order.paymentTime) }}</td>
-                      <td>{{ formatCurrency(order.totalAmount) }}</td>
-                      <td>{{ formatNumber(order.totalQuantity) }}</td>
-                      <td class="order-items">
-                        <div
-                          v-for="item in order.items"
-                          :key="`${order.id}-${item.productId}-${item.supplierId}-${item.productName}`"
-                          class="order-item-line"
-                        >
-                          <span class="product-name">{{ item.productName || '未命名商品' }}</span>
-                          <span class="supplier-chip" v-if="item.supplierName">{{ item.supplierName }}</span>
-                          <span class="supplier-chip muted" v-else>无供应商</span>
-                          × {{ formatNumber(item.quantity) }}
-                        </div>
-                      </td>
-                    </tr>
-                  </tbody>
-                </table>
-                <p v-else class="empty">本周暂无订单数据</p>
-              </div>
-              <div class="week-column">
-                <h4>商品表现</h4>
-                <table v-if="week.productPerformances?.length" class="compact-table">
-                  <thead>
-                    <tr>
-                      <th scope="col">商品 / 供应商</th>
-                      <th scope="col">销量</th>
-                      <th scope="col">销售额</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    <tr v-for="product in week.productPerformances" :key="`${product.productId}-${product.supplierId}`">
-                      <td>
-                        <div class="product-line">
-                          <span class="product-name">{{ product.productName || '未命名商品' }}</span>
-                          <span class="supplier-chip" v-if="product.supplierName">{{ product.supplierName }}</span>
-                          <span class="supplier-chip muted" v-else>无供应商</span>
-                        </div>
-                      </td>
-                      <td>{{ formatNumber(product.quantity) }}</td>
-                      <td>{{ formatCurrency(product.salesAmount) }}</td>
-                    </tr>
-                  </tbody>
-                </table>
-                <p v-else class="empty">暂无商品销量</p>
-              </div>
-            </div>
-          </article>
         </div>
       </section>
 
@@ -1496,137 +1364,6 @@ function formatNumber(value?: number | null) {
 .metric-grid strong {
   font-size: 1.4rem;
   font-weight: 700;
-}
-
-.weekly-sales {
-  gap: 1rem;
-}
-
-.weekly-sales-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  gap: 1rem;
-  flex-wrap: wrap;
-}
-
-.weeks-selector {
-  display: grid;
-  gap: 0.35rem;
-  font-weight: 600;
-  color: rgba(30, 41, 59, 0.75);
-}
-
-.weeks-selector select {
-  padding: 0.5rem 0.75rem;
-  border-radius: 0.75rem;
-  border: 1px solid rgba(30, 41, 59, 0.18);
-  min-width: 120px;
-}
-
-.weekly-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
-  gap: 1rem;
-}
-
-.week-card {
-  border: 1px solid rgba(15, 23, 42, 0.08);
-  border-radius: 16px;
-  padding: 1rem;
-  background: rgba(248, 250, 252, 0.8);
-  display: grid;
-  gap: 1rem;
-}
-
-.week-card__header {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  gap: 1rem;
-}
-
-.week-label {
-  font-weight: 700;
-  font-size: 1.05rem;
-  color: #0f172a;
-}
-
-.week-amount {
-  font-weight: 700;
-  color: #2563eb;
-  font-size: 1.1rem;
-}
-
-.week-columns {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-  gap: 1rem;
-}
-
-.week-column h4 {
-  margin: 0 0 0.5rem;
-}
-
-.compact-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 0.93rem;
-}
-
-.compact-table thead {
-  background: rgba(15, 23, 42, 0.04);
-  color: rgba(15, 23, 42, 0.65);
-}
-
-.compact-table th,
-.compact-table td {
-  padding: 0.5rem 0.35rem;
-  text-align: left;
-  border-bottom: 1px solid rgba(15, 23, 42, 0.08);
-  vertical-align: top;
-}
-
-.compact-table tbody tr:nth-child(odd) {
-  background: rgba(59, 130, 246, 0.04);
-}
-
-.order-items {
-  line-height: 1.5;
-}
-
-.order-item-line,
-.product-line {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0.35rem;
-}
-
-.product-name {
-  font-weight: 600;
-  color: #0f172a;
-}
-
-.supplier-chip {
-  display: inline-flex;
-  align-items: center;
-  padding: 0.2rem 0.55rem;
-  border-radius: 999px;
-  background: rgba(59, 130, 246, 0.14);
-  color: #1d4ed8;
-  font-size: 0.82rem;
-  font-weight: 600;
-}
-
-.supplier-chip.muted {
-  background: rgba(15, 23, 42, 0.06);
-  color: rgba(15, 23, 42, 0.65);
-}
-
-.week-columns .empty {
-  margin: 0.25rem 0 0;
-  color: rgba(15, 23, 42, 0.6);
 }
 
 .hot-products table {
