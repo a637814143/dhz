@@ -1,5 +1,8 @@
 package com.example.silkmall.service.impl;
 
+import com.example.silkmall.dto.WeeklyOrderDetailDTO;
+import com.example.silkmall.dto.WeeklyProductPerformanceDTO;
+import com.example.silkmall.dto.WeeklySalesStatisticsDTO;
 import com.example.silkmall.entity.Admin;
 import com.example.silkmall.entity.Consumer;
 import com.example.silkmall.entity.Order;
@@ -22,6 +25,10 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.time.LocalDate;
+import java.time.ZoneId;
+import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.Date;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -570,12 +577,126 @@ public class OrderServiceImpl extends BaseServiceImpl<Order, Long> implements Or
         return orderRepository.findDetailedById(id)
                 .orElseThrow(() -> new RuntimeException("订单不存在"));
     }
-    
+
+    @Transactional(readOnly = true)
+    @Override
+    public List<WeeklySalesStatisticsDTO> getWeeklySalesStats(int weeks) {
+        int resolvedWeeks = weeks <= 0 ? 6 : Math.min(weeks, 52);
+        ZoneId zoneId = ZoneId.systemDefault();
+        LocalDate currentWeekStart = LocalDate.now(zoneId).with(java.time.DayOfWeek.MONDAY);
+
+        List<WeeklySalesStatisticsDTO> statistics = new ArrayList<>();
+        for (int i = 0; i < resolvedWeeks; i++) {
+            LocalDate weekStart = currentWeekStart.minusWeeks(i);
+            LocalDate weekEnd = weekStart.plusDays(6);
+
+            Date startDate = Date.from(weekStart.atStartOfDay(zoneId).toInstant());
+            Date endDate = Date.from(weekStart.plusWeeks(1).atStartOfDay(zoneId).toInstant());
+
+            List<Order> weeklyOrders = orderRepository.findByOrderTimeBetween(startDate, endDate)
+                    .stream()
+                    .filter(this::isCountableOrder)
+                    .collect(Collectors.toList());
+
+            WeeklySalesStatisticsDTO dto = new WeeklySalesStatisticsDTO();
+            dto.setWeekStart(weekStart);
+            dto.setWeekEnd(weekEnd);
+            dto.setOrderCount(weeklyOrders.size());
+            dto.setTotalSalesAmount(sumSalesAmount(weeklyOrders));
+            dto.setTotalUnitsSold(sumUnitsSold(weeklyOrders));
+            dto.setOrders(mapWeeklyOrders(weeklyOrders));
+            dto.setProductPerformances(calculateProductPerformances(weeklyOrders));
+            statistics.add(dto);
+        }
+
+        return statistics;
+    }
+
     // 生成订单编号
     private String generateOrderNo() {
         String timestamp = String.valueOf(System.currentTimeMillis());
         String random = UUID.randomUUID().toString().substring(0, 8);
         return timestamp + random;
+    }
+
+    private boolean isCountableOrder(Order order) {
+        if (order == null) {
+            return false;
+        }
+        String status = order.getStatus();
+        return !CANCELLED.equals(status) && !REVOKED.equals(status);
+    }
+
+    private BigDecimal sumSalesAmount(List<Order> orders) {
+        BigDecimal total = orders.stream()
+                .map(order -> order.getTotalAmount() == null ? BigDecimal.ZERO : order.getTotalAmount())
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        return total.setScale(2, RoundingMode.HALF_UP);
+    }
+
+    private Integer sumUnitsSold(List<Order> orders) {
+        return orders.stream()
+                .map(order -> order.getTotalQuantity() == null ? 0 : order.getTotalQuantity())
+                .reduce(0, Integer::sum);
+    }
+
+    private List<WeeklyOrderDetailDTO> mapWeeklyOrders(List<Order> orders) {
+        return orders.stream()
+                .sorted(Comparator.comparing(Order::getOrderTime, Comparator.nullsLast(Date::compareTo)).reversed())
+                .map(this::toWeeklyOrderDetail)
+                .collect(Collectors.toList());
+    }
+
+    private WeeklyOrderDetailDTO toWeeklyOrderDetail(Order order) {
+        WeeklyOrderDetailDTO dto = new WeeklyOrderDetailDTO();
+        dto.setId(order.getId());
+        dto.setOrderNo(order.getOrderNo());
+        dto.setTotalAmount(order.getTotalAmount() == null ? BigDecimal.ZERO : order.getTotalAmount());
+        dto.setTotalQuantity(order.getTotalQuantity() == null ? 0 : order.getTotalQuantity());
+        dto.setStatus(order.getStatus());
+        dto.setOrderTime(order.getOrderTime());
+        return dto;
+    }
+
+    private List<WeeklyProductPerformanceDTO> calculateProductPerformances(List<Order> orders) {
+        Map<String, WeeklyProductPerformanceDTO> performances = new LinkedHashMap<>();
+        for (Order order : orders) {
+            if (order.getOrderItems() == null) {
+                continue;
+            }
+            for (OrderItem item : order.getOrderItems()) {
+                Product product = item.getProduct();
+                Supplier supplier = product == null ? null : product.getSupplier();
+                Long productId = product == null ? null : product.getId();
+                Long supplierId = supplier == null ? null : supplier.getId();
+                String key = (productId == null ? "unknown" : productId) + ":" + (supplierId == null ? "unknown" : supplierId);
+
+                WeeklyProductPerformanceDTO performance = performances.computeIfAbsent(key, k -> {
+                    WeeklyProductPerformanceDTO created = new WeeklyProductPerformanceDTO();
+                    created.setProductId(productId);
+                    created.setProductName(product != null ? product.getName() : "未知商品");
+                    created.setSupplierId(supplierId);
+                    created.setSupplierName(supplier != null ? supplier.getCompanyName() : "未知供应商");
+                    created.setQuantitySold(0);
+                    created.setTotalRevenue(BigDecimal.ZERO);
+                    return created;
+                });
+
+                int quantity = item.getQuantity() == null ? 0 : item.getQuantity();
+                performance.setQuantitySold(performance.getQuantitySold() + quantity);
+
+                BigDecimal revenue = item.getTotalPrice();
+                if (revenue == null) {
+                    BigDecimal unitPrice = item.getUnitPrice() == null ? BigDecimal.ZERO : item.getUnitPrice();
+                    revenue = unitPrice.multiply(BigDecimal.valueOf(quantity));
+                }
+                performance.setTotalRevenue(performance.getTotalRevenue().add(revenue == null ? BigDecimal.ZERO : revenue));
+            }
+        }
+
+        return performances.values().stream()
+                .sorted(Comparator.comparing(WeeklyProductPerformanceDTO::getQuantitySold, Comparator.nullsLast(Integer::compareTo)).reversed())
+                .collect(Collectors.toList());
     }
     
     // 计算订单总金额和总数量
