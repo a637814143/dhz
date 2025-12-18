@@ -5,6 +5,7 @@ import type {
   CategoryOption,
   PageResponse,
   ProductOverview,
+  ProductSizeAllocation,
   ProductSummary,
   SupplierOption,
 } from '@/types'
@@ -23,6 +24,7 @@ interface ProductDetail {
   updatedAt?: string | null
   category?: { id: number; name?: string | null } | null
   supplier?: { id: number; companyName?: string | null } | null
+  sizeAllocations?: ProductSizeAllocation[] | null
 }
 
 const PRODUCT_EVENT_NAME = 'silkmall:products:changed'
@@ -154,6 +156,29 @@ function resetSizeAllocations(stock?: number) {
   const stockValue = Number.isFinite(stock) ? Math.max(0, Number(stock)) : 0
   sizeOptions.forEach((size, index) => {
     sizeAllocations[size] = index === 0 ? stockValue : 0
+  })
+}
+
+function applySizeAllocationsFromDetail(detail: ProductDetail) {
+  const allocations = Array.isArray(detail.sizeAllocations) ? detail.sizeAllocations : []
+  if (allocations.length === 0) {
+    sizeAllocationOpen.value = false
+    resetSizeAllocations(productForm.stock)
+    return
+  }
+
+  const normalized: Record<string, number> = {}
+  allocations.forEach((item) => {
+    if (!item) return
+    const sizeLabel = typeof item.sizeLabel === 'string' ? item.sizeLabel.trim().toUpperCase() : ''
+    if (!sizeLabel) return
+    const quantity = Number(item.quantity)
+    normalized[sizeLabel] = Number.isFinite(quantity) ? Math.max(0, quantity) : 0
+  })
+
+  sizeAllocationOpen.value = true
+  sizeOptions.forEach((size) => {
+    sizeAllocations[size] = normalized[size.toUpperCase()] ?? 0
   })
 }
 
@@ -371,12 +396,12 @@ async function openProductForm(product?: ProductSummary) {
     productForm.categoryId = data.category?.id ?? 0
     productForm.supplierId = data.supplier?.id ?? 0
     productForm.mainImage = data.mainImage ?? ''
+    applySizeAllocationsFromDetail(data)
   } else {
     resetProductForm()
+    resetSizeAllocations(productForm.stock)
+    sizeAllocationOpen.value = false
   }
-
-  sizeAllocationOpen.value = false
-  resetSizeAllocations(productForm.stock)
   productDialogOpen.value = true
 }
 
@@ -431,6 +456,16 @@ async function saveProduct() {
     return
   }
 
+  const sizeAllocationPayload =
+    sizeAllocationOpen.value && stock >= 0
+      ? sizeOptions.map((size) => ({
+          sizeLabel: size,
+          quantity: Number.isFinite(Number(sizeAllocations[size]))
+            ? Math.max(0, Number(sizeAllocations[size]))
+            : 0,
+        }))
+      : null
+
   const payload: Record<string, unknown> = {
     name,
     description: productForm.description.trim() || null,
@@ -440,6 +475,10 @@ async function saveProduct() {
     status: productForm.status,
     mainImage: productForm.mainImage.trim() || null,
     supplier: { id: productForm.supplierId },
+  }
+
+  if (sizeAllocationPayload && sizeAllocationPayload.length > 0) {
+    payload.sizeAllocations = sizeAllocationPayload
   }
 
   if (productForm.categoryId > 0) {

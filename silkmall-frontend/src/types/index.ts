@@ -28,9 +28,16 @@ export interface ProductImage {
   createdAt?: string | null
 }
 
+export interface ProductSizeAllocation {
+  id?: number
+  sizeLabel: string
+  quantity: number
+}
+
 export interface ProductDetail extends ProductSummary {
   updatedAt?: string | null
   images?: ProductImage[] | null
+  sizeAllocations?: ProductSizeAllocation[] | null
   category?: {
     id: number
     name: string
