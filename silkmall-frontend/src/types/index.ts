@@ -28,9 +28,16 @@ export interface ProductImage {
   createdAt?: string | null
 }
 
+export interface ProductSizeAllocation {
+  id?: number
+  sizeLabel: string
+  quantity: number
+}
+
 export interface ProductDetail extends ProductSummary {
   updatedAt?: string | null
   images?: ProductImage[] | null
+  sizeAllocations?: ProductSizeAllocation[] | null
   category?: {
     id: number
     name: string
@@ -62,11 +69,36 @@ export interface CartItem {
   product: CartItemProduct
 }
 
+export interface CartCheckoutPayload {
+  itemIds: number[]
+  paymentMethod?: string | null
+}
+
+export interface CartCheckoutResult {
+  id: number
+  orderNo: string
+  status: string
+  totalAmount: number
+  totalQuantity: number
+  consumerLookupId?: string
+  paymentMethod?: string | null
+  shippingAddress?: string | null
+  recipientName?: string | null
+  recipientPhone?: string | null
+}
+
+export interface ConsumerFavorite {
+  id: number
+  createdAt?: string | null
+  product?: ProductSummary | null
+}
+
 export interface PurchaseOrderItemPayload {
   product: {
     id: number
   }
   quantity: number
+  sizeLabel?: string | null
 }
 
 export interface PurchaseOrderPayload {

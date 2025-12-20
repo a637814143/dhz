@@ -1,7 +1,9 @@
 package com.example.silkmall.controller;
 
 import com.example.silkmall.dto.CartItemDTO;
+import com.example.silkmall.dto.PurchaseOrderResultDTO;
 import com.example.silkmall.entity.CartItem;
+import com.example.silkmall.entity.Order;
 import com.example.silkmall.entity.Product;
 import com.example.silkmall.security.CustomUserDetails;
 import com.example.silkmall.service.CartService;
@@ -90,6 +92,24 @@ public class CartController extends BaseController {
         }
     }
 
+    @PostMapping("/checkout")
+    @PreAuthorize("hasRole('CONSUMER')")
+    public ResponseEntity<?> checkout(@RequestBody CartCheckoutRequest request,
+                                      @AuthenticationPrincipal CustomUserDetails currentUser) {
+        if (currentUser == null) {
+            return badRequest("请先登录消费者账号");
+        }
+        if (request.itemIds() == null || request.itemIds().isEmpty()) {
+            return badRequest("请选择要结算的商品");
+        }
+        try {
+            Order order = cartService.checkout(currentUser.getId(), request.itemIds(), request.paymentMethod());
+            return success(PurchaseOrderResultDTO.from(order));
+        } catch (RuntimeException ex) {
+            return badRequest(ex.getMessage());
+        }
+    }
+
     private CartItemDTO toDto(CartItem item) {
         CartItemDTO dto = new CartItemDTO();
         dto.setId(item.getId());
@@ -119,6 +139,9 @@ public class CartController extends BaseController {
     }
 
     public record CartItemRequest(Long productId, Integer quantity) {
+    }
+
+    public record CartCheckoutRequest(List<Long> itemIds, String paymentMethod) {
     }
 }
 
