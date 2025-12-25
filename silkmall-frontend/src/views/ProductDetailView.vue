@@ -3,7 +3,7 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter, RouterLink } from 'vue-router'
 import api from '@/services/api'
 import PurchaseDialog from '@/components/PurchaseDialog.vue'
-import type { ProductDetail, ProductSummary, PurchaseOrderResult } from '@/types'
+import type { ProductDetail, ProductReview, ProductSummary, PurchaseOrderResult } from '@/types'
 import { useAuthState } from '@/services/authState'
 
 const route = useRoute()
@@ -25,6 +25,9 @@ const favoriteErrorMessage = ref<string | null>(null)
 const favoriteMessageTimer = ref<number | null>(null)
 const authPromptMessage = ref<string | null>(null)
 const authPromptTimer = ref<number | null>(null)
+const reviews = ref<ProductReview[]>([])
+const reviewsLoading = ref(false)
+const reviewsError = ref<string | null>(null)
 const { isAuthenticated, hasRole } = useAuthState()
 const isConsumerAccount = computed(() => hasRole('consumer'))
 
@@ -95,6 +98,25 @@ const purchaseButtonText = computed(() => {
   return isPurchasable.value ? '立即购买' : '暂不可购'
 })
 
+const consumerReviews = computed(() => {
+  const filtered = reviews.value.filter((review) => {
+    const role = review.authorRole?.toUpperCase()
+    if (role) {
+      return role === 'CONSUMER'
+    }
+    return Boolean(review.consumerId ?? review.consumerName)
+  })
+
+  return [...filtered].sort((a, b) => {
+    const timeA = a.createdAt ? new Date(a.createdAt).getTime() : 0
+    const timeB = b.createdAt ? new Date(b.createdAt).getTime() : 0
+    if (timeA !== timeB) {
+      return timeB - timeA
+    }
+    return (b.id ?? 0) - (a.id ?? 0)
+  })
+})
+
 const purchaseTarget = computed<ProductSummary | null>(() => (product.value ? (product.value as ProductSummary) : null))
 
 const createdAtText = computed(() => {
@@ -143,6 +165,8 @@ async function loadProduct(idParam: string | string[]) {
   if (!Number.isFinite(numericId) || numericId <= 0) {
     error.value = '无法识别的商品编号'
     product.value = null
+    reviews.value = []
+    reviewsError.value = null
     return
   }
 
@@ -153,11 +177,46 @@ async function loadProduct(idParam: string | string[]) {
     const { data } = await api.get<ProductDetail>(`/products/${numericId}`)
     product.value = data
     activeImageIndex.value = 0
+    await loadReviews(numericId)
   } catch (err) {
     error.value = err instanceof Error ? err.message : '加载商品信息失败'
     product.value = null
+    reviews.value = []
+    reviewsError.value = null
   } finally {
     loading.value = false
+  }
+}
+
+async function loadReviews(productId: number) {
+  reviewsLoading.value = true
+  reviewsError.value = null
+  try {
+    const { data } = await api.get<ProductReview[]>(`/reviews/products/${productId}`)
+    reviews.value = Array.isArray(data) ? data : []
+  } catch (err) {
+    reviews.value = []
+    reviewsError.value = err instanceof Error ? err.message : '加载评论失败'
+  } finally {
+    reviewsLoading.value = false
+  }
+}
+
+function reviewInitial(review: ProductReview) {
+  const name = review.consumerName || review.authorName || review.productName || '丝'
+  return name.charAt(0).toUpperCase()
+}
+
+function reviewAuthorLabel(review: ProductReview) {
+  return review.consumerName || review.authorName || '消费者'
+}
+
+function formatReviewTime(value?: string | null) {
+  if (!value) return '时间未知'
+  try {
+    return new Intl.DateTimeFormat('zh-CN', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value))
+  } catch (err) {
+    return value
   }
 }
 
@@ -503,13 +562,51 @@ onBeforeUnmount(() => {
       @success="handlePurchaseSuccess"
     />
   </section>
+
+  <section class="review-section" aria-labelledby="consumer-reviews-title">
+    <div class="page-container">
+      <div class="reviews-card">
+        <header class="reviews-header">
+          <div>
+            <p class="reviews-subtitle">消费者说</p>
+            <h2 id="consumer-reviews-title">最新评论</h2>
+          </div>
+          <span class="reviews-count" aria-live="polite">
+            共 {{ consumerReviews.length }} 条评价
+          </span>
+        </header>
+
+        <div v-if="reviewsLoading" class="reviews-state">正在加载评论…</div>
+        <div v-else-if="reviewsError" class="reviews-state is-error">{{ reviewsError }}</div>
+        <div v-else-if="consumerReviews.length === 0" class="reviews-state">暂时还没有消费者评论。</div>
+        <ul v-else class="reviews-list" role="list">
+          <li v-for="review in consumerReviews" :key="review.id" class="review-item">
+            <div class="avatar" aria-hidden="true">
+              <span>{{ reviewInitial(review) }}</span>
+            </div>
+            <div class="review-content">
+              <header class="review-meta">
+                <div>
+                  <p class="author">{{ reviewAuthorLabel(review) }}</p>
+                  <p class="time">{{ formatReviewTime(review.createdAt) }}</p>
+                </div>
+                <span class="rating">评分：{{ review.rating }} 分</span>
+              </header>
+              <p class="comment">
+                {{ review.comment && review.comment.trim() ? review.comment : '（未填写文字评价）' }}
+              </p>
+            </div>
+          </li>
+        </ul>
+      </div>
+    </div>
+  </section>
 </template>
 
 <style scoped>
 .product-detail {
-  padding: 3rem 1.5rem 4rem;
+  padding: 2.5rem 1.5rem 2rem;
   background: linear-gradient(180deg, rgba(255, 250, 245, 0.9), rgba(255, 255, 255, 0.6));
-  min-height: 100vh;
 }
 
 .page-container {
@@ -889,6 +986,131 @@ onBeforeUnmount(() => {
   opacity: 0;
 }
 
+.review-section {
+  padding: 0 1.5rem 4rem;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.6), rgba(255, 250, 245, 0.9));
+}
+
+.reviews-card {
+  margin: 0 auto;
+  width: 100%;
+  max-width: 1100px;
+  background: rgba(255, 255, 255, 0.95);
+  border-radius: 1.75rem;
+  box-shadow: 0 20px 48px rgba(15, 23, 42, 0.12);
+  padding: 2.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.reviews-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+}
+
+.reviews-subtitle {
+  margin: 0;
+  color: rgba(17, 24, 39, 0.55);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  font-size: 0.8rem;
+}
+
+.reviews-header h2 {
+  margin: 0.2rem 0 0;
+  font-size: 1.4rem;
+  color: #0f172a;
+}
+
+.reviews-count {
+  font-size: 0.95rem;
+  color: rgba(17, 24, 39, 0.65);
+}
+
+.reviews-state {
+  padding: 1rem;
+  text-align: center;
+  color: rgba(17, 24, 39, 0.7);
+  background: rgba(111, 169, 173, 0.06);
+  border-radius: 1rem;
+}
+
+.reviews-state.is-error {
+  color: #b91c1c;
+  background: rgba(248, 113, 113, 0.12);
+}
+
+.reviews-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.review-item {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 1rem;
+  padding: 1rem;
+  border-radius: 1.25rem;
+  background: rgba(248, 250, 252, 0.8);
+  box-shadow: 0 8px 20px rgba(15, 23, 42, 0.06);
+}
+
+.avatar {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: linear-gradient(145deg, rgba(242, 177, 66, 0.9), rgba(111, 169, 173, 0.9));
+  display: grid;
+  place-items: center;
+  color: #fff;
+  font-weight: 700;
+  font-size: 1.1rem;
+}
+
+.review-content {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.review-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.author {
+  margin: 0;
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.time {
+  margin: 0.1rem 0 0;
+  color: rgba(17, 24, 39, 0.55);
+  font-size: 0.9rem;
+}
+
+.rating {
+  color: #b45309;
+  font-weight: 700;
+}
+
+.comment {
+  margin: 0;
+  color: rgba(17, 24, 39, 0.82);
+  line-height: 1.6;
+}
+
 @media (max-width: 960px) {
   .detail-body {
     grid-template-columns: 1fr;
@@ -952,6 +1174,28 @@ onBeforeUnmount(() => {
 
   .thumbnail {
     box-shadow: 0 10px 24px rgba(0, 0, 0, 0.45);
+  }
+
+  .reviews-card {
+    background: rgba(30, 41, 59, 0.8);
+    box-shadow: 0 16px 36px rgba(0, 0, 0, 0.35);
+  }
+
+  .reviews-header h2,
+  .author,
+  .comment {
+    color: #e2e8f0;
+  }
+
+  .reviews-subtitle,
+  .reviews-count,
+  .time {
+    color: rgba(226, 232, 240, 0.7);
+  }
+
+  .review-item {
+    background: rgba(51, 65, 85, 0.65);
+    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.4);
   }
 }
 </style>
