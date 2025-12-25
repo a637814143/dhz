@@ -605,9 +605,8 @@ onBeforeUnmount(() => {
 
 <style scoped>
 .product-detail {
-  padding: 3rem 1.5rem 4rem;
+  padding: 2.5rem 1.5rem 2rem;
   background: linear-gradient(180deg, rgba(255, 250, 245, 0.9), rgba(255, 255, 255, 0.6));
-  min-height: 100vh;
 }
 
 .page-container {
