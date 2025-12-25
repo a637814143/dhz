@@ -35,6 +35,10 @@ const totalPages = computed(() =>
     ? Math.ceil(orderedReturnRequests.value.length / PAGE_SIZE)
     : 0
 )
+const pageIndicator = computed(() => {
+  if (!totalPages.value) return '0/0'
+  return `${page.value + 1}/${totalPages.value}`
+})
 
 function clampPage(value: number) {
   if (totalPages.value === 0) return 0
@@ -115,6 +119,7 @@ async function loadReturnRequests(status: 'all' | 'pending' = 'all') {
     const { data } = await api.get<ReturnRequest[]>('/returns/admin', { params })
     const list = Array.isArray(data) ? data : []
     returnRequests.value = list
+    page.value = 0
     list.forEach((item) => {
       if (!item?.id) return
       const existing = adminResolutionDrafts[item.id]
@@ -259,9 +264,9 @@ onMounted(() => {
         </li>
       </ul>
 
-      <nav v-if="totalPages > 1" class="pagination">
+      <nav v-if="totalPages > 0" class="pagination">
         <button type="button" @click="prevPage" :disabled="page === 0">上一页</button>
-        <span>第 {{ page + 1 }} / {{ totalPages }} 页</span>
+        <span>第 {{ pageIndicator }} 页（共 {{ totalPages }} 页）</span>
         <button type="button" @click="nextPage" :disabled="page + 1 >= totalPages">下一页</button>
       </nav>
     </template>
