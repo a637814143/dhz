@@ -1,14 +1,14 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import api from '@/services/api'
 import type { WeeklySalesReport } from '@/types'
 
 const weeklySales = ref<WeeklySalesReport | null>(null)
 const weeklyLoading = ref(false)
 const weeklyError = ref<string | null>(null)
-const currentWeekIndex = ref(0)
-const weekSearchDate = ref('')
-const weeksToFetch = 12
+const weeksToFetch = 25
+const page = ref(0)
+const PAGE_SIZE = 5
 
 function formatCurrency(amount?: number | string | null) {
   const numeric = typeof amount === 'string' ? Number(amount) : amount
@@ -53,7 +53,7 @@ async function loadWeeklySales() {
       params: { weeks: weeksToFetch },
     })
     weeklySales.value = data ?? null
-    currentWeekIndex.value = 0
+    page.value = 0
   } catch (err) {
     weeklySales.value = null
     weeklyError.value = err instanceof Error ? err.message : '加载周度销售数据失败'
@@ -72,45 +72,34 @@ const sortedWeeks = computed(() => {
 })
 
 const totalWeeks = computed(() => sortedWeeks.value.length)
+const totalPages = computed(() => (totalWeeks.value > 0 ? Math.ceil(totalWeeks.value / PAGE_SIZE) : 0))
 
 const pageIndicator = computed(() => {
-  if (totalWeeks.value <= 0) return '0/0'
-  return `${currentWeekIndex.value + 1}/${totalWeeks.value}`
+  if (!totalPages.value) return '0/0'
+  return `${page.value + 1}/${totalPages.value}`
 })
 
-const canGoPreviousWeek = computed(() => totalWeeks.value > 0 && currentWeekIndex.value > 0)
-const canGoNextWeek = computed(
-  () => totalWeeks.value > 0 && currentWeekIndex.value + 1 < sortedWeeks.value.length
-)
+const paginatedWeeks = computed(() => {
+  if (!sortedWeeks.value.length) return []
+  const start = page.value * PAGE_SIZE
+  return sortedWeeks.value.slice(start, start + PAGE_SIZE)
+})
 
-const currentWeek = computed(() => sortedWeeks.value[currentWeekIndex.value])
-
-function goPreviousWeek() {
-  if (!canGoPreviousWeek.value || weeklyLoading.value) return
-  currentWeekIndex.value -= 1
+function clampPage(value: number) {
+  return Math.min(Math.max(value, 0), Math.max(totalPages.value - 1, 0))
 }
 
-function goNextWeek() {
-  if (!canGoNextWeek.value || weeklyLoading.value) return
-  currentWeekIndex.value += 1
+function goPreviousPage() {
+  page.value = clampPage(page.value - 1)
 }
 
-function handleWeekSearch() {
-  if (!weekSearchDate.value) return
-  const searchDate = new Date(`${weekSearchDate.value}T00:00:00`)
-  if (Number.isNaN(searchDate.getTime())) return
-
-  const targetIndex = sortedWeeks.value.findIndex((week) => {
-    const start = new Date(week.weekStart)
-    const end = new Date(week.weekEnd)
-    if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return false
-    return searchDate >= start && searchDate <= end
-  })
-
-  if (targetIndex >= 0) {
-    currentWeekIndex.value = targetIndex
-  }
+function goNextPage() {
+  page.value = clampPage(page.value + 1)
 }
+
+watch(sortedWeeks, () => {
+  page.value = clampPage(page.value)
+})
 
 onMounted(() => {
   loadWeeklySales()
@@ -124,13 +113,6 @@ onMounted(() => {
         <h1>销售统计</h1>
         <p>查看每周订单与商品表现，同名商品会按供应商分开统计。</p>
       </div>
-      <nav class="admin-actions">
-        <RouterLink class="manage-link" to="/admin/products">商品管理</RouterLink>
-        <RouterLink class="manage-link" to="/admin/orders">订单管理</RouterLink>
-        <RouterLink class="manage-link" to="/admin/consumers">采购账号管理</RouterLink>
-        <RouterLink class="manage-link" to="/admin/suppliers">供应商账号管理</RouterLink>
-        <RouterLink class="manage-link" to="/admin/sales">销售统计</RouterLink>
-      </nav>
     </header>
 
     <section class="panel weekly-sales" aria-labelledby="weekly-sales-title">
@@ -140,53 +122,38 @@ onMounted(() => {
           <p class="panel-subtitle">查看每周订单与商品表现，同名商品会按供应商分开统计。</p>
         </div>
         <nav class="week-pagination" aria-label="周度翻页">
-          <button
-            type="button"
-            class="pager-button"
-            :disabled="!canGoPreviousWeek || weeklyLoading"
-            @click="goPreviousWeek"
-          >
-            上一周
+          <button type="button" class="pager-button" :disabled="page === 0 || weeklyLoading" @click="goPreviousPage">
+            上一页
           </button>
-          <div class="week-search">
-            <label for="week-search-input">输入日期</label>
-            <input
-              id="week-search-input"
-              v-model="weekSearchDate"
-              type="date"
-              :disabled="!totalWeeks || weeklyLoading"
-              @change="handleWeekSearch"
-            />
-          </div>
+          <span class="pagination-status">第 {{ pageIndicator }} 页（共 {{ totalWeeks }} 周）</span>
           <button
             type="button"
             class="pager-button"
-            :disabled="!canGoNextWeek || weeklyLoading"
-            @click="goNextWeek"
+            :disabled="page + 1 >= totalPages || weeklyLoading"
+            @click="goNextPage"
           >
-            下一周
+            下一页
           </button>
         </nav>
       </header>
       <div v-if="weeklyLoading" class="placeholder">正在加载周度数据…</div>
       <div v-else-if="weeklyError" class="placeholder is-error">{{ weeklyError }}</div>
-      <div v-else-if="!currentWeek" class="placeholder">暂无销售记录</div>
-      <div v-else class="week-single">
-        <div class="pagination-status">共 {{ totalWeeks }} 周，当前 {{ pageIndicator }}</div>
-        <article :key="currentWeek.weekStart" class="week-card">
+      <div v-else-if="!paginatedWeeks.length" class="placeholder">暂无销售记录</div>
+      <div v-else class="week-list">
+        <article v-for="week in paginatedWeeks" :key="week.weekStart" class="week-card">
           <header class="week-card__header">
             <div>
-              <div class="week-label">{{ formatWeekRange(currentWeek.weekStart, currentWeek.weekEnd) }}</div>
+              <div class="week-label">{{ formatWeekRange(week.weekStart, week.weekEnd) }}</div>
               <p class="panel-subtitle">
-                订单 {{ formatNumber(currentWeek.totalOrders) }} · 销量 {{ formatNumber(currentWeek.totalQuantity) }}
+                订单 {{ formatNumber(week.totalOrders) }} · 销量 {{ formatNumber(week.totalQuantity) }}
               </p>
             </div>
-            <div class="week-amount">{{ formatCurrency(currentWeek.totalRevenue) }}</div>
+            <div class="week-amount">{{ formatCurrency(week.totalRevenue) }}</div>
           </header>
           <div class="week-columns">
             <div class="week-column">
               <h4>订单明细</h4>
-              <table v-if="currentWeek.orders?.length" class="compact-table">
+              <table v-if="week.orders?.length" class="compact-table">
                 <thead>
                   <tr>
                     <th scope="col">订单号</th>
@@ -197,7 +164,7 @@ onMounted(() => {
                   </tr>
                 </thead>
                 <tbody>
-                  <tr v-for="order in currentWeek.orders" :key="order.id">
+                  <tr v-for="order in week.orders" :key="order.id">
                     <td>{{ order.orderNo }}</td>
                     <td>{{ formatDate(order.paymentTime) }}</td>
                     <td>{{ formatCurrency(order.totalAmount) }}</td>
@@ -221,7 +188,7 @@ onMounted(() => {
             </div>
             <div class="week-column">
               <h4>商品表现</h4>
-              <table v-if="currentWeek.productPerformances?.length" class="compact-table">
+              <table v-if="week.productPerformances?.length" class="compact-table">
                 <thead>
                   <tr>
                     <th scope="col">商品 / 供应商</th>
@@ -231,7 +198,7 @@ onMounted(() => {
                 </thead>
                 <tbody>
                   <tr
-                    v-for="product in currentWeek.productPerformances"
+                    v-for="product in week.productPerformances"
                     :key="`${product.productId}-${product.supplierId}`"
                   >
                     <td>
@@ -250,6 +217,13 @@ onMounted(() => {
             </div>
           </div>
         </article>
+        <nav v-if="totalPages > 1" class="pagination">
+          <button type="button" class="pager-button" :disabled="page === 0" @click="goPreviousPage">上一页</button>
+          <span class="pagination-status">第 {{ pageIndicator }} 页（共 {{ totalPages }} 页）</span>
+          <button type="button" class="pager-button" :disabled="page + 1 >= totalPages" @click="goNextPage">
+            下一页
+          </button>
+        </nav>
       </div>
     </section>
   </section>
@@ -258,8 +232,7 @@ onMounted(() => {
 <style scoped>
 .admin-shell {
   padding: 24px 24px 48px;
-  max-width: 1200px;
-  margin: 0 auto;
+  width: 100%;
   display: flex;
   flex-direction: column;
   gap: 24px;
@@ -281,32 +254,6 @@ onMounted(() => {
 .admin-header p {
   margin: 6px 0 0;
   color: #5e6a71;
-}
-
-.admin-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-  justify-content: flex-end;
-}
-
-.manage-link {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 10px 14px;
-  border-radius: 8px;
-  border: 1px solid #d8e3e8;
-  background: #f8fbfd;
-  color: #1f3a56;
-  font-weight: 600;
-  text-decoration: none;
-  transition: all 0.2s ease;
-}
-
-.manage-link:hover {
-  background: #edf5fa;
-  border-color: #c6d8e2;
 }
 
 .panel {
@@ -365,26 +312,9 @@ onMounted(() => {
   justify-content: flex-end;
 }
 
-.week-search {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  color: #4a5b6a;
-  font-weight: 600;
-}
-
-.week-search input[type='date'] {
-  padding: 8px 10px;
-  border-radius: 8px;
-  border: 1px solid #cbd5e1;
-  background: #f8fafc;
-  min-width: 160px;
-}
-
-.week-single {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
+.week-list {
+  display: grid;
+  gap: 16px;
 }
 
 .pagination-status {
