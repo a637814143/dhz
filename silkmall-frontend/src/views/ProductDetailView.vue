@@ -994,14 +994,15 @@ onBeforeUnmount(() => {
 
 .reviews-card {
   margin: 0 auto;
+  width: 100%;
   max-width: 1100px;
   background: rgba(255, 255, 255, 0.95);
   border-radius: 1.75rem;
-  box-shadow: 0 16px 36px rgba(15, 23, 42, 0.12);
-  padding: 1.75rem 2rem;
+  box-shadow: 0 20px 48px rgba(15, 23, 42, 0.12);
+  padding: 2.5rem;
   display: flex;
   flex-direction: column;
-  gap: 1.25rem;
+  gap: 1.5rem;
 }
 
 .reviews-header {

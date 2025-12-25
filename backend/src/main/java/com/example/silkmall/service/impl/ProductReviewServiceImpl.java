@@ -150,7 +150,7 @@ public class ProductReviewServiceImpl extends BaseServiceImpl<ProductReview, Lon
 
     @Override
     public List<ProductReview> findByProductId(Long productId) {
-        return reviewRepository.findByProductId(productId);
+        return reviewRepository.findByProductIdOrderByCreatedAtDesc(productId);
     }
 
     @Override
