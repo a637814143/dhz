@@ -709,13 +709,6 @@ function formatNumber(value?: number | null) {
         <h1>平台运营总览</h1>
         <p>掌握商品、库存、用户互动与资讯发布情况，及时调整销售策略。</p>
       </div>
-      <nav class="admin-actions">
-        <RouterLink class="manage-link" to="/admin/products">商品管理</RouterLink>
-        <RouterLink class="manage-link" to="/admin/orders">订单管理</RouterLink>
-        <RouterLink class="manage-link" to="/admin/consumers">采购账号管理</RouterLink>
-        <RouterLink class="manage-link" to="/admin/suppliers">供应商账号管理</RouterLink>
-        <RouterLink class="manage-link" to="/admin/sales">销售统计</RouterLink>
-      </nav>
     </header>
 
     <div v-if="loading" class="placeholder">正在加载平台数据…</div>
@@ -1096,13 +1089,6 @@ function formatNumber(value?: number | null) {
   gap: 1.5rem;
 }
 
-.admin-actions {
-  display: flex;
-  gap: 0.75rem;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-}
-
 .admin-header h1 {
   font-size: 2.1rem;
   font-weight: 700;
@@ -1111,20 +1097,6 @@ function formatNumber(value?: number | null) {
 
 .admin-header p {
   color: rgba(30, 41, 59, 0.65);
-}
-
-.manage-link {
-  padding: 0.6rem 1.4rem;
-  border-radius: 999px;
-  background: rgba(249, 115, 22, 0.18);
-  color: #b45309;
-  font-weight: 600;
-  text-decoration: none;
-  transition: background 0.2s ease;
-}
-
-.manage-link:hover {
-  background: rgba(249, 115, 22, 0.28);
 }
 
 .placeholder {

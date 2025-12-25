@@ -10,6 +10,7 @@ const AdminConsumerManagement = () => import('../views/dashboard/AdminConsumerMa
 const AdminSupplierManagement = () => import('../views/dashboard/AdminSupplierManagement.vue')
 const AdminProductManagement = () => import('../views/dashboard/AdminProductManagement.vue')
 const AdminOrderManagement = () => import('../views/dashboard/AdminOrderManagement.vue')
+const AdminReturnManagement = () => import('../views/dashboard/AdminReturnManagement.vue')
 const AdminSalesStatistics = () => import('../views/dashboard/AdminSalesStatistics.vue')
 const ProductDetailView = () => import('../views/ProductDetailView.vue')
 
@@ -127,6 +128,12 @@ const router = createRouter({
       path: '/admin/orders',
       name: 'admin-orders',
       component: AdminOrderManagement,
+      meta: { requiresAuth: true, roles: ['admin'] },
+    },
+    {
+      path: '/admin/returns',
+      name: 'admin-returns',
+      component: AdminReturnManagement,
       meta: { requiresAuth: true, roles: ['admin'] },
     },
     {
