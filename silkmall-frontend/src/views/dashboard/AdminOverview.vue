@@ -192,42 +192,6 @@ function formatCurrency(amount?: number | string | null) {
     <div v-if="pageLoading" class="placeholder">正在加载管理员信息…</div>
     <div v-else-if="pageError" class="placeholder is-error">{{ pageError }}</div>
     <template v-else>
-      <section class="panel admin-wallet" aria-labelledby="wallet-title">
-        <header class="wallet-header">
-          <div>
-            <div class="panel-title" id="wallet-title">平台钱包</div>
-            <p class="panel-subtitle">查看结算储备与平台收益，支持使用兑换码快速充值。</p>
-          </div>
-          <button type="button" class="secondary" @click="loadWallet" :disabled="walletLoading">
-            {{ walletLoading ? '刷新中…' : '刷新余额' }}
-          </button>
-        </header>
-        <div class="wallet-summary">
-          <div class="wallet-amount">{{ walletDisplay }}</div>
-          <p class="wallet-caption">当前余额</p>
-        </div>
-        <p v-if="walletError" class="wallet-error">{{ walletError }}</p>
-        <p v-else-if="walletLoading" class="wallet-status">余额刷新中…</p>
-        <div class="redeem-box">
-          <label>
-            <span>兑换码</span>
-            <input
-              v-model="redeemCodeInput"
-              type="text"
-              placeholder="输入兑换码兑换余额"
-              :disabled="redeeming"
-            />
-          </label>
-          <div class="redeem-actions">
-            <button type="button" @click="redeemWallet" :disabled="redeeming">
-              {{ redeeming ? '兑换中…' : '兑换余额' }}
-            </button>
-            <p v-if="redeemMessage" class="redeem-success">{{ redeemMessage }}</p>
-            <p v-if="redeemError" class="redeem-error">{{ redeemError }}</p>
-          </div>
-        </div>
-      </section>
-
       <section class="panel admin-profile" aria-labelledby="admin-profile-title">
         <header class="profile-header">
           <div>
@@ -274,6 +238,42 @@ function formatCurrency(amount?: number | string | null) {
             <p v-if="profileMessage" class="feedback feedback--success">{{ profileMessage }}</p>
           </transition>
         </template>
+      </section>
+
+      <section class="panel admin-wallet" aria-labelledby="wallet-title">
+        <header class="wallet-header">
+          <div>
+            <div class="panel-title" id="wallet-title">平台钱包</div>
+            <p class="panel-subtitle">查看结算储备与平台收益，支持使用兑换码快速充值。</p>
+          </div>
+          <button type="button" class="secondary" @click="loadWallet" :disabled="walletLoading">
+            {{ walletLoading ? '刷新中…' : '刷新余额' }}
+          </button>
+        </header>
+        <div class="wallet-summary">
+          <div class="wallet-amount">{{ walletDisplay }}</div>
+          <p class="wallet-caption">当前余额</p>
+        </div>
+        <p v-if="walletError" class="wallet-error">{{ walletError }}</p>
+        <p v-else-if="walletLoading" class="wallet-status">余额刷新中…</p>
+        <div class="redeem-box">
+          <label>
+            <span>兑换码</span>
+            <input
+              v-model="redeemCodeInput"
+              type="text"
+              placeholder="输入兑换码兑换余额"
+              :disabled="redeeming"
+            />
+          </label>
+          <div class="redeem-actions">
+            <button type="button" @click="redeemWallet" :disabled="redeeming">
+              {{ redeeming ? '兑换中…' : '兑换余额' }}
+            </button>
+            <p v-if="redeemMessage" class="redeem-success">{{ redeemMessage }}</p>
+            <p v-if="redeemError" class="redeem-error">{{ redeemError }}</p>
+          </div>
+        </div>
       </section>
 
       <div v-if="profileDialogOpen" class="modal-backdrop" @click.self="profileDialogOpen = false">
