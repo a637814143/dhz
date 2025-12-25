@@ -4,10 +4,8 @@ import { RouterLink, useRoute } from 'vue-router'
 import api from '@/services/api'
 import { useAuthState } from '@/services/authState'
 import type {
-  Announcement,
   CartItem,
   ConsumerAddress,
-  HomepageContent,
   OrderDetail,
   OrderItemDetail,
   PageResponse,
@@ -43,15 +41,13 @@ interface ConsumerProfile {
 const { state } = useAuthState()
 const route = useRoute()
 const activeSection = computed(() => (route.meta?.section as string) || 'overview')
-const showSection = (key: string) => activeSection.value === 'overview' || activeSection.value === key
+const showSection = (key: string) => activeSection.value === key
 
 const profile = ref<ConsumerProfile | null>(null)
 const orders = ref<OrderSummary[]>([])
 const orderActionMessage = ref<string | null>(null)
 const orderActionError = ref<string | null>(null)
 const confirmingReceiptOrderId = ref<number | null>(null)
-const homeContent = ref<HomepageContent | null>(null)
-const announcements = ref<Announcement[]>([])
 const loading = ref(true)
 const error = ref<string | null>(null)
 const walletBalance = ref<number | null>(null)
@@ -157,8 +153,6 @@ const addressForm = reactive({
 })
 
 const orderItems = computed<OrderItemDetail[]>(() => orderDetail.value?.orderItems ?? [])
-const hasRecommendations = computed(() => (homeContent.value?.recommendations?.length ?? 0) > 0)
-const hasAnnouncements = computed(() => announcements.value.length > 0)
 const maskedIdCard = computed(() => maskIdCard(profile.value?.idCard))
 const defaultAddress = computed(() => addresses.value.find((item) => item.isDefault))
 const hasAddresses = computed(() => addresses.value.length > 0)
@@ -366,12 +360,6 @@ async function loadOrders() {
   )
 }
 
-async function loadHomeContent() {
-  const { data } = await api.get<HomepageContent>('/content/home')
-  homeContent.value = data
-  announcements.value = data.announcements
-}
-
 async function loadWallet() {
   if (!state.user) return
   try {
@@ -503,7 +491,6 @@ async function bootstrap() {
     await Promise.all([
       loadProfile(),
       loadOrders(),
-      loadHomeContent(),
       loadWallet(),
       loadCart(),
       loadFavorites(),
@@ -1881,63 +1868,9 @@ const shortcutLinks = [
           <p v-if="reviewListError" class="panel-error">{{ reviewListError }}</p>
         </section>
 
-        <section class="panel recommendations full-row table-panel" aria-labelledby="recommend-title">
-          <div class="panel-title" id="recommend-title">为您推荐</div>
-          <div v-if="hasRecommendations" class="table-container">
-            <table class="dashboard-table recommend-table">
-              <thead>
-                <tr>
-                  <th scope="col">商品信息</th>
-                  <th scope="col" class="col-price">价格</th>
-                  <th scope="col" class="col-actions">操作</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr v-for="item in homeContent?.recommendations ?? []" :key="item.id">
-                  <td>
-                    <div class="product-info">
-                      <strong>{{ item.name }}</strong>
-                      <p>{{ item.description ?? '优质蚕丝，严选供应链品质保障。' }}</p>
-                    </div>
-                  </td>
-                  <td class="col-price">{{ formatCurrency(item.price) }}</td>
-                  <td class="actions-cell">
-                    <router-link class="link-button" :to="`/product/${item.id}`">查看详情</router-link>
-                  </td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-          <p v-else class="empty">暂无推荐商品，稍后再来看看吧。</p>
-        </section>
-
-        <section class="panel announcements full-row table-panel" aria-labelledby="announcement-title">
-          <div class="panel-title" id="announcement-title">公告与资讯</div>
-          <div v-if="hasAnnouncements" class="table-container">
-            <table class="dashboard-table announcement-table">
-              <thead>
-                <tr>
-                  <th scope="col">公告内容</th>
-                  <th scope="col" class="col-time">发布时间</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr v-for="item in announcements" :key="item.id">
-                  <td>
-                    <div class="announcement-info">
-                      <strong>{{ item.title }}</strong>
-                      <p>{{ item.content }}</p>
-                    </div>
-                  </td>
-                  <td class="col-time">{{ formatDateTime(item.publishedAt) }}</td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-          <p v-else class="empty">暂无公告，敬请期待更多平台动态。</p>
-    </section>
-  </div>
-</template>
+      </div>
+    </template>
+  </section>
 
 <div v-if="showCartCheckoutModal" class="modal-backdrop" @click.self="closeCartCheckoutModal">
   <section class="modal" role="dialog" aria-modal="true" aria-labelledby="cart-checkout-title">
@@ -2409,7 +2342,6 @@ const shortcutLinks = [
         </form>
       </section>
     </div>
-  </section>
 </template>
 
 <style scoped>
@@ -2967,50 +2899,6 @@ const shortcutLinks = [
 .link-button:disabled {
   opacity: 0.5;
   cursor: not-allowed;
-}
-
-.recommend-table .product-info {
-  display: grid;
-  gap: 0.35rem;
-}
-
-.recommend-table .product-info strong {
-  font-weight: 700;
-  color: rgba(17, 24, 39, 0.85);
-}
-
-.recommend-table .product-info p {
-  color: rgba(17, 24, 39, 0.6);
-  font-size: 0.9rem;
-  line-height: 1.55;
-}
-
-.recommend-table .col-price {
-  font-weight: 600;
-  color: #16a34a;
-  white-space: nowrap;
-  text-align: right;
-}
-
-.announcement-table .announcement-info {
-  display: grid;
-  gap: 0.35rem;
-}
-
-.announcement-table .announcement-info strong {
-  font-weight: 700;
-  color: rgba(17, 24, 39, 0.78);
-}
-
-.announcement-table .announcement-info p {
-  color: rgba(17, 24, 39, 0.6);
-  line-height: 1.5;
-}
-
-.announcement-table .col-time {
-  white-space: nowrap;
-  color: rgba(17, 24, 39, 0.55);
-  text-align: right;
 }
 
 .status-pill {
