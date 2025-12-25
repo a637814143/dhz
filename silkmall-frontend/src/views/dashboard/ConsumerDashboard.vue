@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
-import { RouterLink } from 'vue-router'
+import { RouterLink, useRoute } from 'vue-router'
 import api from '@/services/api'
 import { useAuthState } from '@/services/authState'
 import type {
@@ -41,6 +41,9 @@ interface ConsumerProfile {
 }
 
 const { state } = useAuthState()
+const route = useRoute()
+const activeSection = computed(() => (route.meta?.section as string) || 'overview')
+const showSection = (key: string) => activeSection.value === 'overview' || activeSection.value === key
 
 const profile = ref<ConsumerProfile | null>(null)
 const orders = ref<OrderSummary[]>([])
@@ -1394,7 +1397,12 @@ const shortcutLinks = [
     <div v-else-if="error" class="placeholder is-error">{{ error }}</div>
     <template v-else>
       <div class="grid">
-        <section id="profile" class="panel profile full-row table-panel" aria-labelledby="profile-title">
+        <section
+          v-if="showSection('overview')"
+          id="profile"
+          class="panel profile full-row table-panel"
+          aria-labelledby="profile-title"
+        >
           <div class="panel-title-row">
             <div class="panel-title" id="profile-title">账户信息</div>
             <button type="button" class="panel-action-button" @click="openProfileDialog">
@@ -1464,6 +1472,7 @@ const shortcutLinks = [
         </section>
 
         <section
+          v-if="showSection('address')"
           id="address"
           class="panel address-management full-row table-panel"
           aria-labelledby="address-title"
@@ -1528,7 +1537,12 @@ const shortcutLinks = [
           <p v-if="addressActionError" class="panel-error">{{ addressActionError }}</p>
         </section>
 
-        <section id="cart" class="panel cart full-row table-panel" aria-labelledby="cart-title">
+        <section
+          v-if="showSection('cart')"
+          id="cart"
+          class="panel cart full-row table-panel"
+          aria-labelledby="cart-title"
+        >
       <div class="panel-title-row">
         <div class="panel-title" id="cart-title">我的购物车</div>
         <div class="panel-actions">
@@ -1639,6 +1653,7 @@ const shortcutLinks = [
         </section>
 
         <section
+          v-if="showSection('favorites')"
           id="favorites"
           class="panel favorites full-row table-panel"
           aria-labelledby="favorites-title"
@@ -1722,7 +1737,12 @@ const shortcutLinks = [
           <p v-if="favoriteActionError" class="panel-error">{{ favoriteActionError }}</p>
         </section>
 
-        <section id="orders" class="panel orders full-row table-panel" aria-labelledby="orders-title">
+        <section
+          v-if="showSection('orders')"
+          id="orders"
+          class="panel orders full-row table-panel"
+          aria-labelledby="orders-title"
+        >
           <div class="panel-title" id="orders-title">我的订单</div>
           <div v-if="hasOrders" class="table-container scrollable-table">
             <table class="dashboard-table orders-table">
@@ -1801,6 +1821,7 @@ const shortcutLinks = [
         </section>
 
         <section
+          v-if="showSection('reviews')"
           id="reviews"
           class="panel reviews full-row table-panel"
           aria-labelledby="reviews-title"

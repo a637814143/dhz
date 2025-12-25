@@ -42,11 +42,11 @@ const sidebarNavItems = computed<SidebarLink[]>(() => {
   if (role === 'consumer') {
     items.push(
       { label: '个人中心', to: { name: 'consumer-dashboard' } },
-      { label: '地址管理', to: { path: '/consumer/dashboard', hash: '#address' } },
-      { label: '我的购物车', to: { path: '/consumer/dashboard', hash: '#cart' } },
-      { label: '我的收藏', to: { path: '/consumer/dashboard', hash: '#favorites' } },
-      { label: '我的订单', to: { path: '/consumer/dashboard', hash: '#orders' } },
-      { label: '我的评价', to: { path: '/consumer/dashboard', hash: '#reviews' } }
+      { label: '地址管理', to: { name: 'consumer-addresses' } },
+      { label: '我的购物车', to: { name: 'consumer-cart' } },
+      { label: '我的收藏', to: { name: 'consumer-favorites' } },
+      { label: '我的订单', to: { name: 'consumer-orders' } },
+      { label: '我的评价', to: { name: 'consumer-reviews' } }
     )
   } else if (role === 'supplier') {
     items.push(

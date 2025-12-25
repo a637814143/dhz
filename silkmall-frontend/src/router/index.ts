@@ -55,7 +55,37 @@ const router = createRouter({
       path: '/consumer/dashboard',
       name: 'consumer-dashboard',
       component: ConsumerDashboard,
-      meta: { requiresAuth: true, roles: ['consumer'] },
+      meta: { requiresAuth: true, roles: ['consumer'], section: 'overview' },
+    },
+    {
+      path: '/consumer/addresses',
+      name: 'consumer-addresses',
+      component: ConsumerDashboard,
+      meta: { requiresAuth: true, roles: ['consumer'], section: 'address' },
+    },
+    {
+      path: '/consumer/cart',
+      name: 'consumer-cart',
+      component: ConsumerDashboard,
+      meta: { requiresAuth: true, roles: ['consumer'], section: 'cart' },
+    },
+    {
+      path: '/consumer/favorites',
+      name: 'consumer-favorites',
+      component: ConsumerDashboard,
+      meta: { requiresAuth: true, roles: ['consumer'], section: 'favorites' },
+    },
+    {
+      path: '/consumer/orders',
+      name: 'consumer-orders',
+      component: ConsumerDashboard,
+      meta: { requiresAuth: true, roles: ['consumer'], section: 'orders' },
+    },
+    {
+      path: '/consumer/reviews',
+      name: 'consumer-reviews',
+      component: ConsumerDashboard,
+      meta: { requiresAuth: true, roles: ['consumer'], section: 'reviews' },
     },
     {
       path: '/supplier/workbench',
