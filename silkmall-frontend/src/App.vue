@@ -53,8 +53,7 @@ const sidebarNavItems = computed<SidebarLink[]>(() => {
       { label: '个人中心', to: { name: 'supplier-workbench' } },
       { label: '商品管理', to: { name: 'supplier-products' } },
       { label: '已售订单', to: { name: 'supplier-orders' } },
-      { label: '退货管理', to: { name: 'supplier-returns' } },
-      { label: '促销建议', to: { path: '/supplier/workbench', hash: '#promotion-list' } }
+      { label: '退货管理', to: { name: 'supplier-returns' } }
     )
   } else if (role === 'admin') {
     items.push(

@@ -1433,18 +1433,6 @@ async function removeCategory(option: CategoryOption) {
         </div>
       </section>
 
-      <section id="promotion-list" class="panel promotions" aria-labelledby="promotion-list">
-        <div class="panel-title" id="promotion-list">平台促销建议</div>
-        <ul class="promotion-list">
-          <li v-for="promo in homeContent?.promotions ?? []" :key="promo.productId">
-            <div>
-              <strong>{{ promo.title }}</strong>
-              <p>{{ promo.description }}</p>
-            </div>
-            <span class="badge">{{ Math.round(promo.discountRate * 100) }}% OFF</span>
-          </li>
-        </ul>
-      </section>
     </template>
 
     <div v-if="productDialogOpen" class="modal-backdrop" @click.self="cancelProductForm">
