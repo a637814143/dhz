@@ -183,4 +183,20 @@ public class Product {
     public void setOrderItems(List<OrderItem> orderItems) {
         this.orderItems = orderItems;
     }
+
+    public List<ProductSizeAllocation> getSizeAllocations() {
+        return sizeAllocations;
+    }
+
+    public void setSizeAllocations(List<ProductSizeAllocation> sizeAllocations) {
+        this.sizeAllocations = sizeAllocations;
+    }
+
+    public Map<String, Integer> getSizeQuantities() {
+        return sizeQuantities;
+    }
+
+    public void setSizeQuantities(Map<String, Integer> sizeQuantities) {
+        this.sizeQuantities = sizeQuantities;
+    }
 }
