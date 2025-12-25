@@ -1324,7 +1324,12 @@ async function removeCategory(option: CategoryOption) {
         </div>
       </section>
 
-      <section id="return-management" class="panel returns" aria-labelledby="return-management">
+      <section
+        v-if="showSection('returns')"
+        id="return-management"
+        class="panel returns"
+        aria-labelledby="return-management"
+      >
         <div class="panel-title-row">
           <div class="panel-title" id="return-management">退货管理</div>
         </div>
