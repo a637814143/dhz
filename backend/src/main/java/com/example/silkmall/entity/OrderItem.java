@@ -14,6 +14,7 @@ public class OrderItem {
     private Long id;
     
     private Integer quantity;
+    private String size;
     private BigDecimal unitPrice;
     private BigDecimal totalPrice;
     private Date createdAt;

@@ -17,6 +17,7 @@ public class ProductSummaryDTO {
     private String categoryName;
     private String supplierName;
     private String supplierLevel;
+    private java.util.Map<String, Integer> sizeQuantities;
 
     public Long getId() {
         return id;
@@ -120,5 +121,13 @@ public class ProductSummaryDTO {
 
     public void setSupplierLevel(String supplierLevel) {
         this.supplierLevel = supplierLevel;
+    }
+
+    public java.util.Map<String, Integer> getSizeQuantities() {
+        return sizeQuantities;
+    }
+
+    public void setSizeQuantities(java.util.Map<String, Integer> sizeQuantities) {
+        this.sizeQuantities = sizeQuantities;
     }
 }
