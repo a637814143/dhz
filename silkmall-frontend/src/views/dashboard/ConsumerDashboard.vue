@@ -2191,14 +2191,26 @@ const shortcutLinks = [
                       class="review-form"
                       @submit.prevent="submitReview"
                     >
-                      <label>
+                      <div class="rating-field">
                         <span>评分</span>
-                        <select v-model.number="reviewForm.rating" :disabled="submittingReview">
-                          <option v-for="score in [5, 4, 3, 2, 1]" :key="score" :value="score">
-                            {{ score }} 分
-                          </option>
-                        </select>
-                      </label>
+                        <div class="rating-options" role="radiogroup" aria-label="评分">
+                          <label
+                            v-for="score in [1, 2, 3, 4, 5]"
+                            :key="score"
+                            class="rating-option"
+                            :class="{ 'is-selected': reviewForm.rating === score, 'is-disabled': submittingReview }"
+                          >
+                            <input
+                              v-model.number="reviewForm.rating"
+                              type="radio"
+                              name="review-rating"
+                              :value="score"
+                              :disabled="submittingReview"
+                            />
+                            <span>{{ score }}</span>
+                          </label>
+                        </div>
+                      </div>
                       <label>
                         <span>评价内容</span>
                         <textarea
@@ -3324,7 +3336,6 @@ const shortcutLinks = [
   color: rgba(17, 24, 39, 0.68);
 }
 
-.review-form select,
 .review-form textarea {
   border: 1px solid rgba(17, 24, 39, 0.16);
   border-radius: 0.75rem;
@@ -3343,6 +3354,53 @@ const shortcutLinks = [
   gap: 0.75rem;
   flex-wrap: wrap;
   justify-content: flex-end;
+}
+
+.rating-field {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.rating-options {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.rating-option {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.45rem 0.65rem;
+  border-radius: 999px;
+  border: 1px solid rgba(17, 24, 39, 0.16);
+  background: rgba(255, 255, 255, 0.95);
+  cursor: pointer;
+  transition: all 0.16s ease;
+  font-weight: 600;
+  color: rgba(17, 24, 39, 0.7);
+}
+
+.rating-option input {
+  width: 1rem;
+  height: 1rem;
+  accent-color: #4f46e5;
+}
+
+.rating-option:hover {
+  border-color: rgba(79, 70, 229, 0.4);
+  box-shadow: 0 4px 10px rgba(17, 24, 39, 0.08);
+}
+
+.rating-option.is-selected {
+  border-color: rgba(79, 70, 229, 0.55);
+  background: rgba(79, 70, 229, 0.1);
+  color: #312e81;
+}
+
+.rating-option.is-disabled {
+  cursor: not-allowed;
+  opacity: 0.7;
 }
 
 .rating-badge {
