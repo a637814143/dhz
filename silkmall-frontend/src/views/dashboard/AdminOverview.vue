@@ -1,40 +1,10 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 import api from '@/services/api'
 import { useAuthState } from '@/services/authState'
-import type {
-  Announcement,
-  HomepageContent,
-  NewsItem,
-  ProductOverview,
-  ProductSummary,
-  CategoryOption,
-  SupplierOption,
-} from '@/types'
-
-interface ProductDetail {
-  id: number
-  name: string
-  description?: string | null
-  price: number | string
-  stock: number
-  sales?: number
-  mainImage?: string | null
-  status?: string | null
-  createdAt?: string | null
-  updatedAt?: string | null
-  category?: { id: number; name?: string | null } | null
-  supplier?: { id: number; companyName?: string | null } | null
-}
+import type { AdminProfile } from '@/types'
 
 const { state } = useAuthState()
-
-const overview = ref<ProductOverview | null>(null)
-const announcements = ref<Announcement[]>([])
-const news = ref<NewsItem[]>([])
-const hotProducts = ref<ProductSummary[]>([])
-const loading = ref(true)
-const error = ref<string | null>(null)
 
 const walletBalance = ref<number | null>(null)
 const walletLoading = ref(false)
@@ -47,116 +17,33 @@ const walletDisplay = computed(() =>
   typeof walletBalance.value === 'number' ? formatCurrency(walletBalance.value) : '—'
 )
 
-const productLoading = ref(false)
-const productError = ref<string | null>(null)
-const productRows = ref<ProductSummary[]>([])
-const categoryOptions = ref<CategoryOption[]>([])
-const supplierOptions = ref<SupplierOption[]>([])
-
-const productFilters = reactive({
-  keyword: '',
-  categoryId: 0,
-  status: '',
+const profile = reactive<AdminProfile>({
+  id: 0,
+  username: '',
+  email: '',
+  phone: '',
+  address: '',
+  department: '',
+  position: '',
 })
+const profileSnapshot = ref<AdminProfile | null>(null)
+const profileLoading = ref(false)
+const profileSaving = ref(false)
+const profileError = ref<string | null>(null)
+const profileMessage = ref<string | null>(null)
 
-const productPagination = reactive({
-  page: 0,
-  size: 8,
-  total: 0,
-})
+const pageLoading = ref(true)
+const pageError = ref<string | null>(null)
 
-const totalProductPages = computed(() =>
-  productPagination.total > 0
-    ? Math.ceil(productPagination.total / productPagination.size)
-    : 0
-)
-
-const productPageIndicator = computed(() => {
-  if (totalProductPages.value <= 0) {
-    return '0/0'
-  }
-  return `${productPagination.page + 1}/${totalProductPages.value}`
-})
-
-const canGoProductPrevious = computed(
-  () => totalProductPages.value > 0 && productPagination.page > 0
-)
-
-const canGoProductNext = computed(
-  () =>
-    totalProductPages.value > 0 && productPagination.page + 1 < totalProductPages.value
-)
-
-const PRODUCT_EVENT_NAME = 'silkmall:products:changed'
-
-type ProductChangeAction = 'created' | 'updated' | 'deleted' | 'status-changed'
-
-interface ProductChangeDetail {
-  action: ProductChangeAction
-  productId?: number | null
-  source?: string
-}
-
-const productDialogOpen = ref(false)
-const productViewOpen = ref(false)
-const productFormError = ref<string | null>(null)
-const productFormMessage = ref<string | null>(null)
-const savingProduct = ref(false)
-const deletingProductId = ref<number | null>(null)
-const updatingStatusId = ref<number | null>(null)
-const viewingProduct = ref<ProductDetail | null>(null)
-const pendingExternalRefresh = ref(false)
-
-let externalRefreshTimer: ReturnType<typeof setTimeout> | null = null
-
-const productForm = reactive({
-  id: null as number | null,
-  name: '',
-  description: '',
-  price: '',
-  stock: 0,
-  status: 'ON_SALE',
-  categoryId: 0,
-  supplierId: 0,
-  mainImage: '',
-})
-
-const statusOptions = [
-  { value: 'ON_SALE', label: '在售' },
-  { value: 'OFF_SALE', label: '未上架' },
-]
-
-function unwrapData<T>(payload: unknown): T | null {
-  if (!payload || typeof payload !== 'object') {
-    return null
-  }
-
-  const source = payload as Record<string, unknown>
-  if ('data' in source && source.data && typeof source.data === 'object') {
-    return source.data as T
-  }
-
-  return payload as T
-}
-
-async function loadOverview() {
-  const response = await api.get<unknown>('/products/overview')
-  const parsed = unwrapData<ProductOverview>(response.data)
-  overview.value = parsed ?? null
-}
-
-async function loadHomeContent() {
-  const response = await api.get<unknown>('/content/home')
-  const parsed = unwrapData<HomepageContent>(response.data)
-  if (!parsed) {
-    announcements.value = []
-    news.value = []
-    hotProducts.value = []
-    return
-  }
-  announcements.value = parsed.announcements
-  news.value = parsed.news
-  hotProducts.value = parsed.hotSales.slice(0, 5)
+function applyProfile(data: Partial<AdminProfile>) {
+  profile.id = Number(data.id) || profile.id
+  profile.username = data.username ?? ''
+  profile.email = data.email ?? ''
+  profile.phone = data.phone ?? ''
+  profile.address = data.address ?? ''
+  profile.department = data.department ?? ''
+  profile.position = data.position ?? ''
+  profileSnapshot.value = { ...profile }
 }
 
 async function loadWallet() {
@@ -171,7 +58,6 @@ async function loadWallet() {
     const { data } = await api.get<{ balance: number }>('/wallet')
     walletBalance.value = typeof data?.balance === 'number' ? data.balance : null
   } catch (err) {
-    console.warn('加载管理员钱包失败', err)
     walletBalance.value = null
     walletError.value = err instanceof Error ? err.message : '加载钱包信息失败'
   } finally {
@@ -179,214 +65,9 @@ async function loadWallet() {
   }
 }
 
-function normaliseCategoryOptions(payload: unknown): CategoryOption[] {
-  if (!Array.isArray(payload)) {
-    return []
-  }
-  return payload
-    .map((item) => {
-      if (!item || typeof item !== 'object') return null
-      const source = item as Record<string, unknown>
-      const id = Number(source.id)
-      if (!Number.isFinite(id)) return null
-      const rawName = source.name ?? source['categoryName'] ?? `分类 ${id}`
-      const name = typeof rawName === 'string' ? rawName.trim() : String(rawName ?? '').trim()
-      return {
-        id,
-        name: name.length > 0 ? name : `分类 ${id}`,
-      }
-    })
-    .filter((item): item is CategoryOption => item !== null)
-    .sort((a, b) => a.name.localeCompare(b.name, 'zh-CN'))
-}
-
-async function loadCategoryOptions() {
-  const response = await api.get<unknown>('/categories/options')
-  const parsed = unwrapData<CategoryOption[]>(response.data)
-  categoryOptions.value = normaliseCategoryOptions(parsed ?? [])
-}
-
-function normaliseSupplierOptions(payload: unknown): SupplierOption[] {
-  if (!Array.isArray(payload)) {
-    return []
-  }
-  const options: SupplierOption[] = []
-  for (const item of payload) {
-    if (!item || typeof item !== 'object') continue
-    const source = item as Record<string, unknown>
-    const id = Number(source.id)
-    if (!Number.isFinite(id)) continue
-    const rawName = source.companyName ?? source.username ?? `供应商 ${id}`
-    const companyName = typeof rawName === 'string' ? rawName.trim() : String(rawName ?? '').trim()
-    const option: SupplierOption = {
-      id,
-      companyName: companyName.length > 0 ? companyName : `供应商 ${id}`,
-    }
-    if (typeof source.supplierLevel === 'string') {
-      option.supplierLevel = source.supplierLevel
-    } else if (source.supplierLevel === null) {
-      option.supplierLevel = null
-    }
-    options.push(option)
-  }
-  return options.sort((a, b) => a.companyName.localeCompare(b.companyName, 'zh-CN'))
-}
-
-async function loadSupplierOptions() {
-  const response = await api.get<unknown>('/suppliers/status/APPROVED')
-  const parsed = unwrapData<unknown[]>(response.data)
-  supplierOptions.value = normaliseSupplierOptions(parsed ?? [])
-}
-
-interface PagePayload<T> {
-  content: T[]
-  totalElements?: number
-  number?: number
-}
-
-function resolvePage<T>(payload: unknown): PagePayload<T> {
-  const fallback: PagePayload<T> = { content: [] }
-  if (!payload || typeof payload !== 'object') {
-    return fallback
-  }
-
-  const source = payload as Record<string, unknown>
-  let pageLike: unknown = null
-
-  if (Array.isArray(source.content)) {
-    pageLike = source
-  } else if (source.data && typeof source.data === 'object' && Array.isArray((source.data as Record<string, unknown>).content)) {
-    pageLike = source.data
-  }
-
-  if (!pageLike || typeof pageLike !== 'object') {
-    return fallback
-  }
-
-  const page = pageLike as Record<string, unknown>
-  if (Array.isArray(page.content)) {
-    fallback.content = page.content as T[]
-  }
-  if (typeof page.totalElements === 'number' && Number.isFinite(page.totalElements)) {
-    fallback.totalElements = page.totalElements
-  }
-  if (typeof page.number === 'number' && Number.isFinite(page.number)) {
-    fallback.number = page.number
-  }
-
-  return fallback
-}
-
-async function loadProducts(withSpinner = true) {
-  if (withSpinner) productLoading.value = true
-  productError.value = null
-  try {
-    const params: Record<string, unknown> = {
-      page: productPagination.page,
-      size: productPagination.size,
-      sortBy: 'createdAt',
-      sortDirection: 'DESC',
-    }
-    const keyword = productFilters.keyword.trim()
-    if (keyword) params.keyword = keyword
-    if (productFilters.categoryId > 0) params.categoryId = productFilters.categoryId
-    if (productFilters.status) params.status = productFilters.status
-
-    const response = await api.get<unknown>('/products/advanced-search', {
-      params,
-    })
-
-    const page = resolvePage<ProductSummary>(response.data)
-    productRows.value = Array.isArray(page.content) ? page.content : []
-    productPagination.total =
-      typeof page.totalElements === 'number' ? page.totalElements : productRows.value.length
-    if (typeof page.number === 'number' && Number.isFinite(page.number)) {
-      productPagination.page = page.number
-    }
-  } catch (err) {
-    const message = err instanceof Error ? err.message : '加载商品列表失败'
-    productError.value = message
-    throw err instanceof Error ? err : new Error(message)
-  } finally {
-    if (withSpinner) productLoading.value = false
-  }
-}
-
-function extractNumericId(value: unknown): number | null {
-  if (typeof value === 'number' && Number.isFinite(value)) {
-    return value
-  }
-  if (!value || typeof value !== 'object') {
-    return null
-  }
-  const source = value as Record<string, unknown>
-  const rawId = source.id
-  const parsed = typeof rawId === 'number' ? rawId : Number(rawId)
-  return Number.isFinite(parsed) ? parsed : null
-}
-
-function broadcastProductChange(detail: ProductChangeDetail) {
-  if (typeof window === 'undefined') return
-  window.dispatchEvent(new CustomEvent<ProductChangeDetail>(PRODUCT_EVENT_NAME, { detail }))
-}
-
-function scheduleExternalRefresh() {
-  if (externalRefreshTimer !== null) return
-  externalRefreshTimer = setTimeout(async () => {
-    externalRefreshTimer = null
-    try {
-      await refreshProductsAndOverview()
-    } catch (err) {
-      console.error(err)
-    }
-  }, 250)
-}
-
-function handleExternalProductChange(event: Event) {
-  const detail = (event as CustomEvent<ProductChangeDetail | undefined>).detail
-  if (detail?.source === 'admin-overview') {
-    return
-  }
-  if (typeof document !== 'undefined' && document.hidden) {
-    pendingExternalRefresh.value = true
-    return
-  }
-  scheduleExternalRefresh()
-}
-
-function handleVisibilityChange() {
-  if (typeof document === 'undefined') return
-  if (!document.hidden && pendingExternalRefresh.value) {
-    pendingExternalRefresh.value = false
-    scheduleExternalRefresh()
-  }
-}
-
-async function initProductManagement() {
-  productLoading.value = true
-  productError.value = null
-  try {
-    await Promise.all([loadCategoryOptions(), loadSupplierOptions()])
-    await loadProducts(false)
-  } catch (err) {
-    const message = err instanceof Error ? err.message : '加载商品概览失败'
-    productError.value = message
-  } finally {
-    productLoading.value = false
-  }
-}
-
-function resetRedeemFeedback() {
+async function redeemWallet() {
   redeemMessage.value = null
   redeemError.value = null
-}
-
-async function redeemWallet() {
-  resetRedeemFeedback()
-  if (!state.user) {
-    redeemError.value = '请先登录管理员账号'
-    return
-  }
   const code = redeemCodeInput.value.trim()
   if (!code) {
     redeemError.value = '请输入兑换码'
@@ -397,283 +78,95 @@ async function redeemWallet() {
     const { data } = await api.post<{ balance: number }>('/wallet/redeem', { code })
     const balance = typeof data?.balance === 'number' ? data.balance : null
     walletBalance.value = balance
-    redeemCodeInput.value = ''
     redeemMessage.value = '兑换成功，余额已更新'
+    redeemCodeInput.value = ''
     walletError.value = null
   } catch (err) {
-    console.warn('管理员钱包兑换失败', err)
     redeemError.value = err instanceof Error ? err.message : '兑换失败，请稍后再试'
   } finally {
     redeeming.value = false
   }
 }
 
-function resetProductForm() {
-  productForm.id = null
-  productForm.name = ''
-  productForm.description = ''
-  productForm.price = ''
-  productForm.stock = 0
-  productForm.status = 'ON_SALE'
-  productForm.categoryId = 0
-  productForm.supplierId = 0
-  productForm.mainImage = ''
-  productFormError.value = null
-  productFormMessage.value = null
-}
-
-function resetProductFilters() {
-  productFilters.keyword = ''
-  productFilters.categoryId = 0
-  productFilters.status = ''
-  productPagination.page = 0
-  loadProducts().catch(() => {})
-}
-
-function applyProductFilters() {
-  productPagination.page = 0
-  loadProducts().catch(() => {})
-}
-
-function changeProductPage(target: number) {
-  if (target < 0 || target === productPagination.page) return
-  if (totalProductPages.value && target >= totalProductPages.value) return
-  productPagination.page = target
-  loadProducts().catch(() => {})
-}
-
-function cancelProductDialog() {
-  productDialogOpen.value = false
-  resetProductForm()
-}
-
-async function openProductDialog(product?: ProductSummary) {
-  productFormError.value = null
-  productFormMessage.value = null
-  try {
-    await Promise.all([loadCategoryOptions(), loadSupplierOptions()])
-  } catch (err) {
-    const message = err instanceof Error ? err.message : '加载商品数据失败'
-    window.alert(message)
+async function loadAdminProfile() {
+  if (!state.user?.id) {
+    profileError.value = '缺少管理员信息，请重新登录'
     return
   }
+  profileLoading.value = true
+  profileError.value = null
+  try {
+    const { data } = await api.get<AdminProfile>(`/admins/${state.user.id}`)
+    applyProfile(data ?? {})
+  } catch (err) {
+    profileError.value = err instanceof Error ? err.message : '加载管理员信息失败'
+  } finally {
+    profileLoading.value = false
+  }
+}
 
-  if (product) {
-    try {
-      const response = await api.get<unknown>(`/products/${product.id}`)
-      const detail = unwrapData<ProductDetail>(response.data)
-      if (!detail) {
-        throw new Error('加载商品详情失败')
+async function saveAdminProfile() {
+  if (!state.user?.id) {
+    profileError.value = '请先登录管理员账号'
+    return
+  }
+  if (!profile.username.trim()) {
+    profileError.value = '请输入账号名称'
+    return
+  }
+  profileSaving.value = true
+  profileMessage.value = null
+  profileError.value = null
+  try {
+    const payload: AdminProfile = {
+      id: profile.id,
+      username: profile.username.trim(),
+      email: profile.email?.trim() || '',
+      phone: profile.phone?.trim() || '',
+      address: profile.address?.trim() || '',
+      department: profile.department?.trim() || '',
+      position: profile.position?.trim() || '',
+    }
+    const { data } = await api.put<AdminProfile>(`/admins/${state.user.id}`, payload)
+    applyProfile(data ?? payload)
+    profileMessage.value = '基础信息已更新'
+    if (state.user) {
+      state.user = {
+        ...state.user,
+        username: profile.username,
+        email: profile.email ?? null,
+        phone: profile.phone ?? null,
+        address: profile.address ?? null,
       }
-      productForm.id = detail.id
-      productForm.name = detail.name ?? ''
-      productForm.description = detail.description ?? ''
-      if (typeof detail.price === 'number') {
-        productForm.price = detail.price.toString()
-      } else {
-        const parsed = Number(detail.price)
-        productForm.price = Number.isFinite(parsed) ? parsed.toString() : ''
-      }
-      const detailRecord = detail as unknown as Record<string, unknown>
-      const stockValue = Number(detailRecord.stock)
-      productForm.stock = Number.isFinite(stockValue) ? stockValue : 0
-      productForm.status = detail.status ?? 'OFF_SALE'
-      productForm.categoryId = detail.category?.id ?? 0
-      productForm.supplierId = detail.supplier?.id ?? 0
-      productForm.mainImage = detail.mainImage ?? ''
-    } catch (err) {
-      const message = err instanceof Error ? err.message : '加载商品详情失败'
-      window.alert(message)
-      return
     }
-  } else {
-    resetProductForm()
-  }
-
-  productDialogOpen.value = true
-}
-
-async function saveProduct() {
-  const name = productForm.name.trim()
-  if (!name) {
-    productFormError.value = '请填写商品名称'
-    return
-  }
-
-  const price = Number(productForm.price)
-  if (!Number.isFinite(price) || price <= 0) {
-    productFormError.value = '请输入有效的商品价格'
-    return
-  }
-
-  if (!productForm.supplierId) {
-    productFormError.value = '请选择商品所属供应商'
-    return
-  }
-
-  const stock = Number(productForm.stock)
-  if (!Number.isInteger(stock) || stock < 0) {
-    productFormError.value = '库存必须为非负整数'
-    return
-  }
-
-  const payload: Record<string, unknown> = {
-    name,
-    description: productForm.description.trim() || null,
-    price,
-    stock,
-    status: productForm.status,
-    mainImage: productForm.mainImage.trim() || null,
-    supplier: { id: productForm.supplierId },
-  }
-
-  if (productForm.categoryId > 0) {
-    payload.category = { id: productForm.categoryId }
-  }
-
-  savingProduct.value = true
-  productFormError.value = null
-
-  try {
-    if (productForm.id) {
-      await api.put(`/products/${productForm.id}`, payload)
-      productFormMessage.value = '商品信息已更新'
-      broadcastProductChange({
-        action: 'updated',
-        productId: productForm.id,
-        source: 'admin-overview',
-      })
-    } else {
-      const { data } = await api.post('/products', payload)
-      productFormMessage.value = '商品已创建并保存'
-      broadcastProductChange({
-        action: 'created',
-        productId: extractNumericId(data),
-        source: 'admin-overview',
-      })
-    }
-
-    await refreshProductsAndOverview()
-    productDialogOpen.value = false
-    resetProductForm()
   } catch (err) {
-    const message = err instanceof Error ? err.message : '保存商品失败'
-    productFormError.value = message
+    profileError.value = err instanceof Error ? err.message : '更新管理员信息失败'
   } finally {
-    savingProduct.value = false
+    profileSaving.value = false
   }
 }
 
-async function deleteProduct(productId: number) {
-  if (!window.confirm('确定删除该商品吗？')) return
-  deletingProductId.value = productId
-  try {
-    await api.delete(`/products/${productId}`)
-    broadcastProductChange({
-      action: 'deleted',
-      productId,
-      source: 'admin-overview',
-    })
-    await refreshProductsAndOverview()
-  } catch (err) {
-    const message = err instanceof Error ? err.message : '删除商品失败'
-    window.alert(message)
-  } finally {
-    deletingProductId.value = null
-  }
-}
-
-async function changeProductStatus(productId: number, nextStatus: 'ON_SALE' | 'OFF_SALE') {
-  updatingStatusId.value = productId
-  try {
-    if (nextStatus === 'ON_SALE') {
-      await api.put(`/products/${productId}/on-sale`)
-    } else {
-      await api.put(`/products/${productId}/off-sale`)
-    }
-    broadcastProductChange({
-      action: 'status-changed',
-      productId,
-      source: 'admin-overview',
-    })
-    await refreshProductsAndOverview()
-  } catch (err) {
-    const message = err instanceof Error ? err.message : '更新商品状态失败'
-    window.alert(message)
-  } finally {
-    updatingStatusId.value = null
-  }
-}
-
-async function refreshProductsAndOverview() {
-  try {
-    await loadOverview()
-  } catch (err) {
-    error.value = err instanceof Error ? err.message : '加载管理数据失败'
-  }
-  productPagination.page = 0
-  await loadProducts().catch(() => {})
-  await loadWallet()
-}
-
-async function openProductView(product: ProductSummary) {
-  try {
-    const response = await api.get<unknown>(`/products/${product.id}`)
-    const detail = unwrapData<ProductDetail>(response.data)
-    if (!detail) {
-      throw new Error('加载商品详情失败')
-    }
-    const detailRecord = detail as unknown as Record<string, unknown>
-    const stockValue = Number(detailRecord.stock)
-    const salesValue = Number(detailRecord.sales)
-    viewingProduct.value = {
-      ...detail,
-      stock: Number.isFinite(stockValue) ? stockValue : 0,
-      sales: Number.isFinite(salesValue) ? salesValue : undefined,
-    }
-    productViewOpen.value = true
-  } catch (err) {
-    const message = err instanceof Error ? err.message : '加载商品详情失败'
-    window.alert(message)
-  }
-}
-
-function closeProductView() {
-  productViewOpen.value = false
-  viewingProduct.value = null
+function resetAdminProfile() {
+  if (!profileSnapshot.value) return
+  applyProfile(profileSnapshot.value)
+  profileMessage.value = null
+  profileError.value = null
 }
 
 async function bootstrap() {
-  loading.value = true
-  error.value = null
+  pageLoading.value = true
+  pageError.value = null
   try {
-    await Promise.all([loadOverview(), loadHomeContent(), loadWallet()])
+    await Promise.all([loadWallet(), loadAdminProfile()])
   } catch (err) {
-    error.value = err instanceof Error ? err.message : '加载管理数据失败'
+    pageError.value = err instanceof Error ? err.message : '加载管理员中心失败'
   } finally {
-    loading.value = false
+    pageLoading.value = false
   }
 }
 
 onMounted(() => {
   bootstrap()
-  initProductManagement()
-  if (typeof window !== 'undefined') {
-    window.addEventListener(PRODUCT_EVENT_NAME, handleExternalProductChange as EventListener)
-    document.addEventListener('visibilitychange', handleVisibilityChange)
-  }
-})
-
-onBeforeUnmount(() => {
-  if (typeof window !== 'undefined') {
-    window.removeEventListener(PRODUCT_EVENT_NAME, handleExternalProductChange as EventListener)
-    document.removeEventListener('visibilitychange', handleVisibilityChange)
-  }
-  if (externalRefreshTimer !== null) {
-    clearTimeout(externalRefreshTimer)
-    externalRefreshTimer = null
-  }
-  pendingExternalRefresh.value = false
 })
 
 function formatCurrency(amount?: number | string | null) {
@@ -683,23 +176,6 @@ function formatCurrency(amount?: number | string | null) {
   }
   return new Intl.NumberFormat('zh-CN', { style: 'currency', currency: 'CNY' }).format(numeric)
 }
-
-function formatStatus(status?: string | null) {
-  if (!status) return '未知'
-  return status === 'ON_SALE' ? '在售' : '未上架'
-}
-
-function formatDate(value?: string | Date | null) {
-  if (!value) return '—'
-  const date = typeof value === 'string' ? new Date(value) : value
-  if (Number.isNaN(date.getTime())) return '—'
-  return date.toLocaleString('zh-CN', { hour12: false })
-}
-
-function formatNumber(value?: number | null) {
-  if (typeof value !== 'number' || Number.isNaN(value)) return '0'
-  return new Intl.NumberFormat('zh-CN').format(value)
-}
 </script>
 
 <template>
@@ -707,12 +183,12 @@ function formatNumber(value?: number | null) {
     <header class="admin-header">
       <div>
         <h1>平台运营总览</h1>
-        <p>掌握商品、库存、用户互动与资讯发布情况，及时调整销售策略。</p>
+        <p>掌握资金与账号信息，及时调整平台运营策略。</p>
       </div>
     </header>
 
-    <div v-if="loading" class="placeholder">正在加载平台数据…</div>
-    <div v-else-if="error" class="placeholder is-error">{{ error }}</div>
+    <div v-if="pageLoading" class="placeholder">正在加载管理员信息…</div>
+    <div v-else-if="pageError" class="placeholder is-error">{{ pageError }}</div>
     <template v-else>
       <section class="panel admin-wallet" aria-labelledby="wallet-title">
         <header class="wallet-header">
@@ -749,6 +225,57 @@ function formatNumber(value?: number | null) {
           </div>
         </div>
       </section>
+
+      <section class="panel admin-profile" aria-labelledby="admin-profile-title">
+        <header class="profile-header">
+          <div>
+            <div class="panel-title" id="admin-profile-title">管理员基础信息</div>
+            <p class="panel-subtitle">查看并维护您的账号资料，确保联系方式最新。</p>
+          </div>
+          <div class="profile-actions">
+            <button type="button" class="secondary" :disabled="profileLoading" @click="resetAdminProfile">
+              重置
+            </button>
+            <button type="button" class="primary" :disabled="profileSaving || profileLoading" @click="saveAdminProfile">
+              {{ profileSaving ? '保存中…' : '保存信息' }}
+            </button>
+          </div>
+        </header>
+
+        <p v-if="profileLoading" class="feedback">基础信息加载中…</p>
+        <p v-else-if="profileError" class="feedback feedback--error">{{ profileError }}</p>
+        <template v-else>
+          <transition name="fade">
+            <p v-if="profileMessage" class="feedback feedback--success">{{ profileMessage }}</p>
+          </transition>
+          <div class="profile-grid">
+            <label>
+              <span>账号名称</span>
+              <input v-model="profile.username" type="text" placeholder="请输入账号名称" />
+            </label>
+            <label>
+              <span>邮箱</span>
+              <input v-model="profile.email" type="email" placeholder="请输入邮箱" />
+            </label>
+            <label>
+              <span>联系电话</span>
+              <input v-model="profile.phone" type="tel" placeholder="请输入联系电话" />
+            </label>
+            <label>
+              <span>联系地址</span>
+              <input v-model="profile.address" type="text" placeholder="请输入联系地址" />
+            </label>
+            <label>
+              <span>所属部门</span>
+              <input v-model="profile.department" type="text" placeholder="请输入所属部门" />
+            </label>
+            <label>
+              <span>职位</span>
+              <input v-model="profile.position" type="text" placeholder="请输入职位" />
+            </label>
+          </div>
+        </template>
+      </section>
     </template>
   </section>
 </template>
@@ -756,11 +283,11 @@ function formatNumber(value?: number | null) {
 <style scoped>
 .admin-shell {
   display: grid;
-  gap: 2.5rem;
+  gap: 2rem;
 }
 
 .admin-header {
-  padding: 2.5rem;
+  padding: 2.2rem;
   border-radius: 24px;
   background: linear-gradient(135deg, rgba(249, 115, 22, 0.12), rgba(234, 179, 8, 0.12));
   display: flex;
@@ -770,13 +297,14 @@ function formatNumber(value?: number | null) {
 }
 
 .admin-header h1 {
-  font-size: 2.1rem;
+  font-size: 2rem;
   font-weight: 700;
-  margin-bottom: 0.5rem;
+  margin-bottom: 0.35rem;
 }
 
 .admin-header p {
   color: rgba(30, 41, 59, 0.65);
+  margin: 0;
 }
 
 .placeholder {
@@ -798,13 +326,18 @@ function formatNumber(value?: number | null) {
   padding: 1.8rem;
   box-shadow: 0 20px 40px rgba(30, 41, 59, 0.08);
   display: grid;
-  gap: 1.5rem;
+  gap: 1.25rem;
 }
 
 .panel-title {
   font-weight: 700;
   font-size: 1.1rem;
   color: rgba(30, 41, 59, 0.78);
+}
+
+.panel-subtitle {
+  margin-top: 0.35rem;
+  color: rgba(30, 41, 59, 0.6);
 }
 
 .admin-wallet {
@@ -902,17 +435,59 @@ function formatNumber(value?: number | null) {
   color: #b91c1c;
 }
 
-.panel-subtitle {
-  margin-top: 0.35rem;
-  color: rgba(30, 41, 59, 0.6);
+.admin-profile {
+  gap: 1.2rem;
 }
 
-.product-admin-header {
+.profile-header {
   display: flex;
   justify-content: space-between;
-  gap: 1.5rem;
-  flex-wrap: wrap;
   align-items: flex-start;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.profile-actions {
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.profile-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 1rem;
+}
+
+.profile-grid label {
+  display: grid;
+  gap: 0.35rem;
+  font-weight: 600;
+  color: rgba(30, 41, 59, 0.78);
+}
+
+.profile-grid input {
+  padding: 0.6rem 0.75rem;
+  border-radius: 0.75rem;
+  border: 1px solid rgba(0, 0, 0, 0.12);
+}
+
+.feedback {
+  padding: 0.85rem 1rem;
+  border-radius: 0.85rem;
+  font-weight: 600;
+  margin: 0;
+}
+
+.feedback--success {
+  background: rgba(16, 185, 129, 0.12);
+  color: #047857;
+}
+
+.feedback--error {
+  background: rgba(239, 68, 68, 0.12);
+  color: #b91c1c;
 }
 
 .primary {
@@ -946,367 +521,18 @@ function formatNumber(value?: number | null) {
   cursor: pointer;
 }
 
-.ghost {
-  border: none;
-  background: none;
-  color: rgba(30, 41, 59, 0.65);
-  font-weight: 600;
-  cursor: pointer;
-}
+@media (max-width: 720px) {
+  .admin-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
 
-.product-filters {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-  gap: 1rem;
-  align-items: end;
-}
+  .wallet-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
 
-.product-filters label {
-  display: grid;
-  gap: 0.4rem;
-  font-weight: 600;
-  color: rgba(15, 23, 42, 0.75);
-}
-
-.product-filters input,
-.product-filters select {
-  padding: 0.55rem 0.65rem;
-  border: 1px solid rgba(15, 23, 42, 0.12);
-  border-radius: 0.75rem;
-}
-
-.filter-actions {
-  display: flex;
-  gap: 0.75rem;
-  flex-wrap: wrap;
-}
-
-.product-placeholder {
-  padding: 1.5rem;
-  border-radius: 1rem;
-  text-align: center;
-  color: rgba(15, 23, 42, 0.55);
-  background: rgba(37, 99, 235, 0.08);
-}
-
-.product-placeholder.is-error {
-  background: rgba(248, 113, 113, 0.12);
-  color: #7f1d1d;
-}
-
-.metric-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
-  gap: 1rem;
-}
-
-.metric-grid div {
-  background: rgba(255, 255, 255, 0.92);
-  border-radius: 16px;
-  padding: 1.1rem;
-  border: 1px solid rgba(249, 115, 22, 0.12);
-}
-
-.metric-grid span {
-  display: block;
-  font-size: 0.85rem;
-  color: rgba(30, 41, 59, 0.6);
-}
-
-.metric-grid strong {
-  font-size: 1.4rem;
-  font-weight: 700;
-}
-
-.hot-products table {
-  width: 100%;
-  border-collapse: collapse;
-}
-
-.table-wrapper {
-  overflow-x: auto;
-}
-
-.product-table {
-  width: 100%;
-  min-width: 860px;
-  border-collapse: collapse;
-}
-
-.product-table thead {
-  background: rgba(15, 23, 42, 0.04);
-  color: rgba(15, 23, 42, 0.6);
-}
-
-.product-table th,
-.product-table td {
-  padding: 0.75rem 0.5rem;
-  text-align: left;
-  border-bottom: 1px solid rgba(15, 23, 42, 0.08);
-}
-
-.product-table tbody tr:nth-child(odd) {
-  background: rgba(59, 130, 246, 0.05);
-}
-
-.name-cell strong {
-  display: block;
-}
-
-.name-cell .description {
-  margin: 0.25rem 0 0;
-  font-size: 0.85rem;
-  color: rgba(15, 23, 42, 0.6);
-}
-
-.status-pill {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0.25rem 0.6rem;
-  border-radius: 999px;
-  background: rgba(14, 165, 233, 0.18);
-  color: #0ea5e9;
-  font-weight: 600;
-}
-
-.product-actions {
-  display: flex;
-  gap: 0.6rem;
-  flex-wrap: wrap;
-}
-
-.link-button {
-  border: none;
-  background: none;
-  color: #2563eb;
-  font-weight: 600;
-  cursor: pointer;
-  padding: 0;
-}
-
-.link-button.danger {
-  color: #dc2626;
-}
-
-.link-button:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-
-.product-pagination-footer {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 0.75rem 1.5rem;
-  margin-top: 1.25rem;
-}
-
-.pagination-status {
-  color: rgba(15, 23, 42, 0.65);
-  font-weight: 600;
-}
-
-.pagination-controls {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.75rem;
-}
-
-.pager-button {
-  width: 2.5rem;
-  height: 2.5rem;
-  border-radius: 999px;
-  border: 1px solid rgba(15, 23, 42, 0.2);
-  background: rgba(148, 163, 184, 0.12);
-  color: rgba(15, 23, 42, 0.75);
-  font-size: 1.1rem;
-  font-weight: 600;
-  cursor: pointer;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.pager-button:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.page-indicator {
-  min-width: 3.5rem;
-  text-align: center;
-  font-weight: 600;
-  color: rgba(15, 23, 42, 0.75);
-}
-
-.product-dialog,
-.product-view-dialog {
-  position: fixed;
-  inset: 0;
-  background: rgba(15, 23, 42, 0.45);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 2rem 1rem;
-  z-index: 40;
-}
-
-.dialog-surface {
-  background: #fff;
-  border-radius: 20px;
-  padding: 1.8rem;
-  width: min(720px, 100%);
-  max-height: 90vh;
-  overflow-y: auto;
-  box-shadow: 0 30px 60px rgba(15, 23, 42, 0.2);
-  display: grid;
-  gap: 1.5rem;
-}
-
-.dialog-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 1rem;
-}
-
-.dialog-header h2 {
-  font-size: 1.4rem;
-  font-weight: 700;
-}
-
-.dialog-grid {
-  display: grid;
-  gap: 1rem;
-  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-}
-
-.dialog-grid label {
-  display: grid;
-  gap: 0.4rem;
-  font-weight: 600;
-  color: rgba(15, 23, 42, 0.75);
-}
-
-.dialog-grid input,
-.dialog-grid select,
-.dialog-grid textarea {
-  padding: 0.55rem 0.65rem;
-  border: 1px solid rgba(15, 23, 42, 0.14);
-  border-radius: 0.75rem;
-  font-size: 0.95rem;
-}
-
-.dialog-grid .full-width {
-  grid-column: 1 / -1;
-}
-
-.dialog-footer {
-  display: flex;
-  justify-content: flex-end;
-}
-
-.form-feedback {
-  padding: 0.75rem 1rem;
-  border-radius: 0.75rem;
-  font-weight: 600;
-}
-
-.form-feedback.is-error {
-  background: rgba(248, 113, 113, 0.12);
-  color: #7f1d1d;
-}
-
-.form-feedback.is-success {
-  background: rgba(16, 185, 129, 0.12);
-  color: #047857;
-}
-
-.product-details {
-  display: grid;
-  gap: 0.9rem;
-}
-
-.product-details div {
-  display: grid;
-  gap: 0.25rem;
-  grid-template-columns: max-content 1fr;
-  align-items: flex-start;
-}
-
-.product-details .full-width {
-  grid-template-columns: 1fr;
-}
-
-.product-details dt {
-  font-weight: 600;
-  color: rgba(15, 23, 42, 0.6);
-}
-
-.product-details dd {
-  margin: 0;
-  color: rgba(15, 23, 42, 0.9);
-  word-break: break-word;
-}
-
-.product-details img {
-  max-width: 100%;
-  border-radius: 12px;
-  border: 1px solid rgba(15, 23, 42, 0.08);
-}
-
-.hot-products th,
-.hot-products td {
-  padding: 0.75rem 0.5rem;
-  text-align: left;
-}
-
-.hot-products thead {
-  color: rgba(30, 41, 59, 0.55);
-}
-
-.empty {
-  color: rgba(30, 41, 59, 0.6);
-}
-
-.announcement-list,
-.news-list {
-  list-style: none;
-  padding: 0;
-  display: grid;
-  gap: 1rem;
-}
-
-.announcement-list li,
-.news-list li {
-  display: flex;
-  justify-content: space-between;
-  gap: 1rem;
-  align-items: flex-start;
-}
-
-.announcement-list strong,
-.news-list strong {
-  display: block;
-  margin-bottom: 0.25rem;
-}
-
-.announcement-list p,
-.news-list p {
-  color: rgba(30, 41, 59, 0.6);
-}
-
-.category,
-.source {
-  font-weight: 600;
-  color: #f97316;
-}
-
-@media (max-width: 768px) {
-  .announcement-list li,
-  .news-list li {
+  .profile-header {
     flex-direction: column;
     align-items: flex-start;
   }
