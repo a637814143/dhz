@@ -19,6 +19,10 @@ const addingToCart = ref(false)
 const cartSuccessMessage = ref<string | null>(null)
 const cartErrorMessage = ref<string | null>(null)
 const cartMessageTimer = ref<number | null>(null)
+const favoriting = ref(false)
+const favoriteSuccessMessage = ref<string | null>(null)
+const favoriteErrorMessage = ref<string | null>(null)
+const favoriteMessageTimer = ref<number | null>(null)
 const authPromptMessage = ref<string | null>(null)
 const authPromptTimer = ref<number | null>(null)
 const { isAuthenticated, hasRole } = useAuthState()
@@ -215,6 +219,13 @@ function clearCartMessageTimer() {
   }
 }
 
+function clearFavoriteMessageTimer() {
+  if (favoriteMessageTimer.value) {
+    clearTimeout(favoriteMessageTimer.value)
+    favoriteMessageTimer.value = null
+  }
+}
+
 async function addToCart() {
   if (!product.value || !canAddToCart.value || addingToCart.value) {
     return
@@ -250,6 +261,42 @@ async function addToCart() {
     }, 6000)
   } finally {
     addingToCart.value = false
+  }
+}
+
+async function addToFavorites() {
+  if (!product.value || favoriting.value) {
+    return
+  }
+  if (!isAuthenticated.value) {
+    showLoginPrompt('请登录后再收藏商品')
+    return
+  }
+  if (!isConsumerAccount.value) {
+    showLoginPrompt('请注册并登录消费者账户后即可收藏商品')
+    return
+  }
+  favoriting.value = true
+  favoriteSuccessMessage.value = null
+  favoriteErrorMessage.value = null
+  try {
+    await api.post('/favorites', { productId: product.value.id })
+    favoriteSuccessMessage.value = `已收藏「${product.value.name}」`
+    clearFavoriteMessageTimer()
+    favoriteMessageTimer.value = window.setTimeout(() => {
+      favoriteSuccessMessage.value = null
+      favoriteMessageTimer.value = null
+    }, 4000)
+  } catch (err) {
+    const message = err instanceof Error ? err.message : '收藏商品失败'
+    favoriteErrorMessage.value = message
+    clearFavoriteMessageTimer()
+    favoriteMessageTimer.value = window.setTimeout(() => {
+      favoriteErrorMessage.value = null
+      favoriteMessageTimer.value = null
+    }, 6000)
+  } finally {
+    favoriting.value = false
   }
 }
 
@@ -293,6 +340,7 @@ watch(
 onBeforeUnmount(() => {
   clearPurchaseMessageTimer()
   clearCartMessageTimer()
+  clearFavoriteMessageTimer()
   if (authPromptTimer.value) {
     clearTimeout(authPromptTimer.value)
   }
@@ -334,6 +382,16 @@ onBeforeUnmount(() => {
         </transition>
         <transition name="fade">
           <p v-if="cartErrorMessage" class="error-message" role="alert">{{ cartErrorMessage }}</p>
+        </transition>
+        <transition name="fade">
+          <p v-if="favoriteSuccessMessage" class="success-message" role="status">
+            {{ favoriteSuccessMessage }}
+          </p>
+        </transition>
+        <transition name="fade">
+          <p v-if="favoriteErrorMessage" class="error-message" role="alert">
+            {{ favoriteErrorMessage }}
+          </p>
         </transition>
         <transition name="fade">
           <p v-if="purchaseSuccessMessage" class="success-message" role="status">{{ purchaseSuccessMessage }}</p>
@@ -414,6 +472,14 @@ onBeforeUnmount(() => {
                 @click="addToCart"
               >
                 {{ addingToCart ? '加入中…' : '加入购物车' }}
+              </button>
+              <button
+                type="button"
+                class="favorite"
+                :disabled="favoriting"
+                @click="addToFavorites"
+              >
+                {{ favoriting ? '收藏中…' : '收藏' }}
               </button>
               <button
                 type="button"
@@ -717,6 +783,34 @@ onBeforeUnmount(() => {
 }
 
 .cta .add-to-cart:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+  box-shadow: none;
+  transform: none;
+}
+
+.cta .favorite {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.7rem 1.6rem;
+  border-radius: 999px;
+  border: 1px solid rgba(242, 177, 66, 0.5);
+  background: rgba(242, 177, 66, 0.12);
+  color: #b45309;
+  font-weight: 600;
+  cursor: pointer;
+  transition: transform 0.2s ease, box-shadow 0.2s ease, background-color 0.2s ease;
+}
+
+.cta .favorite:hover:not(:disabled) {
+  background: rgba(242, 177, 66, 0.2);
+  box-shadow: 0 16px 30px rgba(242, 177, 66, 0.18);
+  transform: translateY(-1px);
+}
+
+.cta .favorite:disabled {
   cursor: not-allowed;
   opacity: 0.6;
   box-shadow: none;
