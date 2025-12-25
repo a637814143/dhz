@@ -429,3 +429,13 @@ export interface RegisterPayload {
   phone: string
   userType: RegisterableUserRole
 }
+
+export interface AdminProfile {
+  id: number
+  username: string
+  email?: string | null
+  phone?: string | null
+  address?: string | null
+  department?: string | null
+  position?: string | null
+}

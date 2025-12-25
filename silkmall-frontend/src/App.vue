@@ -60,6 +60,7 @@ const sidebarNavItems = computed<SidebarLink[]>(() => {
       { label: '个人中心', to: { name: 'admin-overview' } },
       { label: '商品管理', to: { name: 'admin-products' } },
       { label: '订单管理', to: { name: 'admin-orders' } },
+      { label: '退货管理', to: { name: 'admin-returns' } },
       { label: '消费者管理', to: { name: 'admin-consumers' } },
       { label: '供应商管理', to: { name: 'admin-suppliers' } },
       { label: '销售统计', to: { name: 'admin-sales' } }

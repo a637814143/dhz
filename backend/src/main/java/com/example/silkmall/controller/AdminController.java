@@ -1,5 +1,6 @@
 package com.example.silkmall.controller;
 
+import com.example.silkmall.dto.AdminProfileDTO;
 import com.example.silkmall.entity.Admin;
 import com.example.silkmall.service.AdminService;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -24,7 +25,7 @@ public class AdminController extends BaseController {
     public ResponseEntity<?> getAdminById(@PathVariable Long id) {
         Optional<Admin> admin = adminService.findById(id);
         if (admin.isPresent()) {
-            return success(admin.get());
+            return success(toProfile(admin.get()));
         } else {
             return notFound("管理员不存在");
         }
@@ -32,18 +33,22 @@ public class AdminController extends BaseController {
 
     @PutMapping("/{id}")
     @PreAuthorize("hasRole('ADMIN')")
-    public ResponseEntity<?> updateAdmin(@PathVariable Long id, @RequestBody Admin admin) {
+    public ResponseEntity<?> updateAdmin(@PathVariable Long id, @RequestBody AdminProfileDTO payload) {
         Optional<Admin> existing = adminService.findById(id);
         if (existing.isEmpty()) {
             return notFound("管理员不存在");
         }
 
-        admin.setId(id);
-        if (admin.getPassword() == null || admin.getPassword().isEmpty()) {
-            admin.setPassword(existing.get().getPassword());
-        }
+        Admin admin = existing.get();
+        admin.setUsername(payload.getUsername());
+        admin.setEmail(payload.getEmail());
+        admin.setPhone(payload.getPhone());
+        admin.setAddress(payload.getAddress());
+        admin.setDepartment(payload.getDepartment());
+        admin.setPosition(payload.getPosition());
 
-        return success(adminService.update(admin));
+        Admin saved = adminService.update(admin);
+        return success(toProfile(saved));
     }
 
     @DeleteMapping("/{id}")
@@ -72,5 +77,17 @@ public class AdminController extends BaseController {
     public ResponseEntity<Void> updatePermissions(@PathVariable Long id, @RequestBody String permissions) {
         adminService.updatePermissions(id, permissions);
         return success();
+    }
+
+    private AdminProfileDTO toProfile(Admin admin) {
+        AdminProfileDTO dto = new AdminProfileDTO();
+        dto.setId(admin.getId());
+        dto.setUsername(admin.getUsername());
+        dto.setEmail(admin.getEmail());
+        dto.setPhone(admin.getPhone());
+        dto.setAddress(admin.getAddress());
+        dto.setDepartment(admin.getDepartment());
+        dto.setPosition(admin.getPosition());
+        return dto;
     }
 }
