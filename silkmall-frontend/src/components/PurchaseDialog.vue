@@ -48,7 +48,30 @@ watch(
   }
 )
 
-const maxQuantity = computed(() => props.product?.stock ?? 0)
+const sizeOrder: Array<'S' | 'M' | 'L' | 'XL' | '2XL' | '3XL'> = ['S', 'M', 'L', 'XL', '2XL', '3XL']
+const sizeOptions = computed(() => {
+  const raw = props.product?.sizeQuantities ?? null
+  if (!raw) return []
+  return sizeOrder
+    .map((size) => ({
+      size,
+      quantity: typeof raw[size] === 'number' && Number.isFinite(raw[size]) ? raw[size] : 0,
+    }))
+    .filter((entry) => entry.quantity >= 0)
+})
+const hasSizeOptions = computed(() => sizeOptions.value.length > 0)
+const selectedSize = ref<string | null>(null)
+const selectedSizeQuantity = computed(() => {
+  if (!hasSizeOptions.value || !selectedSize.value) return null
+  const match = sizeOptions.value.find((item) => item.size === selectedSize.value)
+  return match ? match.quantity : null
+})
+const maxQuantity = computed(() => {
+  if (hasSizeOptions.value) {
+    return selectedSizeQuantity.value ?? 0
+  }
+  return props.product?.stock ?? 0
+})
 
 const totalAmount = computed(() => {
   if (!props.product) return 0
@@ -68,6 +91,7 @@ function resetForm() {
   addressBookError.value = null
   addressBookLoading.value = false
   selectedAddressId.value = 'manual'
+  selectedSize.value = null
 }
 
 async function loadAddressBook() {
@@ -120,6 +144,20 @@ watch(selectedAddressId, (value) => {
   }
 })
 
+function selectSize(option: { size: string; quantity: number }) {
+  selectedSize.value = option.size
+  if (option.quantity <= 0) {
+    error.value = '该尺码已卖完，请选择其他尺码'
+    return
+  }
+  if (form.quantity > option.quantity) {
+    form.quantity = option.quantity
+  }
+  if (error.value === '请选择尺码' || error.value?.includes('尺码')) {
+    error.value = null
+  }
+}
+
 function generateConsumerLookupId() {
   const random = Math.random().toString(36).slice(2, 10).toUpperCase()
   const timestamp = Date.now().toString().slice(-4)
@@ -167,9 +205,25 @@ function validate() {
     return false
   }
 
-  if (props.product.stock < form.quantity) {
-    error.value = '购买数量超过库存，请调整数量'
-    return false
+  if (hasSizeOptions.value) {
+    if (!selectedSize.value) {
+      error.value = '请选择尺码'
+      return false
+    }
+    const available = selectedSizeQuantity.value ?? 0
+    if (available <= 0) {
+      error.value = '该尺码已卖完，请选择其他尺码'
+      return false
+    }
+    if (form.quantity > available) {
+      error.value = `所选尺码仅剩 ${available} 件，请调整数量`
+      return false
+    }
+  } else {
+    if (props.product.stock < form.quantity) {
+      error.value = '购买数量超过库存，请调整数量'
+      return false
+    }
   }
 
   error.value = null
@@ -193,6 +247,7 @@ async function submit() {
         {
           product: { id: props.product.id },
           quantity: form.quantity,
+          size: hasSizeOptions.value ? selectedSize.value : null,
         },
       ],
     }
@@ -227,6 +282,9 @@ async function submit() {
               <h4>{{ product.name }}</h4>
               <p>库存：{{ product.stock }} 件</p>
               <p>单价：¥{{ product.price.toFixed(2) }}</p>
+              <p v-if="hasSizeOptions" class="size-hint">
+                已启用尺码库存，请先选择尺码后下单。
+              </p>
             </div>
           </div>
 
@@ -236,6 +294,26 @@ async function submit() {
               <input v-model="form.consumerLookupId" type="text" readonly />
               <small class="hint">系统已为您生成订单查询编号</small>
             </label>
+
+            <section v-if="hasSizeOptions" class="size-selector">
+              <header>
+                <span>选择尺码</span>
+                <small class="hint">请选择具体尺码后再填写购买数量</small>
+              </header>
+              <div class="size-options" role="group" aria-label="选择尺码">
+                <button
+                  v-for="option in sizeOptions"
+                  :key="option.size"
+                  type="button"
+                  class="size-chip"
+                  :class="{ active: selectedSize === option.size, soldout: option.quantity <= 0 }"
+                  @click="selectSize(option)"
+                >
+                  <strong>{{ option.size }}</strong>
+                  <span>{{ option.quantity > 0 ? `剩余 ${option.quantity}` : '已售罄' }}</span>
+                </button>
+              </div>
+            </section>
 
             <section class="address-selector">
               <header class="address-selector__header">
@@ -323,8 +401,12 @@ async function submit() {
                   min="1"
                   :max="maxQuantity"
                   :placeholder="`最多 ${maxQuantity} 件`"
+                  :disabled="hasSizeOptions && !selectedSize"
                   required
                 />
+                <small v-if="hasSizeOptions" class="hint">
+                  仅计算所选尺码库存，未选择尺码时无法输入数量。
+                </small>
               </label>
             </div>
 
@@ -436,10 +518,73 @@ async function submit() {
   font-size: 0.9rem;
 }
 
+.product-summary .size-hint {
+  color: #4f46e5;
+  font-weight: 600;
+}
+
 .purchase-form {
   display: flex;
   flex-direction: column;
   gap: 1rem;
+}
+
+.size-selector {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.size-selector header {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  color: rgba(15, 23, 42, 0.78);
+  font-weight: 600;
+}
+
+.size-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.size-chip {
+  border: 1px solid rgba(79, 70, 229, 0.2);
+  background: #fff;
+  color: #0f172a;
+  border-radius: 0.75rem;
+  padding: 0.5rem 0.9rem;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.1rem;
+  cursor: pointer;
+  min-width: 96px;
+  transition: border 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
+}
+
+.size-chip strong {
+  font-size: 0.95rem;
+}
+
+.size-chip span {
+  font-size: 0.8rem;
+  color: rgba(15, 23, 42, 0.65);
+}
+
+.size-chip.active {
+  border-color: rgba(79, 70, 229, 0.55);
+  box-shadow: 0 10px 24px rgba(79, 70, 229, 0.16);
+  transform: translateY(-1px);
+}
+
+.size-chip.soldout {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.size-chip:disabled {
+  background: rgba(148, 163, 184, 0.12);
 }
 
 .purchase-form label {

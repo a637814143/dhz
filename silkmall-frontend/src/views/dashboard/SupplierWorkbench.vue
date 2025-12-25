@@ -314,6 +314,24 @@ function confirmSizeSelection() {
   sizeDialogOpen.value = false
 }
 
+function hydrateSizeAllocations(raw: unknown) {
+  if (!raw || typeof raw !== 'object') {
+    clearSizeSelection()
+    return
+  }
+  const entries = Object.entries(raw as Record<string, unknown>)
+  if (!entries.length) {
+    clearSizeSelection()
+    return
+  }
+  entries.forEach(([key, value]) => {
+    if (!sizeOptions.includes(key as SizeOption)) return
+    const normalized = normalizeSizeValue(typeof value === 'number' ? value : Number(value))
+    sizeQuantities[key as SizeOption] = normalized
+    sizeDraft[key as SizeOption] = normalized
+  })
+}
+
 function toCategoryOption(raw: unknown, fallbackName?: string): CategoryOption | null {
   if (!raw || typeof raw !== 'object') {
     return null
@@ -716,6 +734,7 @@ async function openProductForm(product?: ProductSummary) {
     productForm.status = product.status ?? 'OFF_SALE'
     productForm.mainImage = product.mainImage ?? ''
     productImagePreview.value = productForm.mainImage || null
+    hydrateSizeAllocations((product as any).sizeQuantities)
     if (productImageInput.value) {
       productImageInput.value.value = ''
     }
@@ -807,6 +826,10 @@ async function saveProduct() {
     return
   }
 
+  const sizePayload = hasSizeAllocation.value
+    ? Object.fromEntries(sizeOptions.map((size) => [size, sizeQuantities[size]]))
+    : null
+
   const payload: Record<string, unknown> = {
     name,
     description: productForm.description.trim() || null,
@@ -815,6 +838,7 @@ async function saveProduct() {
     stock,
     status: productForm.status,
     mainImage: productForm.mainImage.trim() || null,
+    sizeQuantities: sizePayload,
     supplier: { id: state.user.id },
   }
   if (productForm.categoryId) {

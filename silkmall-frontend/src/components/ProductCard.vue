@@ -45,6 +45,17 @@ const formattedPrice = computed(() =>
 
 const canPurchase = computed(() => props.product.status === 'ON_SALE' && props.product.stock > 1)
 const canAddToCart = computed(() => props.product.status === 'ON_SALE' && props.product.stock > 0)
+
+const sizeOrder: Array<'S' | 'M' | 'L' | 'XL' | '2XL' | '3XL'> = ['S', 'M', 'L', 'XL', '2XL', '3XL']
+const sizeAllocations = computed(() => {
+  const raw = props.product.sizeQuantities ?? {}
+  return sizeOrder
+    .map((size) => ({
+      size,
+      quantity: typeof raw[size] === 'number' && Number.isFinite(raw[size]) ? raw[size] : 0,
+    }))
+    .filter((entry) => entry.quantity > 0)
+})
 </script>
 
 <template>
@@ -105,6 +116,11 @@ const canAddToCart = computed(() => props.product.status === 'ON_SALE' && props.
         >
           {{ canPurchase ? '点击购买' : '暂不可购' }}
         </button>
+      </div>
+      <div v-if="sizeAllocations.length" class="sizes" aria-label="尺码与库存">
+        <span v-for="entry in sizeAllocations" :key="entry.size" class="size-chip">
+          {{ entry.size }}（{{ entry.quantity }}）
+        </span>
       </div>
     </div>
   </article>
@@ -240,6 +256,22 @@ const canAddToCart = computed(() => props.product.status === 'ON_SALE' && props.
   gap: 0.75rem;
   font-size: 0.8rem;
   color: rgba(17, 24, 39, 0.65);
+}
+
+.sizes {
+  display: flex;
+  gap: 0.35rem;
+  flex-wrap: wrap;
+  margin-top: 0.25rem;
+}
+
+.size-chip {
+  background: rgba(111, 169, 173, 0.12);
+  color: #0f172a;
+  border-radius: 999px;
+  padding: 0.25rem 0.65rem;
+  font-weight: 700;
+  font-size: 0.85rem;
 }
 
 
