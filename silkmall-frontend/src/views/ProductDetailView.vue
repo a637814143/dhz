@@ -70,22 +70,6 @@ const hasGallery = computed(() => galleryImages.value.length > 0)
 
 const fallbackLetter = computed(() => product.value?.name?.charAt(0)?.toUpperCase() ?? '丝')
 
-const sizeOrder: Array<'S' | 'M' | 'L' | 'XL' | '2XL' | '3XL'> = ['S', 'M', 'L', 'XL', '2XL', '3XL']
-const sizeAllocations = computed(() => {
-  const raw = product.value?.sizeQuantities ?? null
-  if (!raw) return []
-  return sizeOrder
-    .map((size) => ({
-      size,
-      quantity: typeof raw[size] === 'number' && Number.isFinite(raw[size]) ? raw[size] : 0,
-    }))
-    .filter((entry) => entry.quantity > 0)
-})
-const hasSizeAllocations = computed(() => sizeAllocations.value.length > 0)
-const sizeAllocationTotal = computed(() =>
-  sizeAllocations.value.reduce((sum, entry) => sum + entry.quantity, 0)
-)
-
 const isPurchasable = computed(() => {
   if (!product.value) {
     return false
@@ -422,19 +406,6 @@ onBeforeUnmount(() => {
                 <span class="value">{{ statusLabel }}</span>
               </div>
             </div>
-
-            <div v-if="hasSizeAllocations" class="size-block" role="group" aria-label="尺码库存">
-              <div class="size-block__header">
-                <h3>尺码库存</h3>
-                <p class="size-block__hint">共分配 {{ sizeAllocationTotal }} 件库存</p>
-              </div>
-              <div class="size-grid">
-                <span v-for="entry in sizeAllocations" :key="entry.size" class="size-chip">
-                  {{ entry.size }}（{{ entry.quantity }}）
-                </span>
-              </div>
-            </div>
-
             <div class="cta">
               <button
                 type="button"
@@ -715,48 +686,6 @@ onBeforeUnmount(() => {
   font-weight: 700;
   color: #1f2937;
 }
-
-.size-block {
-  margin-top: 0.5rem;
-  padding: 1rem;
-  border-radius: 1rem;
-  background: rgba(111, 169, 173, 0.08);
-  display: grid;
-  gap: 0.5rem;
-}
-
-.size-block__header {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-}
-
-.size-block__header h3 {
-  margin: 0;
-  font-size: 1rem;
-  color: #0f172a;
-}
-
-.size-block__hint {
-  margin: 0;
-  color: rgba(17, 24, 39, 0.65);
-}
-
-.size-grid {
-  display: flex;
-  gap: 0.4rem;
-  flex-wrap: wrap;
-}
-
-.size-chip {
-  background: #fff;
-  border: 1px solid rgba(111, 169, 173, 0.25);
-  color: #0f172a;
-  border-radius: 999px;
-  padding: 0.35rem 0.8rem;
-  font-weight: 700;
-}
-
 .cta {
   margin-top: 1rem;
   display: flex;
