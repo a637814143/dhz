@@ -9,4 +9,6 @@ import java.util.List;
 @Repository
 public interface ProductSizeAllocationRepository extends JpaRepository<ProductSizeAllocation, Long> {
     List<ProductSizeAllocation> findByProductId(Long productId);
+    void deleteByProductId(Long productId);
+    java.util.Optional<ProductSizeAllocation> findByProductIdAndSizeLabel(Long productId, String sizeLabel);
 }

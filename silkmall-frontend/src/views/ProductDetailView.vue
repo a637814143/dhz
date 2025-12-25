@@ -406,7 +406,6 @@ onBeforeUnmount(() => {
                 <span class="value">{{ statusLabel }}</span>
               </div>
             </div>
-
             <div class="cta">
               <button
                 type="button"
@@ -687,7 +686,6 @@ onBeforeUnmount(() => {
   font-weight: 700;
   color: #1f2937;
 }
-
 .cta {
   margin-top: 1rem;
   display: flex;

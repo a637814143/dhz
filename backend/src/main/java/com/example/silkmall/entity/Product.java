@@ -6,6 +6,7 @@ import lombok.Data;
 import java.math.BigDecimal;
 import java.util.Date;
 import java.util.List;
+import java.util.Map;
 
 @Data
 @Entity
@@ -40,6 +41,13 @@ public class Product {
     @OneToMany(mappedBy = "product", cascade = CascadeType.ALL)
     @JsonIgnoreProperties({"product"})
     private List<ProductImage> images;
+
+    @OneToMany(mappedBy = "product", cascade = CascadeType.ALL, orphanRemoval = true)
+    @JsonIgnoreProperties({"product"})
+    private List<ProductSizeAllocation> sizeAllocations;
+
+    @Transient
+    private Map<String, Integer> sizeQuantities;
     
     @OneToMany(mappedBy = "product", cascade = CascadeType.ALL)
     private List<OrderItem> orderItems;
@@ -174,5 +182,21 @@ public class Product {
     
     public void setOrderItems(List<OrderItem> orderItems) {
         this.orderItems = orderItems;
+    }
+
+    public List<ProductSizeAllocation> getSizeAllocations() {
+        return sizeAllocations;
+    }
+
+    public void setSizeAllocations(List<ProductSizeAllocation> sizeAllocations) {
+        this.sizeAllocations = sizeAllocations;
+    }
+
+    public Map<String, Integer> getSizeQuantities() {
+        return sizeQuantities;
+    }
+
+    public void setSizeQuantities(Map<String, Integer> sizeQuantities) {
+        this.sizeQuantities = sizeQuantities;
     }
 }

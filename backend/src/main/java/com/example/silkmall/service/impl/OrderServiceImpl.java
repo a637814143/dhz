@@ -10,10 +10,12 @@ import com.example.silkmall.entity.Consumer;
 import com.example.silkmall.entity.Order;
 import com.example.silkmall.entity.OrderItem;
 import com.example.silkmall.entity.Product;
+import com.example.silkmall.entity.ProductSizeAllocation;
 import com.example.silkmall.entity.Supplier;
 import com.example.silkmall.repository.ConsumerRepository;
 import com.example.silkmall.repository.OrderRepository;
 import com.example.silkmall.repository.ProductRepository;
+import com.example.silkmall.repository.ProductSizeAllocationRepository;
 import com.example.silkmall.repository.SupplierRepository;
 import com.example.silkmall.repository.AdminRepository;
 import com.example.silkmall.service.OrderService;
@@ -53,6 +55,7 @@ public class OrderServiceImpl extends BaseServiceImpl<Order, Long> implements Or
 
     private final OrderRepository orderRepository;
     private final ProductRepository productRepository;
+    private final ProductSizeAllocationRepository productSizeAllocationRepository;
     private final ConsumerRepository consumerRepository;
     private final SupplierRepository supplierRepository;
     private final AdminRepository adminRepository;
@@ -60,12 +63,14 @@ public class OrderServiceImpl extends BaseServiceImpl<Order, Long> implements Or
     @Autowired
     public OrderServiceImpl(OrderRepository orderRepository,
                             ProductRepository productRepository,
+                            ProductSizeAllocationRepository productSizeAllocationRepository,
                             ConsumerRepository consumerRepository,
                             SupplierRepository supplierRepository,
                             AdminRepository adminRepository) {
         super(orderRepository);
         this.orderRepository = orderRepository;
         this.productRepository = productRepository;
+        this.productSizeAllocationRepository = productSizeAllocationRepository;
         this.consumerRepository = consumerRepository;
         this.supplierRepository = supplierRepository;
         this.adminRepository = adminRepository;
@@ -712,11 +717,22 @@ public class OrderServiceImpl extends BaseServiceImpl<Order, Long> implements Or
         for (OrderItem item : order.getOrderItems()) {
             Product product = productRepository.findById(item.getProduct().getId())
                     .orElseThrow(() -> new RuntimeException("产品不存在: " + item.getProduct().getId()));
-            
+
             if (product.getStock() < item.getQuantity()) {
                 throw new RuntimeException("商品\"" + product.getName() + "\"库存不足");
             }
-            
+
+            if (item.getSize() != null && !item.getSize().isBlank()) {
+                ProductSizeAllocation allocation = productSizeAllocationRepository
+                        .findByProductIdAndSizeLabel(product.getId(), item.getSize())
+                        .orElseThrow(() -> new RuntimeException("尺码不存在或已售罄"));
+                if (allocation.getQuantity() < item.getQuantity()) {
+                    throw new RuntimeException("商品\"" + product.getName() + "\"尺码" + item.getSize() + "库存不足");
+                }
+                allocation.setQuantity(allocation.getQuantity() - item.getQuantity());
+                productSizeAllocationRepository.save(allocation);
+            }
+
             // 扣减库存
             product.setStock(product.getStock() - item.getQuantity());
             productRepository.save(product);
@@ -728,10 +744,24 @@ public class OrderServiceImpl extends BaseServiceImpl<Order, Long> implements Or
         for (OrderItem item : order.getOrderItems()) {
             Product product = productRepository.findById(item.getProduct().getId())
                     .orElseThrow(() -> new RuntimeException("产品不存在: " + item.getProduct().getId()));
-            
+
             // 恢复库存
             product.setStock(product.getStock() + item.getQuantity());
             productRepository.save(product);
+
+            if (item.getSize() != null && !item.getSize().isBlank()) {
+                ProductSizeAllocation allocation = productSizeAllocationRepository
+                        .findByProductIdAndSizeLabel(product.getId(), item.getSize())
+                        .orElse(null);
+                if (allocation == null) {
+                    allocation = new ProductSizeAllocation();
+                    allocation.setProduct(product);
+                    allocation.setSizeLabel(item.getSize());
+                    allocation.setQuantity(0);
+                }
+                allocation.setQuantity(allocation.getQuantity() + item.getQuantity());
+                productSizeAllocationRepository.save(allocation);
+            }
         }
     }
 

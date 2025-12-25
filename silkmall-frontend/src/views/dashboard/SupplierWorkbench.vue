@@ -87,6 +87,27 @@ const productForm = reactive({
 const productImagePreview = ref<string | null>(null)
 const productImageInput = ref<HTMLInputElement | null>(null)
 
+type SizeOption = 'S' | 'M' | 'L' | 'XL' | '2XL' | '3XL'
+const sizeOptions: SizeOption[] = ['S', 'M', 'L', 'XL', '2XL', '3XL']
+const sizeDialogOpen = ref(false)
+const sizeAllocationError = ref<string | null>(null)
+const sizeQuantities = reactive<Record<SizeOption, number>>({
+  S: 0,
+  M: 0,
+  L: 0,
+  XL: 0,
+  '2XL': 0,
+  '3XL': 0,
+})
+const sizeDraft = reactive<Record<SizeOption, number>>({
+  S: 0,
+  M: 0,
+  L: 0,
+  XL: 0,
+  '2XL': 0,
+  '3XL': 0,
+})
+
 const categoryNameInput = ref('')
 const categorySaving = ref(false)
 const categoryFeedback = ref<string | null>(null)
@@ -103,6 +124,25 @@ const returnActionMessage = ref<string | null>(null)
 const returnActionError = ref<string | null>(null)
 const updatingReturnId = ref<number | null>(null)
 const resolutionDrafts = reactive<Record<number, string>>({})
+
+const sizeAllocationTotal = computed(() =>
+  sizeOptions.reduce((sum, size) => sum + (Number.isFinite(sizeQuantities[size]) ? sizeQuantities[size] : 0), 0)
+)
+const sizeDraftTotal = computed(() =>
+  sizeOptions.reduce((sum, size) => sum + (Number.isFinite(sizeDraft[size]) ? sizeDraft[size] : 0), 0)
+)
+const hasSizeAllocation = computed(() => sizeOptions.some((size) => sizeQuantities[size] > 0))
+const sizeAllocationSummary = computed(() => {
+  const parts = sizeOptions
+    .filter((size) => sizeQuantities[size] > 0)
+    .map((size) => `${size} ${sizeQuantities[size]}件`)
+  return parts.join(' / ')
+})
+const sizeAllocationMismatch = computed(() => {
+  if (!hasSizeAllocation.value) return false
+  const stock = Number(productForm.stock)
+  return Number.isFinite(stock) ? sizeAllocationTotal.value !== stock : false
+})
 
 watch(
   () => categories.value.length,
@@ -210,6 +250,86 @@ async function loadReturnRequests() {
 async function loadHomeContent() {
   const { data } = await api.get<HomepageContent>('/content/home')
   homeContent.value = data
+}
+
+function syncSizeDraftFromSelection() {
+  sizeOptions.forEach((size) => {
+    sizeDraft[size] = sizeQuantities[size]
+  })
+}
+
+function clearSizeSelection() {
+  sizeAllocationError.value = null
+  sizeDialogOpen.value = false
+  sizeOptions.forEach((size) => {
+    sizeQuantities[size] = 0
+    sizeDraft[size] = 0
+  })
+}
+
+function openSizeDialog() {
+  syncSizeDraftFromSelection()
+  sizeAllocationError.value = null
+  sizeDialogOpen.value = true
+}
+
+function closeSizeDialog() {
+  sizeDialogOpen.value = false
+  sizeAllocationError.value = null
+}
+
+function normalizeSizeValue(value: number | null | undefined) {
+  if (!Number.isFinite(value) || value === null || value === undefined) return 0
+  return Math.max(0, Math.trunc(value))
+}
+
+function confirmSizeSelection() {
+  const nextQuantities: Record<SizeOption, number> = {
+    S: 0,
+    M: 0,
+    L: 0,
+    XL: 0,
+    '2XL': 0,
+    '3XL': 0,
+  }
+  sizeOptions.forEach((size) => {
+    const normalized = normalizeSizeValue(sizeDraft[size])
+    nextQuantities[size] = normalized
+    sizeDraft[size] = normalized
+  })
+
+  const total = sizeDraftTotal.value
+  const stock = Number(productForm.stock)
+  const hasAny = total > 0
+  if (hasAny && (!Number.isFinite(stock) || total !== stock)) {
+    const stockText = Number.isFinite(stock) ? stock : 0
+    sizeAllocationError.value = `已分配 ${total} 件，与库存 ${stockText} 不一致，数量未分配完成`
+    return
+  }
+
+  sizeOptions.forEach((size) => {
+    sizeQuantities[size] = nextQuantities[size]
+  })
+  sizeAllocationError.value = null
+  sizeDialogOpen.value = false
+}
+
+function hydrateSizeAllocations(raw: unknown) {
+  if (!raw || typeof raw !== 'object') {
+    clearSizeSelection()
+    return
+  }
+  const entries = Object.entries(raw as Record<string, unknown>)
+  if (!entries.length) {
+    clearSizeSelection()
+    return
+  }
+  entries.forEach(([key, value]) => {
+    if (!sizeOptions.includes(key as SizeOption)) return
+    const normalized = normalizeSizeValue(typeof value === 'number' ? value : Number(value))
+    sizeQuantities[key as SizeOption] = normalized
+    sizeDraft[key as SizeOption] = normalized
+  })
 }
 
 function toCategoryOption(raw: unknown, fallbackName?: string): CategoryOption | null {
@@ -584,6 +704,7 @@ function resetProductForm() {
   productFormError.value = null
   productFormMessage.value = null
   productImagePreview.value = null
+  clearSizeSelection()
   if (productImageInput.value) {
     productImageInput.value.value = ''
   }
@@ -592,6 +713,7 @@ function resetProductForm() {
 async function openProductForm(product?: ProductSummary) {
   productFormError.value = null
   productFormMessage.value = null
+  clearSizeSelection()
   await loadCategories()
   if (product) {
     productForm.id = product.id
@@ -612,6 +734,7 @@ async function openProductForm(product?: ProductSummary) {
     productForm.status = product.status ?? 'OFF_SALE'
     productForm.mainImage = product.mainImage ?? ''
     productImagePreview.value = productForm.mainImage || null
+    hydrateSizeAllocations((product as any).sizeQuantities)
     if (productImageInput.value) {
       productImageInput.value.value = ''
     }
@@ -698,6 +821,14 @@ async function saveProduct() {
     productFormError.value = '请填写商品单位'
     return
   }
+  if (hasSizeAllocation.value && sizeAllocationTotal.value !== stock) {
+    productFormError.value = `尺码数量未分配完成，库存为 ${stock}，已分配 ${sizeAllocationTotal.value}`
+    return
+  }
+
+  const sizePayload = hasSizeAllocation.value
+    ? Object.fromEntries(sizeOptions.map((size) => [size, sizeQuantities[size]]))
+    : null
 
   const payload: Record<string, unknown> = {
     name,
@@ -707,6 +838,7 @@ async function saveProduct() {
     stock,
     status: productForm.status,
     mainImage: productForm.mainImage.trim() || null,
+    sizeQuantities: sizePayload,
     supplier: { id: state.user.id },
   }
   if (productForm.categoryId) {
@@ -1266,6 +1398,28 @@ async function removeCategory(option: CategoryOption) {
             </select>
           </label>
 
+          <div class="size-allocation-field" role="group" aria-labelledby="size-allocation-title">
+            <div class="size-allocation-header">
+              <div class="size-allocation-title">
+                <span id="size-allocation-title">尺码分配（可选）</span>
+                <p class="field-hint">如需为库存按尺码分配，请点击下方按钮设置。</p>
+              </div>
+              <div class="size-allocation-actions">
+                <button type="button" class="ghost-button" @click="openSizeDialog">选择尺码</button>
+                <button v-if="hasSizeAllocation" type="button" class="ghost-button" @click="clearSizeSelection">
+                  清除分配
+                </button>
+              </div>
+            </div>
+            <p v-if="hasSizeAllocation" class="size-allocation-summary">
+              已为 {{ sizeAllocationTotal }} 件分配尺码：{{ sizeAllocationSummary }}
+            </p>
+            <p v-else class="field-hint">当前未设置尺码分配，如不需要可直接继续上传商品图片。</p>
+            <p v-if="sizeAllocationMismatch" class="modal-error">
+              数量未分配完成：库存为 {{ productForm.stock || 0 }}，已分配 {{ sizeAllocationTotal }}。
+            </p>
+          </div>
+
           <label class="product-image-field">
             <span>商品图片</span>
             <input
@@ -1302,6 +1456,34 @@ async function removeCategory(option: CategoryOption) {
             </button>
           </footer>
         </form>
+      </section>
+    </div>
+
+    <div v-if="sizeDialogOpen" class="modal-backdrop nested" @click.self="closeSizeDialog">
+      <section class="modal size-modal" role="dialog" aria-modal="true" aria-labelledby="size-allocation-dialog-title">
+        <header class="modal-header">
+          <h3 id="size-allocation-dialog-title">选择尺码并分配库存</h3>
+          <button type="button" class="icon-button" @click="closeSizeDialog" aria-label="关闭">
+            ×
+          </button>
+        </header>
+        <div class="modal-body size-modal-body">
+          <p class="size-tip">当前库存：{{ productForm.stock || 0 }} 件，可将数量分配到不同尺码。</p>
+          <div class="size-grid" role="group" aria-label="尺码数量输入">
+            <label v-for="size in sizeOptions" :key="size">
+              <span>{{ size }}</span>
+              <input v-model.number="sizeDraft[size as SizeOption]" type="number" min="0" step="1" placeholder="0" />
+            </label>
+          </div>
+          <p class="size-total">
+            已分配：{{ sizeDraftTotal }} / {{ productForm.stock || 0 }} 件
+          </p>
+          <p v-if="sizeAllocationError" class="modal-error">{{ sizeAllocationError }}</p>
+        </div>
+        <footer class="modal-actions">
+          <button type="button" class="ghost-button" @click="closeSizeDialog">取消</button>
+          <button type="button" class="primary-button" @click="confirmSizeSelection">保存尺码分配</button>
+        </footer>
       </section>
     </div>
 
@@ -1724,6 +1906,38 @@ async function removeCategory(option: CategoryOption) {
 
 .product-image-preview .ghost-button {
   align-self: flex-start;
+}
+
+.size-allocation-field {
+  border: 1px dashed rgba(37, 99, 235, 0.3);
+  padding: 1rem;
+  border-radius: 0.9rem;
+  background: rgba(226, 232, 240, 0.4);
+  display: grid;
+  gap: 0.4rem;
+}
+
+.size-allocation-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.size-allocation-title span {
+  font-weight: 700;
+}
+
+.size-allocation-actions {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.size-allocation-summary {
+  margin: 0;
+  color: #0f172a;
+  font-weight: 600;
 }
 
 .product-modal .modal-actions {
@@ -2288,6 +2502,43 @@ async function removeCategory(option: CategoryOption) {
 .ghost-button:disabled {
   opacity: 0.55;
   cursor: not-allowed;
+}
+
+.modal-backdrop.nested {
+  z-index: 40;
+}
+
+.size-modal {
+  max-width: 520px;
+}
+
+.size-modal-body {
+  gap: 0.85rem;
+}
+
+.size-tip {
+  margin: 0;
+  color: rgba(15, 23, 42, 0.7);
+}
+
+.size-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 0.75rem;
+}
+
+.size-grid label {
+  font-weight: 700;
+}
+
+.size-grid input {
+  width: 100%;
+}
+
+.size-total {
+  margin: 0;
+  color: rgba(15, 23, 42, 0.75);
+  font-weight: 600;
 }
 
 .icon-button {

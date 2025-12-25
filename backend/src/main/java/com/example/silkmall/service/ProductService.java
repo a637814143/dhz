@@ -28,4 +28,5 @@ public interface ProductService extends BaseService<Product, Long> {
     void putProductOnSale(Long id);
     void takeProductOffSale(Long id);
     ProductOverviewDTO getProductOverview();
+    Product withSizeAllocations(Product product);
 }

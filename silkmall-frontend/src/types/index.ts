@@ -19,6 +19,7 @@ export interface ProductSummary {
   categoryName?: string | null
   supplierName?: string | null
   supplierLevel?: string | null
+  sizeQuantities?: Record<string, number> | null
 }
 
 export interface ProductImage {
@@ -31,6 +32,7 @@ export interface ProductImage {
 export interface ProductDetail extends ProductSummary {
   updatedAt?: string | null
   images?: ProductImage[] | null
+  sizeQuantities?: Record<string, number> | null
   category?: {
     id: number
     name: string
@@ -67,6 +69,7 @@ export interface PurchaseOrderItemPayload {
     id: number
   }
   quantity: number
+  size?: string | null
 }
 
 export interface PurchaseOrderPayload {

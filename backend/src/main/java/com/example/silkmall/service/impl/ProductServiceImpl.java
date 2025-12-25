@@ -2,7 +2,9 @@ package com.example.silkmall.service.impl;
 
 import com.example.silkmall.dto.ProductOverviewDTO;
 import com.example.silkmall.entity.Product;
+import com.example.silkmall.entity.ProductSizeAllocation;
 import com.example.silkmall.repository.ProductRepository;
+import com.example.silkmall.repository.ProductSizeAllocationRepository;
 import com.example.silkmall.service.ProductService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
@@ -15,15 +17,21 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
+import java.util.Objects;
+import java.util.stream.Collectors;
 
 @Service
 public class ProductServiceImpl extends BaseServiceImpl<Product, Long> implements ProductService {
     private final ProductRepository productRepository;
+    private final ProductSizeAllocationRepository productSizeAllocationRepository;
 
     @Autowired
-    public ProductServiceImpl(ProductRepository productRepository) {
+    public ProductServiceImpl(ProductRepository productRepository,
+                              ProductSizeAllocationRepository productSizeAllocationRepository) {
         super(productRepository);
         this.productRepository = productRepository;
+        this.productSizeAllocationRepository = productSizeAllocationRepository;
     }
     
     @Override
@@ -194,7 +202,9 @@ public class ProductServiceImpl extends BaseServiceImpl<Product, Long> implement
             product.setUnit(trimmedUnit.isEmpty() ? null : trimmedUnit);
         }
 
-        return super.save(product);
+        Product persisted = super.save(product);
+        syncSizeAllocations(persisted, product.getSizeQuantities());
+        return withSizeAllocations(persisted);
     }
 
     @Override
@@ -212,5 +222,55 @@ public class ProductServiceImpl extends BaseServiceImpl<Product, Long> implement
         overview.setTotalSalesVolume(totalSalesVolume != null ? totalSalesVolume : 0L);
 
         return overview;
+    }
+
+    @Override
+    public Product withSizeAllocations(Product product) {
+        if (product == null || product.getId() == null) {
+            return product;
+        }
+        List<ProductSizeAllocation> allocations = productSizeAllocationRepository.findByProductId(product.getId());
+        product.setSizeAllocations(allocations);
+        Map<String, Integer> asMap = allocations.stream()
+                .filter(Objects::nonNull)
+                .collect(Collectors.toMap(
+                        ProductSizeAllocation::getSizeLabel,
+                        a -> a.getQuantity() == null ? 0 : a.getQuantity(),
+                        Integer::sum));
+        product.setSizeQuantities(asMap);
+        return product;
+    }
+
+    private void syncSizeAllocations(Product product, Map<String, Integer> sizeQuantities) {
+        if (product == null || product.getId() == null) {
+            return;
+        }
+        productSizeAllocationRepository.deleteByProductId(product.getId());
+        if (sizeQuantities == null || sizeQuantities.isEmpty()) {
+            product.setSizeQuantities(Map.of());
+            product.setSizeAllocations(List.of());
+            return;
+        }
+        int total = sizeQuantities.values().stream()
+                .filter(Objects::nonNull)
+                .mapToInt(Integer::intValue)
+                .sum();
+        if (total != product.getStock()) {
+            throw new RuntimeException("尺码分配数量与库存不一致");
+        }
+        List<ProductSizeAllocation> allocations = sizeQuantities.entrySet().stream()
+                .filter(entry -> entry.getValue() != null && entry.getValue() > 0)
+                .map(entry -> {
+                    ProductSizeAllocation allocation = new ProductSizeAllocation();
+                    allocation.setProduct(product);
+                    allocation.setSizeLabel(entry.getKey());
+                    allocation.setQuantity(entry.getValue());
+                    return allocation;
+                })
+                .toList();
+        productSizeAllocationRepository.saveAll(allocations);
+        product.setSizeAllocations(allocations);
+        product.setSizeQuantities(
+                allocations.stream().collect(Collectors.toMap(ProductSizeAllocation::getSizeLabel, ProductSizeAllocation::getQuantity)));
     }
 }

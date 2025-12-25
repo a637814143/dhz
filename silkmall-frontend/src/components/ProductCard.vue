@@ -45,6 +45,7 @@ const formattedPrice = computed(() =>
 
 const canPurchase = computed(() => props.product.status === 'ON_SALE' && props.product.stock > 1)
 const canAddToCart = computed(() => props.product.status === 'ON_SALE' && props.product.stock > 0)
+
 </script>
 
 <template>
@@ -241,7 +242,6 @@ const canAddToCart = computed(() => props.product.status === 'ON_SALE' && props.
   font-size: 0.8rem;
   color: rgba(17, 24, 39, 0.65);
 }
-
 
 .actions {
   display: flex;

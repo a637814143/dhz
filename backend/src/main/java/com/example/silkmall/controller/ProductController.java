@@ -35,7 +35,7 @@ public class ProductController extends BaseController {
     
     @GetMapping("/{id}")
     public ResponseEntity<?> getProductById(@PathVariable Long id) {
-        Optional<Product> product = productService.findById(id);
+        Optional<Product> product = productService.findById(id).map(productService::withSizeAllocations);
         if (product.isPresent()) {
             return success(product.get());
         } else {
@@ -85,32 +85,36 @@ public class ProductController extends BaseController {
     
     @GetMapping
     public ResponseEntity<List<Product>> getAllProducts() {
-        return success(productService.findAll());
+        List<Product> products = productService.findAll();
+        products.forEach(productService::withSizeAllocations);
+        return success(products);
     }
     
     @GetMapping("/status/{status}")
     public ResponseEntity<Page<Product>> getProductsByStatus(@PathVariable String status, Pageable pageable) {
-        return success(productService.findByStatus(status, pageable));
+        return success(productService.findByStatus(status, pageable).map(productService::withSizeAllocations));
     }
     
     @GetMapping("/category/{categoryId}")
     public ResponseEntity<Page<Product>> getProductsByCategoryId(@PathVariable Long categoryId, Pageable pageable) {
-        return success(productService.findByCategoryId(categoryId, pageable));
+        return success(productService.findByCategoryId(categoryId, pageable).map(productService::withSizeAllocations));
     }
     
     @GetMapping("/supplier/{supplierId}")
     public ResponseEntity<Page<Product>> getProductsBySupplierId(@PathVariable Long supplierId, Pageable pageable) {
-        return success(productService.findBySupplierId(supplierId, pageable));
+        return success(productService.findBySupplierId(supplierId, pageable).map(productService::withSizeAllocations));
     }
     
     @GetMapping("/top-sales")
     public ResponseEntity<List<Product>> getTopSalesProducts() {
-        return success(productService.findTop10ByOrderBySalesDesc());
+        List<Product> products = productService.findTop10ByOrderBySalesDesc();
+        products.forEach(productService::withSizeAllocations);
+        return success(products);
     }
     
     @GetMapping("/search")
     public ResponseEntity<Page<Product>> searchProducts(@RequestParam String keyword, Pageable pageable) {
-        return success(productService.search(keyword, pageable));
+        return success(productService.search(keyword, pageable).map(productService::withSizeAllocations));
     }
 
     @GetMapping("/advanced-search")
@@ -140,7 +144,7 @@ public class ProductController extends BaseController {
                 status,
                 pageable);
 
-        Page<ProductSummaryDTO> dtoPage = products.map(this::toSummaryDTO);
+        Page<ProductSummaryDTO> dtoPage = products.map(p -> toSummaryDTO(productService.withSizeAllocations(p)));
         return success(new PageImpl<>(dtoPage.getContent(), pageable, products.getTotalElements()));
     }
 
@@ -206,6 +210,7 @@ public class ProductController extends BaseController {
         dto.setMainImage(product.getMainImage());
         dto.setStatus(product.getStatus());
         dto.setCreatedAt(product.getCreatedAt());
+        dto.setSizeQuantities(product.getSizeQuantities());
         if (product.getCategory() != null) {
             dto.setCategoryName(product.getCategory().getName());
         }
