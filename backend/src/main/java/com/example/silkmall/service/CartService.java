@@ -14,5 +14,8 @@ public interface CartService extends BaseService<CartItem, Long> {
     void removeItem(Long consumerId, Long itemId);
 
     void clearCart(Long consumerId);
-}
 
+    List<CartItem> findItems(Long consumerId, List<Long> itemIds);
+
+    void removeItems(Long consumerId, List<Long> itemIds);
+}

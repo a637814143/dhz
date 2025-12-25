@@ -70,6 +70,12 @@ export interface ConsumerFavorite {
   product?: ProductSummary | null
 }
 
+export interface CartCheckoutResult {
+  paidAmount: number
+  balance: number
+  removedCount?: number | null
+}
+
 export interface PurchaseOrderItemPayload {
   product: {
     id: number

@@ -5,13 +5,16 @@ import com.example.silkmall.entity.CartItem;
 import com.example.silkmall.entity.Product;
 import com.example.silkmall.security.CustomUserDetails;
 import com.example.silkmall.service.CartService;
+import com.example.silkmall.service.WalletService;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 
 @RestController
@@ -19,9 +22,11 @@ import java.util.stream.Collectors;
 public class CartController extends BaseController {
 
     private final CartService cartService;
+    private final WalletService walletService;
 
-    public CartController(CartService cartService) {
+    public CartController(CartService cartService, WalletService walletService) {
         this.cartService = cartService;
+        this.walletService = walletService;
     }
 
     @GetMapping
@@ -90,6 +95,46 @@ public class CartController extends BaseController {
         }
     }
 
+    @PostMapping("/checkout")
+    @PreAuthorize("hasRole('CONSUMER')")
+    public ResponseEntity<?> checkout(@RequestBody CheckoutRequest request,
+                                      @AuthenticationPrincipal CustomUserDetails currentUser) {
+        if (currentUser == null) {
+            return badRequest("请先登录消费者账号");
+        }
+        List<Long> itemIds = request.itemIds();
+        if (itemIds == null || itemIds.isEmpty()) {
+            return badRequest("请勾选需要结算的商品");
+        }
+
+        List<CartItem> items = cartService.findItems(currentUser.getId(), itemIds);
+        if (items.isEmpty()) {
+            return badRequest("未找到需要结算的购物车商品");
+        }
+
+        BigDecimal totalAmount = items.stream()
+                .map(this::toDto)
+                .map(CartItemDTO::getSubtotal)
+                .filter(amount -> amount != null && amount.compareTo(BigDecimal.ZERO) > 0)
+                .reduce(BigDecimal.ZERO, BigDecimal::add)
+                .setScale(2, RoundingMode.HALF_UP);
+
+        BigDecimal balance = walletService.getBalance(currentUser);
+        if (balance.compareTo(totalAmount) < 0) {
+            return badRequest("余额不足，请先充值或减少结算商品");
+        }
+
+        walletService.adjustBalance(currentUser.getId(), currentUser.getUserType(), totalAmount.negate());
+        cartService.removeItems(currentUser.getId(), itemIds);
+
+        BigDecimal updatedBalance = balance.add(totalAmount.negate());
+        return success(Map.of(
+                "paidAmount", totalAmount,
+                "balance", updatedBalance,
+                "removedCount", items.size()
+        ));
+    }
+
     private CartItemDTO toDto(CartItem item) {
         CartItemDTO dto = new CartItemDTO();
         dto.setId(item.getId());
@@ -120,5 +165,7 @@ public class CartController extends BaseController {
 
     public record CartItemRequest(Long productId, Integer quantity) {
     }
-}
 
+    public record CheckoutRequest(List<Long> itemIds) {
+    }
+}

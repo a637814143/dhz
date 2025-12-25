@@ -12,6 +12,7 @@ import type {
   OrderItemDetail,
   PageResponse,
   ConsumerFavorite,
+  CartCheckoutResult,
   ProductReview,
   ProductSummary,
 } from '@/types'
@@ -55,6 +56,12 @@ const cartItems = ref<CartItem[]>([])
 const cartLoading = ref(false)
 const cartError = ref<string | null>(null)
 const removingCartItemId = ref<number | null>(null)
+const cartSelectionEnabled = ref(false)
+const selectedCartItemIds = ref<Set<number>>(new Set())
+const showCartCheckoutModal = ref(false)
+const cartCheckoutSubmitting = ref(false)
+const cartCheckoutError = ref<string | null>(null)
+const cartCheckoutMessage = ref<string | null>(null)
 const favorites = ref<ConsumerFavorite[]>([])
 const favoritesLoading = ref(false)
 const favoritesError = ref<string | null>(null)
@@ -153,6 +160,13 @@ const maskedIdCard = computed(() => maskIdCard(profile.value?.idCard))
 const defaultAddress = computed(() => addresses.value.find((item) => item.isDefault))
 const hasAddresses = computed(() => addresses.value.length > 0)
 const hasCartItems = computed(() => cartItems.value.length > 0)
+const hasCartSelection = computed(() => selectedCartItemIds.value.size > 0)
+const selectedCartItems = computed(() =>
+  cartItems.value.filter((item) => selectedCartItemIds.value.has(item.id))
+)
+const selectedCartTotalAmount = computed(() =>
+  selectedCartItems.value.reduce((total, item) => total + (item.subtotal ?? 0), 0)
+)
 const hasFavorites = computed(() => favorites.value.length > 0)
 const cartTotalQuantity = computed(() =>
   cartItems.value.reduce((total, item) => total + (item.quantity ?? 0), 0)
@@ -400,11 +414,22 @@ async function loadCart() {
   try {
     const { data } = await api.get<CartItem[]>('/cart')
     cartItems.value = data ?? []
+    syncSelectedCartItems()
   } catch (err) {
     cartItems.value = []
     cartError.value = err instanceof Error ? err.message : '加载购物车失败'
   } finally {
     cartLoading.value = false
+  }
+}
+
+function syncSelectedCartItems() {
+  const existingIds = new Set(cartItems.value.map((item) => item.id))
+  selectedCartItemIds.value = new Set(
+    Array.from(selectedCartItemIds.value).filter((id) => existingIds.has(id))
+  )
+  if (selectedCartItemIds.value.size === 0) {
+    cartSelectionEnabled.value = false
   }
 }
 
@@ -663,11 +688,71 @@ async function removeCartItem(item: CartItem) {
   try {
     await api.delete(`/cart/${item.id}`)
     cartItems.value = cartItems.value.filter((entry) => entry.id !== item.id)
+    selectedCartItemIds.value.delete(item.id)
+    syncSelectedCartItems()
   } catch (err) {
     cartError.value = err instanceof Error ? err.message : '移除购物车商品失败'
   } finally {
     removingCartItemId.value = null
   }
+}
+
+function toggleCartSelection() {
+  cartSelectionEnabled.value = !cartSelectionEnabled.value
+  if (!cartSelectionEnabled.value) {
+    selectedCartItemIds.value = new Set()
+  }
+}
+
+function toggleCartItemChecked(item: CartItem) {
+  if (!cartSelectionEnabled.value) return
+  if (selectedCartItemIds.value.has(item.id)) {
+    selectedCartItemIds.value.delete(item.id)
+  } else {
+    selectedCartItemIds.value.add(item.id)
+  }
+  selectedCartItemIds.value = new Set(selectedCartItemIds.value)
+}
+
+function openCartCheckout() {
+  if (!hasCartSelection.value) {
+    cartCheckoutError.value = '请先选择要结算的商品'
+    return
+  }
+  cartCheckoutError.value = null
+  cartCheckoutMessage.value = null
+  showCartCheckoutModal.value = true
+}
+
+async function submitCartCheckout() {
+  if (!hasCartSelection.value) {
+    cartCheckoutError.value = '请先选择要结算的商品'
+    return
+  }
+  cartCheckoutSubmitting.value = true
+  cartCheckoutError.value = null
+  cartCheckoutMessage.value = null
+  try {
+    const payload = { itemIds: Array.from(selectedCartItemIds.value) }
+    const { data } = await api.post<CartCheckoutResult>('/cart/checkout', payload)
+    cartCheckoutMessage.value = '支付成功，已扣除余额'
+    if (typeof data?.balance === 'number') {
+      walletBalance.value = data.balance
+    }
+    await loadCart()
+    selectedCartItemIds.value = new Set()
+    cartSelectionEnabled.value = false
+    showCartCheckoutModal.value = false
+  } catch (err) {
+    cartCheckoutError.value = err instanceof Error ? err.message : '结算失败'
+  } finally {
+    cartCheckoutSubmitting.value = false
+  }
+}
+
+function closeCartCheckoutModal() {
+  showCartCheckoutModal.value = false
+  cartCheckoutSubmitting.value = false
 }
 
 function toOrderSummary(detail: OrderDetail): OrderSummary {
@@ -1444,32 +1529,62 @@ const shortcutLinks = [
         </section>
 
         <section class="panel cart full-row table-panel" aria-labelledby="cart-title">
-          <div class="panel-title-row">
-            <div class="panel-title" id="cart-title">我的购物车</div>
-            <div class="panel-actions">
-              <span v-if="hasCartItems" class="cart-summary">
-                共 {{ cartTotalQuantity }} 件商品，小计 {{ formatCurrency(cartTotalAmount) }}
-              </span>
-              <button type="button" class="panel-action-button" @click="loadCart" :disabled="cartLoading">
-                {{ cartLoading ? '刷新中…' : '刷新' }}
-              </button>
-            </div>
-          </div>
+      <div class="panel-title-row">
+        <div class="panel-title" id="cart-title">我的购物车</div>
+        <div class="panel-actions">
+          <span v-if="hasCartItems" class="cart-summary">
+            共 {{ cartTotalQuantity }} 件商品，小计 {{ formatCurrency(cartTotalAmount) }}
+          </span>
+          <span v-if="cartSelectionEnabled" class="cart-summary strong">
+            已选 {{ selectedCartItemIds.size }} 件，合计 {{ formatCurrency(selectedCartTotalAmount) }}
+          </span>
+          <button
+            type="button"
+            class="panel-action-button ghost"
+            :disabled="!hasCartItems"
+            @click="toggleCartSelection"
+          >
+            {{ cartSelectionEnabled ? '取消选择' : '选择商品' }}
+          </button>
+          <button
+            type="button"
+            class="panel-action-button primary"
+            :disabled="!cartSelectionEnabled || !hasCartSelection || cartCheckoutSubmitting"
+            @click="openCartCheckout"
+          >
+            {{ cartCheckoutSubmitting ? '结算中…' : '去结算' }}
+          </button>
+          <button type="button" class="panel-action-button" @click="loadCart" :disabled="cartLoading">
+            {{ cartLoading ? '刷新中…' : '刷新' }}
+          </button>
+        </div>
+      </div>
           <p v-if="cartLoading" class="empty">购物车加载中…</p>
           <p v-else-if="cartError" class="empty is-error">{{ cartError }}</p>
-          <div v-else-if="hasCartItems" class="table-container scrollable-table">
-            <table class="dashboard-table cart-table">
-              <thead>
-                <tr>
-                  <th scope="col" class="col-product">商品</th>
-                  <th scope="col">单价</th>
-                  <th scope="col">数量</th>
-                  <th scope="col">小计</th>
-                  <th scope="col" class="col-actions">操作</th>
+        <div v-else-if="hasCartItems" class="table-container scrollable-table">
+          <table class="dashboard-table cart-table">
+            <thead>
+              <tr>
+                <th v-if="cartSelectionEnabled" scope="col" class="col-select">选择</th>
+                <th scope="col" class="col-product">商品</th>
+                <th scope="col">单价</th>
+                <th scope="col">数量</th>
+                <th scope="col">小计</th>
+                <th scope="col" class="col-actions">操作</th>
                 </tr>
               </thead>
               <tbody>
                 <tr v-for="item in cartItems" :key="item.id">
+                  <td v-if="cartSelectionEnabled" class="col-select">
+                    <label class="checkbox-circle">
+                      <input
+                        type="checkbox"
+                        :checked="selectedCartItemIds.has(item.id)"
+                        @change="toggleCartItemChecked(item)"
+                      />
+                      <span class="checkmark" aria-hidden="true"></span>
+                    </label>
+                  </td>
                   <td class="col-product">
                     <div class="cart-product">
                       <div class="image">
@@ -1519,6 +1634,8 @@ const shortcutLinks = [
             </table>
           </div>
           <p v-else class="empty">购物车空空如也，快去产品中心挑选吧。</p>
+          <p v-if="cartCheckoutMessage" class="panel-success">{{ cartCheckoutMessage }}</p>
+          <p v-if="cartCheckoutError" class="panel-error">{{ cartCheckoutError }}</p>
         </section>
 
         <section
@@ -1797,12 +1914,45 @@ const shortcutLinks = [
             </table>
           </div>
           <p v-else class="empty">暂无公告，敬请期待更多平台动态。</p>
-        </section>
-      </div>
-    </template>
+    </section>
+  </div>
+</template>
 
-    <div v-if="showAddressModal" class="modal-backdrop" @click.self="closeAddressModal">
-      <section class="modal" role="dialog" aria-modal="true" aria-labelledby="address-modal-title">
+<div v-if="showCartCheckoutModal" class="modal-backdrop" @click.self="closeCartCheckoutModal">
+  <section class="modal" role="dialog" aria-modal="true" aria-labelledby="cart-checkout-title">
+    <header class="modal-header">
+      <h3 id="cart-checkout-title">购物车结算</h3>
+      <button type="button" class="icon-button" aria-label="关闭" @click="closeCartCheckoutModal">
+        ×
+      </button>
+    </header>
+    <div class="modal-body">
+      <p class="modal-hint">已选 {{ selectedCartItemIds.size }} 件商品</p>
+      <p class="modal-amount">应付金额：{{ formatCurrency(selectedCartTotalAmount) }}</p>
+      <p class="modal-balance" v-if="walletBalance !== null">
+        当前余额：{{ formatCurrency(walletBalance) }}
+      </p>
+      <p v-if="cartCheckoutError" class="modal-error">{{ cartCheckoutError }}</p>
+      <p v-if="cartCheckoutMessage" class="modal-success">{{ cartCheckoutMessage }}</p>
+      <footer class="modal-actions">
+        <button
+          type="button"
+          class="primary-button"
+          :disabled="cartCheckoutSubmitting"
+          @click="submitCartCheckout"
+        >
+          {{ cartCheckoutSubmitting ? '支付中…' : '立即支付' }}
+        </button>
+        <button type="button" class="ghost-button" :disabled="cartCheckoutSubmitting" @click="closeCartCheckoutModal">
+          取消
+        </button>
+      </footer>
+    </div>
+  </section>
+</div>
+
+<div v-if="showAddressModal" class="modal-backdrop" @click.self="closeAddressModal">
+  <section class="modal" role="dialog" aria-modal="true" aria-labelledby="address-modal-title">
         <header class="modal-header">
           <h3 id="address-modal-title">{{ editingAddressId ? '编辑收货地址' : '新增收货地址' }}</h3>
           <button type="button" class="icon-button" aria-label="关闭" @click="closeAddressModal">
@@ -2350,6 +2500,19 @@ const shortcutLinks = [
   transform: none;
 }
 
+.panel-action-button.ghost {
+  background: rgba(79, 70, 229, 0.08);
+  border-color: rgba(79, 70, 229, 0.18);
+  color: #4338ca;
+}
+
+.panel-action-button.primary {
+  background: linear-gradient(135deg, #4f46e5, #a855f7);
+  color: #fff;
+  border: none;
+  box-shadow: 0 10px 24px rgba(79, 70, 229, 0.22);
+}
+
 .panel-title {
   font-weight: 700;
   font-size: 1.1rem;
@@ -2565,6 +2728,54 @@ const shortcutLinks = [
 .cart-summary {
   color: rgba(17, 24, 39, 0.6);
   font-size: 0.9rem;
+}
+
+.cart-summary.strong {
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.cart-table .col-select {
+  width: 60px;
+}
+
+.checkbox-circle {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+}
+
+.checkbox-circle input {
+  opacity: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  position: absolute;
+  cursor: pointer;
+}
+
+.checkbox-circle .checkmark {
+  width: 18px;
+  height: 18px;
+  border-radius: 999px;
+  border: 2px solid rgba(79, 70, 229, 0.35);
+  box-sizing: border-box;
+  background: #fff;
+  transition: all 0.2s ease;
+}
+
+.checkbox-circle input:checked + .checkmark {
+  background: linear-gradient(135deg, #4f46e5, #a855f7);
+  border-color: transparent;
+  box-shadow: 0 8px 20px rgba(79, 70, 229, 0.25);
+}
+
+.checkbox-circle input:focus-visible + .checkmark {
+  outline: 2px solid rgba(79, 70, 229, 0.5);
+  outline-offset: 2px;
 }
 
 .favorites-table .col-product {
@@ -2835,6 +3046,28 @@ const shortcutLinks = [
 .modal-summary strong {
   font-weight: 600;
   color: rgba(17, 24, 39, 0.85);
+}
+
+.modal-hint {
+  margin: 0;
+  color: rgba(17, 24, 39, 0.65);
+}
+
+.modal-amount {
+  margin: 0;
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: #16a34a;
+}
+
+.modal-balance {
+  margin: 0;
+  color: rgba(17, 24, 39, 0.7);
+}
+
+.modal-success {
+  color: #15803d;
+  font-weight: 600;
 }
 
 .modal-actions {
