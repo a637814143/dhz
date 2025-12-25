@@ -2,14 +2,23 @@
 import { computed, withDefaults } from 'vue'
 import type { ProductSummary } from '@/types'
 
-const props = withDefaults(defineProps<{ product: ProductSummary; addingToCart?: boolean }>(), {
-  addingToCart: false,
-})
+const props = withDefaults(
+  defineProps<{
+    product: ProductSummary
+    addingToCart?: boolean
+    favoriting?: boolean
+  }>(),
+  {
+    addingToCart: false,
+    favoriting: false,
+  }
+)
 
 const emit = defineEmits<{
   (e: 'purchase', product: ProductSummary): void
   (e: 'view-detail', product: ProductSummary): void
   (e: 'add-to-cart', product: ProductSummary): void
+  (e: 'favorite', product: ProductSummary): void
 }>()
 
 function openDetail() {
@@ -19,6 +28,11 @@ function openDetail() {
 function addToCart() {
   if (props.addingToCart) return
   emit('add-to-cart', props.product)
+}
+
+function addToFavorite() {
+  if (props.favoriting) return
+  emit('favorite', props.product)
 }
 
 const statusLabel = computed(() => {
@@ -90,6 +104,14 @@ const canAddToCart = computed(() => props.product.status === 'ON_SALE' && props.
         <span v-if="product.supplierLevel">等级：{{ product.supplierLevel }}</span>
       </footer>
       <div class="actions">
+        <button
+          type="button"
+          class="favorite"
+          :disabled="props.favoriting"
+          @click.stop="addToFavorite"
+        >
+          {{ props.favoriting ? '收藏中…' : '收藏' }}
+        </button>
         <button
           type="button"
           class="add-to-cart"
@@ -265,6 +287,24 @@ const canAddToCart = computed(() => props.product.status === 'ON_SALE' && props.
   background: rgba(255, 255, 255, 0.85);
   color: #0f172a;
   cursor: pointer;
+}
+
+.actions .favorite {
+  border: 1px solid rgba(242, 177, 66, 0.4);
+  background: rgba(242, 177, 66, 0.12);
+  color: #b45309;
+  cursor: pointer;
+}
+
+.actions .favorite:hover:not(:disabled) {
+  background: rgba(242, 177, 66, 0.2);
+  box-shadow: 0 12px 28px rgba(242, 177, 66, 0.18);
+}
+
+.actions .favorite:disabled {
+  cursor: not-allowed;
+  opacity: 0.65;
+  box-shadow: none;
 }
 
 .actions .add-to-cart:hover:not(:disabled) {

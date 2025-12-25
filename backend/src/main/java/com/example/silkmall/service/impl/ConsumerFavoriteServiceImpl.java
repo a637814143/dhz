@@ -62,4 +62,22 @@ public class ConsumerFavoriteServiceImpl extends BaseServiceImpl<ConsumerFavorit
 
         favoriteRepository.delete(favorite);
     }
+
+    @Override
+    public boolean isFavorited(Long consumerId, Long productId) {
+        return favoriteRepository.existsByConsumerIdAndProductId(consumerId, productId);
+    }
+
+    @Override
+    @Transactional
+    public void removeByProduct(Long consumerId, Long productId) {
+        ConsumerFavorite favorite = favoriteRepository.findByConsumerIdAndProductId(consumerId, productId)
+                .orElseThrow(() -> new RuntimeException("收藏记录不存在"));
+
+        if (!favorite.getConsumer().getId().equals(consumerId)) {
+            throw new RuntimeException("无权操作该收藏记录");
+        }
+
+        favoriteRepository.delete(favorite);
+    }
 }

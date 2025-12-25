@@ -119,5 +119,21 @@ public class CartServiceImpl extends BaseServiceImpl<CartItem, Long> implements 
     public void clearCart(Long consumerId) {
         cartItemRepository.deleteByConsumerId(consumerId);
     }
-}
 
+    @Override
+    public List<CartItem> findItems(Long consumerId, List<Long> itemIds) {
+        if (itemIds == null || itemIds.isEmpty()) {
+            return List.of();
+        }
+        return cartItemRepository.findByConsumerIdAndIds(consumerId, itemIds);
+    }
+
+    @Override
+    @Transactional
+    public void removeItems(Long consumerId, List<Long> itemIds) {
+        if (itemIds == null || itemIds.isEmpty()) {
+            return;
+        }
+        cartItemRepository.deleteByConsumerIdAndIds(consumerId, itemIds);
+    }
+}

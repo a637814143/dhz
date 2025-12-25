@@ -64,6 +64,18 @@ export interface CartItem {
   product: CartItemProduct
 }
 
+export interface ConsumerFavorite {
+  id: number
+  createdAt: string
+  product?: ProductSummary | null
+}
+
+export interface CartCheckoutResult {
+  paidAmount: number
+  balance: number
+  removedCount?: number | null
+}
+
 export interface PurchaseOrderItemPayload {
   product: {
     id: number
