@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref, watch } from 'vue'
+import { useRoute } from 'vue-router'
 import api from '@/services/api'
 import { useAuthState } from '@/services/authState'
 import type {
@@ -35,6 +36,9 @@ interface ProductChangeDetail {
 }
 
 const { state } = useAuthState()
+const route = useRoute()
+const activeSection = computed(() => (route.meta?.section as string) || 'overview')
+const showSection = (section: string) => activeSection.value === section
 
 const profile = ref<SupplierProfile | null>(null)
 const products = ref<ProductSummary[]>([])
@@ -125,6 +129,11 @@ const returnActionError = ref<string | null>(null)
 const updatingReturnId = ref<number | null>(null)
 const resolutionDrafts = reactive<Record<number, string>>({})
 
+const PAGE_SIZE = 5
+const productsPage = ref(0)
+const ordersPage = ref(0)
+const returnsPage = ref(0)
+
 const sizeAllocationTotal = computed(() =>
   sizeOptions.reduce((sum, size) => sum + (Number.isFinite(sizeQuantities[size]) ? sizeQuantities[size] : 0), 0)
 )
@@ -142,6 +151,56 @@ const sizeAllocationMismatch = computed(() => {
   if (!hasSizeAllocation.value) return false
   const stock = Number(productForm.stock)
   return Number.isFinite(stock) ? sizeAllocationTotal.value !== stock : false
+})
+
+const productTotalPages = computed(() => Math.max(1, Math.ceil(products.value.length / PAGE_SIZE)))
+const ordersTotalPages = computed(() => Math.max(1, Math.ceil(soldOrders.value.length / PAGE_SIZE)))
+const returnsTotalPages = computed(() => Math.max(1, Math.ceil(returnRequests.value.length / PAGE_SIZE)))
+
+function clampPage(page: number, total: number) {
+  return Math.min(Math.max(page, 0), Math.max(total - 1, 0))
+}
+
+const paginatedProducts = computed(() => {
+  const page = clampPage(productsPage.value, productTotalPages.value)
+  const start = page * PAGE_SIZE
+  return products.value.slice(start, start + PAGE_SIZE)
+})
+
+const paginatedSoldOrders = computed(() => {
+  const page = clampPage(ordersPage.value, ordersTotalPages.value)
+  const start = page * PAGE_SIZE
+  return soldOrders.value.slice(start, start + PAGE_SIZE)
+})
+
+const paginatedReturnRequests = computed(() => {
+  const page = clampPage(returnsPage.value, returnsTotalPages.value)
+  const start = page * PAGE_SIZE
+  return returnRequests.value.slice(start, start + PAGE_SIZE)
+})
+
+function prevPage(target: 'products' | 'orders' | 'returns') {
+  if (target === 'products') productsPage.value = clampPage(productsPage.value - 1, productTotalPages.value)
+  if (target === 'orders') ordersPage.value = clampPage(ordersPage.value - 1, ordersTotalPages.value)
+  if (target === 'returns') returnsPage.value = clampPage(returnsPage.value - 1, returnsTotalPages.value)
+}
+
+function nextPage(target: 'products' | 'orders' | 'returns') {
+  if (target === 'products') productsPage.value = clampPage(productsPage.value + 1, productTotalPages.value)
+  if (target === 'orders') ordersPage.value = clampPage(ordersPage.value + 1, ordersTotalPages.value)
+  if (target === 'returns') returnsPage.value = clampPage(returnsPage.value + 1, returnsTotalPages.value)
+}
+
+watch(products, () => {
+  productsPage.value = clampPage(productsPage.value, productTotalPages.value)
+})
+
+watch(soldOrders, () => {
+  ordersPage.value = clampPage(ordersPage.value, ordersTotalPages.value)
+})
+
+watch(returnRequests, () => {
+  returnsPage.value = clampPage(returnsPage.value, returnsTotalPages.value)
 })
 
 watch(
@@ -1032,10 +1091,14 @@ async function removeCategory(option: CategoryOption) {
     <div v-if="loading" class="placeholder">正在加载工作台数据…</div>
     <div v-else-if="error" class="placeholder is-error">{{ error }}</div>
     <template v-else>
-      <section id="supplier-info" class="panel profile" aria-labelledby="supplier-info">
+      <section
+        v-if="showSection('overview')"
+        id="supplier-info"
+        class="panel profile"
+        aria-labelledby="supplier-info"
+      >
         <div class="panel-title-row">
           <div class="panel-title" id="supplier-info">基础信息</div>
-          <button type="button" class="panel-action-button" @click="openProfileDialog">编辑基础信息</button>
         </div>
         <ul>
           <li><span>企业名称</span><strong>{{ profile?.companyName ?? '—' }}</strong></li>
@@ -1067,12 +1130,17 @@ async function removeCategory(option: CategoryOption) {
         </div>
       </section>
 
-      <section id="product-list" class="panel products" aria-labelledby="product-list">
+      <section
+        v-if="showSection('products')"
+        id="product-list"
+        class="panel products"
+        aria-labelledby="product-list"
+      >
         <div class="panel-title-row">
-          <div class="panel-title" id="product-list">商品概览</div>
+          <div class="panel-title" id="product-list">商品管理</div>
           <button type="button" class="primary" @click="openProductForm()">新增商品</button>
         </div>
-        <div v-if="products.length" class="product-table scrollable-table">
+        <div v-if="products.length" class="product-table">
           <table>
             <thead>
               <tr>
@@ -1086,7 +1154,7 @@ async function removeCategory(option: CategoryOption) {
               </tr>
             </thead>
             <tbody>
-              <tr v-for="item in products" :key="item.id">
+              <tr v-for="item in paginatedProducts" :key="item.id">
                 <td>{{ item.name }}</td>
                 <td>{{ formatCurrency(item.price) }}</td>
                 <td>{{ item.unit ?? '—' }}</td>
@@ -1109,6 +1177,20 @@ async function removeCategory(option: CategoryOption) {
           </table>
         </div>
         <p v-else class="empty">暂无商品，请尽快完成商品录入与上架。</p>
+        <div v-if="products.length" class="pagination">
+          <button type="button" class="ghost-button" :disabled="productsPage === 0" @click="prevPage('products')">
+            上一页
+          </button>
+          <span>第 {{ productsPage + 1 }} / {{ productTotalPages }} 页</span>
+          <button
+            type="button"
+            class="ghost-button"
+            :disabled="productsPage + 1 >= productTotalPages"
+            @click="nextPage('products')"
+          >
+            下一页
+          </button>
+        </div>
 
         <div class="category-create">
           <h4>快速创建分类</h4>
@@ -1151,15 +1233,20 @@ async function removeCategory(option: CategoryOption) {
         </div>
       </section>
 
-      <section id="sold-orders" class="panel sold-orders" aria-labelledby="sold-orders">
+      <section
+        v-if="showSection('orders')"
+        id="sold-orders"
+        class="panel sold-orders"
+        aria-labelledby="sold-orders"
+      >
         <div class="panel-title-row">
           <div class="panel-title" id="sold-orders">已销售商品</div>
         </div>
         <p v-if="soldOrdersLoading" class="empty">正在加载已销售的订单…</p>
         <p v-else-if="soldOrdersError" class="sold-order-error">{{ soldOrdersError }}</p>
-        <div v-else-if="soldOrders.length" class="sold-order-container scrollable-list">
+        <div v-else-if="soldOrders.length" class="sold-order-container">
           <ul class="sold-order-list">
-            <li v-for="order in soldOrders" :key="order.id" class="sold-order-card">
+            <li v-for="order in paginatedSoldOrders" :key="order.id" class="sold-order-card">
               <header class="sold-order-header">
                 <div>
                   <h3>订单号：{{ order.orderNo }}</h3>
@@ -1221,6 +1308,20 @@ async function removeCategory(option: CategoryOption) {
           </ul>
         </div>
         <p v-else class="empty">暂时没有已销售的订单。</p>
+        <div v-if="soldOrders.length" class="pagination">
+          <button type="button" class="ghost-button" :disabled="ordersPage === 0" @click="prevPage('orders')">
+            上一页
+          </button>
+          <span>第 {{ ordersPage + 1 }} / {{ ordersTotalPages }} 页</span>
+          <button
+            type="button"
+            class="ghost-button"
+            :disabled="ordersPage + 1 >= ordersTotalPages"
+            @click="nextPage('orders')"
+          >
+            下一页
+          </button>
+        </div>
       </section>
 
       <section id="return-management" class="panel returns" aria-labelledby="return-management">
@@ -1239,9 +1340,9 @@ async function removeCategory(option: CategoryOption) {
         </transition>
         <p v-if="returnRequestsLoading" class="empty">正在加载退货申请…</p>
         <p v-else-if="returnRequestsError" class="return-error">{{ returnRequestsError }}</p>
-        <div v-else-if="returnRequests.length" class="return-list scrollable-list">
+        <div v-else-if="returnRequests.length" class="return-list">
           <article
-            v-for="request in returnRequests"
+            v-for="request in paginatedReturnRequests"
             :key="request.id"
             :class="['return-card', { 'return-card--resolved': !canProcessReturn(request) }]"
           >
@@ -1316,6 +1417,20 @@ async function removeCategory(option: CategoryOption) {
           </article>
         </div>
         <p v-else class="empty">暂无退货申请。</p>
+        <div v-if="returnRequests.length" class="pagination">
+          <button type="button" class="ghost-button" :disabled="returnsPage === 0" @click="prevPage('returns')">
+            上一页
+          </button>
+          <span>第 {{ returnsPage + 1 }} / {{ returnsTotalPages }} 页</span>
+          <button
+            type="button"
+            class="ghost-button"
+            :disabled="returnsPage + 1 >= returnsTotalPages"
+            @click="nextPage('returns')"
+          >
+            下一页
+          </button>
+        </div>
       </section>
 
       <section id="promotion-list" class="panel promotions" aria-labelledby="promotion-list">
@@ -2253,6 +2368,15 @@ async function removeCategory(option: CategoryOption) {
 .return-feedback--error {
   background: rgba(239, 68, 68, 0.12);
   color: #b91c1c;
+}
+
+.pagination {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  justify-content: flex-end;
+  margin-top: 0.85rem;
+  flex-wrap: wrap;
 }
 
 .return-error {

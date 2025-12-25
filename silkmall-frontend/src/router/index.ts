@@ -91,7 +91,25 @@ const router = createRouter({
       path: '/supplier/workbench',
       name: 'supplier-workbench',
       component: SupplierWorkbench,
-      meta: { requiresAuth: true, roles: ['supplier'] },
+      meta: { requiresAuth: true, roles: ['supplier'], section: 'overview' },
+    },
+    {
+      path: '/supplier/products',
+      name: 'supplier-products',
+      component: SupplierWorkbench,
+      meta: { requiresAuth: true, roles: ['supplier'], section: 'products' },
+    },
+    {
+      path: '/supplier/orders',
+      name: 'supplier-orders',
+      component: SupplierWorkbench,
+      meta: { requiresAuth: true, roles: ['supplier'], section: 'orders' },
+    },
+    {
+      path: '/supplier/returns',
+      name: 'supplier-returns',
+      component: SupplierWorkbench,
+      meta: { requiresAuth: true, roles: ['supplier'], section: 'returns' },
     },
     {
       path: '/admin/overview',
