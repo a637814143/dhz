@@ -48,6 +48,14 @@ public class OrderItem {
     public void setQuantity(Integer quantity) {
         this.quantity = quantity;
     }
+
+    public String getSize() {
+        return size;
+    }
+
+    public void setSize(String size) {
+        this.size = size;
+    }
     
     public BigDecimal getUnitPrice() {
         return unitPrice;
