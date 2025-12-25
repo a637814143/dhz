@@ -163,9 +163,10 @@ function leaveGuestMode() {
 
 .app-body {
   display: grid;
-  grid-template-columns: 260px 1fr;
-  gap: 1.5rem;
+  grid-template-columns: 260px minmax(0, 1fr);
+  gap: 0;
   flex: 1;
+  min-height: calc(100vh - 160px);
 }
 
 .app-header {
@@ -295,21 +296,21 @@ function leaveGuestMode() {
 
 .app-main.with-sidebar {
   background: #faf7f4;
-  border-radius: 1.2rem;
-  padding: 1.25rem 1.5rem;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.6);
-  min-height: 75vh;
+  padding: 1.5rem 1.75rem;
+  min-height: calc(100vh - 200px);
+  border-left: 1px solid rgba(0, 0, 0, 0.04);
 }
 
 .app-sidebar {
   background: linear-gradient(160deg, #fdf4ed 0%, #f8e4cf 100%);
-  border-radius: 1.2rem;
-  padding: 1.25rem 1rem;
+  padding: 1.5rem 1.1rem;
   border: 1px solid rgba(242, 142, 28, 0.18);
   box-shadow: 0 12px 30px rgba(242, 142, 28, 0.15);
   position: sticky;
-  top: 1rem;
-  align-self: start;
+  top: 0;
+  align-self: stretch;
+  min-height: calc(100vh - 120px);
+  border-radius: 0 1rem 1rem 0;
 }
 
 .sidebar-meta {
