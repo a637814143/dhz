@@ -1,11 +1,16 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import { RouterLink, RouterView, useRouter, useRoute } from 'vue-router'
+import { RouterLink, RouterView, useRouter, useRoute, type RouteLocationRaw } from 'vue-router'
 import { useAuthState } from '@/services/authState'
 
 const router = useRouter()
 const route = useRoute()
 const { state, isAuthenticated, clearAuth, isGuestSession, exitGuestMode } = useAuthState()
+
+interface SidebarLink {
+  label: string
+  to: RouteLocationRaw
+}
 
 const roleHome = computed(() => {
   switch (state.user?.userType) {
@@ -28,6 +33,46 @@ const showGuestLinks = computed(() => {
 })
 
 const showPrimaryNav = computed(() => isAuthenticated.value || isGuestSession.value)
+const showSidebar = computed(() => showPrimaryNav.value && route.name !== 'auth')
+
+const sidebarNavItems = computed<SidebarLink[]>(() => {
+  const items: SidebarLink[] = []
+  const role = state.user?.userType
+
+  if (role === 'consumer') {
+    items.push(
+      { label: '个人中心', to: { name: 'consumer-dashboard' } },
+      { label: '地址管理', to: { name: 'consumer-addresses' } },
+      { label: '我的购物车', to: { name: 'consumer-cart' } },
+      { label: '我的收藏', to: { name: 'consumer-favorites' } },
+      { label: '我的订单', to: { name: 'consumer-orders' } },
+      { label: '我的评价', to: { name: 'consumer-reviews' } }
+    )
+  } else if (role === 'supplier') {
+    items.push(
+      { label: '个人中心', to: { name: 'supplier-workbench' } },
+      { label: '商品管理', to: { name: 'supplier-products' } },
+      { label: '已售订单', to: { name: 'supplier-orders' } },
+      { label: '退货管理', to: { name: 'supplier-returns' } }
+    )
+  } else if (role === 'admin') {
+    items.push(
+      { label: '个人中心', to: { name: 'admin-overview' } },
+      { label: '商品管理', to: { name: 'admin-products' } },
+      { label: '订单管理', to: { name: 'admin-orders' } },
+      { label: '消费者管理', to: { name: 'admin-consumers' } },
+      { label: '供应商管理', to: { name: 'admin-suppliers' } },
+      { label: '销售统计', to: { name: 'admin-sales' } }
+    )
+  }
+
+  items.push(
+    { label: '产品中心', to: { name: 'home' } },
+    { label: '关于项目', to: { name: 'about' } }
+  )
+
+  return items
+})
 
 function signOut() {
   clearAuth()
@@ -51,7 +96,7 @@ function leaveGuestMode() {
         </div>
       </RouterLink>
 
-      <nav v-if="showPrimaryNav" class="primary-nav" aria-label="主导航">
+      <nav v-if="showPrimaryNav && !showSidebar" class="primary-nav" aria-label="主导航">
         <RouterLink to="/" active-class="is-active" class="nav-link">产品中心</RouterLink>
         <RouterLink to="/about" active-class="is-active" class="nav-link">关于项目</RouterLink>
       </nav>
@@ -59,7 +104,7 @@ function leaveGuestMode() {
       <div v-if="showGuestLinks" class="auth-controls">
         <template v-if="isAuthenticated">
           <span class="user-chip">{{ state.user?.username }}</span>
-          <RouterLink :to="roleHome" class="dashboard-link">我的工作台</RouterLink>
+          <RouterLink :to="roleHome" class="dashboard-link">个人中心</RouterLink>
           <button type="button" class="logout-button" @click="signOut">退出</button>
         </template>
         <template v-else-if="isGuestSession">
@@ -75,7 +120,29 @@ function leaveGuestMode() {
       </div>
     </header>
 
-    <main class="app-main">
+    <div v-if="showSidebar" class="app-body">
+      <aside class="app-sidebar" aria-label="功能导航">
+        <div class="sidebar-meta">
+          <p class="sidebar-title">导航</p>
+          <p v-if="state.user?.username" class="sidebar-user">{{ state.user.username }}</p>
+        </div>
+        <nav class="sidebar-nav">
+          <RouterLink
+            v-for="item in sidebarNavItems"
+            :key="item.label"
+            :to="item.to"
+            class="sidebar-link"
+            active-class="is-active"
+          >
+            {{ item.label }}
+          </RouterLink>
+        </nav>
+      </aside>
+      <main class="app-main with-sidebar">
+        <RouterView />
+      </main>
+    </div>
+    <main v-else class="app-main">
       <RouterView />
     </main>
 
@@ -90,6 +157,14 @@ function leaveGuestMode() {
   display: flex;
   flex-direction: column;
   min-height: 100vh;
+}
+
+.app-body {
+  display: grid;
+  grid-template-columns: 260px minmax(0, 1fr);
+  gap: 0;
+  flex: 1;
+  min-height: calc(100vh - 160px);
 }
 
 .app-header {
@@ -217,6 +292,68 @@ function leaveGuestMode() {
   padding-bottom: 3rem;
 }
 
+.app-main.with-sidebar {
+  background: #faf7f4;
+  padding: 1.5rem 1.75rem;
+  min-height: calc(100vh - 200px);
+  border-left: 1px solid rgba(0, 0, 0, 0.04);
+}
+
+.app-sidebar {
+  background: linear-gradient(160deg, #fdf4ed 0%, #f8e4cf 100%);
+  padding: 1.5rem 1.1rem;
+  border: 1px solid rgba(242, 142, 28, 0.18);
+  box-shadow: 0 12px 30px rgba(242, 142, 28, 0.15);
+  position: sticky;
+  top: 0;
+  align-self: stretch;
+  min-height: calc(100vh - 120px);
+  border-radius: 0 1rem 1rem 0;
+}
+
+.sidebar-meta {
+  margin-bottom: 1rem;
+}
+
+.sidebar-title {
+  font-weight: 700;
+  color: #9a4a15;
+  letter-spacing: 0.02em;
+}
+
+.sidebar-user {
+  margin-top: 0.2rem;
+  color: rgba(0, 0, 0, 0.65);
+  font-size: 0.95rem;
+}
+
+.sidebar-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.sidebar-link {
+  display: block;
+  padding: 0.55rem 0.75rem;
+  border-radius: 0.85rem;
+  color: rgba(0, 0, 0, 0.75);
+  font-weight: 600;
+  text-decoration: none;
+  transition: transform 0.2s ease, background 0.2s ease, color 0.2s ease;
+}
+
+.sidebar-link:hover {
+  background: rgba(242, 142, 28, 0.12);
+  transform: translateX(2px);
+}
+
+.sidebar-link.is-active {
+  background: rgba(242, 142, 28, 0.18);
+  color: #9a4a15;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7);
+}
+
 .app-footer {
   padding: 1.5rem 0 2rem;
   border-top: 1px solid rgba(0, 0, 0, 0.08);
@@ -229,6 +366,14 @@ function leaveGuestMode() {
   .app-header {
     flex-direction: column;
     align-items: flex-start;
+  }
+
+  .app-body {
+    grid-template-columns: 1fr;
+  }
+
+  .app-sidebar {
+    position: static;
   }
 
   .primary-nav {
@@ -259,6 +404,16 @@ function leaveGuestMode() {
   .nav-link.is-active {
     color: #ffffff;
     background: rgba(242, 177, 66, 0.15);
+  }
+
+  .app-main.with-sidebar {
+    background: #1c1c1e;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  }
+
+  .app-sidebar {
+    border-color: rgba(255, 255, 255, 0.15);
+    box-shadow: 0 12px 30px rgba(0, 0, 0, 0.35);
   }
 
   .app-footer {

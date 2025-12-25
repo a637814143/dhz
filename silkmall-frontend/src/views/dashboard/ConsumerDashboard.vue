@@ -1,13 +1,11 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue'
-import { RouterLink } from 'vue-router'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
+import { RouterLink, useRoute } from 'vue-router'
 import api from '@/services/api'
 import { useAuthState } from '@/services/authState'
 import type {
-  Announcement,
   CartItem,
   ConsumerAddress,
-  HomepageContent,
   OrderDetail,
   OrderItemDetail,
   PageResponse,
@@ -41,14 +39,15 @@ interface ConsumerProfile {
 }
 
 const { state } = useAuthState()
+const route = useRoute()
+const activeSection = computed(() => (route.meta?.section as string) || 'overview')
+const showSection = (key: string) => activeSection.value === key
 
 const profile = ref<ConsumerProfile | null>(null)
 const orders = ref<OrderSummary[]>([])
 const orderActionMessage = ref<string | null>(null)
 const orderActionError = ref<string | null>(null)
 const confirmingReceiptOrderId = ref<number | null>(null)
-const homeContent = ref<HomepageContent | null>(null)
-const announcements = ref<Announcement[]>([])
 const loading = ref(true)
 const error = ref<string | null>(null)
 const walletBalance = ref<number | null>(null)
@@ -154,8 +153,13 @@ const addressForm = reactive({
 })
 
 const orderItems = computed<OrderItemDetail[]>(() => orderDetail.value?.orderItems ?? [])
-const hasRecommendations = computed(() => (homeContent.value?.recommendations?.length ?? 0) > 0)
-const hasAnnouncements = computed(() => announcements.value.length > 0)
+const PAGE_SIZE = 5
+const addressPage = ref(0)
+const cartPage = ref(0)
+const favoritesPage = ref(0)
+const ordersPage = ref(0)
+const reviewsPage = ref(0)
+
 const maskedIdCard = computed(() => maskIdCard(profile.value?.idCard))
 const defaultAddress = computed(() => addresses.value.find((item) => item.isDefault))
 const hasAddresses = computed(() => addresses.value.length > 0)
@@ -194,6 +198,82 @@ const reviewMap = computed(() => {
 })
 const hasReviews = computed(() => myReviews.value.length > 0)
 const hasOrders = computed(() => orders.value.length > 0)
+
+const addressTotalPages = computed(() => Math.max(1, Math.ceil(addresses.value.length / PAGE_SIZE)))
+const cartTotalPages = computed(() => Math.max(1, Math.ceil(cartItems.value.length / PAGE_SIZE)))
+const favoritesTotalPages = computed(() => Math.max(1, Math.ceil(favorites.value.length / PAGE_SIZE)))
+const ordersTotalPages = computed(() => Math.max(1, Math.ceil(orders.value.length / PAGE_SIZE)))
+const reviewsTotalPages = computed(() => Math.max(1, Math.ceil(myReviews.value.length / PAGE_SIZE)))
+
+function clampPage(page: number, total: number) {
+  return Math.min(Math.max(page, 0), Math.max(total - 1, 0))
+}
+
+const paginatedAddresses = computed(() => {
+  const page = clampPage(addressPage.value, addressTotalPages.value)
+  const start = page * PAGE_SIZE
+  return addresses.value.slice(start, start + PAGE_SIZE)
+})
+
+const paginatedCartItems = computed(() => {
+  const page = clampPage(cartPage.value, cartTotalPages.value)
+  const start = page * PAGE_SIZE
+  return cartItems.value.slice(start, start + PAGE_SIZE)
+})
+
+const paginatedFavorites = computed(() => {
+  const page = clampPage(favoritesPage.value, favoritesTotalPages.value)
+  const start = page * PAGE_SIZE
+  return favorites.value.slice(start, start + PAGE_SIZE)
+})
+
+const paginatedOrders = computed(() => {
+  const page = clampPage(ordersPage.value, ordersTotalPages.value)
+  const start = page * PAGE_SIZE
+  return orders.value.slice(start, start + PAGE_SIZE)
+})
+
+const paginatedReviews = computed(() => {
+  const page = clampPage(reviewsPage.value, reviewsTotalPages.value)
+  const start = page * PAGE_SIZE
+  return myReviews.value.slice(start, start + PAGE_SIZE)
+})
+
+function prevPage(target: 'address' | 'cart' | 'favorites' | 'orders' | 'reviews') {
+  if (target === 'address') addressPage.value = clampPage(addressPage.value - 1, addressTotalPages.value)
+  if (target === 'cart') cartPage.value = clampPage(cartPage.value - 1, cartTotalPages.value)
+  if (target === 'favorites') favoritesPage.value = clampPage(favoritesPage.value - 1, favoritesTotalPages.value)
+  if (target === 'orders') ordersPage.value = clampPage(ordersPage.value - 1, ordersTotalPages.value)
+  if (target === 'reviews') reviewsPage.value = clampPage(reviewsPage.value - 1, reviewsTotalPages.value)
+}
+
+function nextPage(target: 'address' | 'cart' | 'favorites' | 'orders' | 'reviews') {
+  if (target === 'address') addressPage.value = clampPage(addressPage.value + 1, addressTotalPages.value)
+  if (target === 'cart') cartPage.value = clampPage(cartPage.value + 1, cartTotalPages.value)
+  if (target === 'favorites') favoritesPage.value = clampPage(favoritesPage.value + 1, favoritesTotalPages.value)
+  if (target === 'orders') ordersPage.value = clampPage(ordersPage.value + 1, ordersTotalPages.value)
+  if (target === 'reviews') reviewsPage.value = clampPage(reviewsPage.value + 1, reviewsTotalPages.value)
+}
+
+watch(addresses, () => {
+  addressPage.value = clampPage(addressPage.value, addressTotalPages.value)
+})
+
+watch(cartItems, () => {
+  cartPage.value = clampPage(cartPage.value, cartTotalPages.value)
+})
+
+watch(favorites, () => {
+  favoritesPage.value = clampPage(favoritesPage.value, favoritesTotalPages.value)
+})
+
+watch(orders, () => {
+  ordersPage.value = clampPage(ordersPage.value, ordersTotalPages.value)
+})
+
+watch(myReviews, () => {
+  reviewsPage.value = clampPage(reviewsPage.value, reviewsTotalPages.value)
+})
 
 const normalizeStatusValue = (value: string) =>
   value.trim().replace(/[\s_-]+/g, '').toUpperCase()
@@ -363,12 +443,6 @@ async function loadOrders() {
   )
 }
 
-async function loadHomeContent() {
-  const { data } = await api.get<HomepageContent>('/content/home')
-  homeContent.value = data
-  announcements.value = data.announcements
-}
-
 async function loadWallet() {
   if (!state.user) return
   try {
@@ -500,7 +574,6 @@ async function bootstrap() {
     await Promise.all([
       loadProfile(),
       loadOrders(),
-      loadHomeContent(),
       loadWallet(),
       loadCart(),
       loadFavorites(),
@@ -1370,12 +1443,6 @@ async function submitOrderUpdate() {
   }
 }
 
-const shortcutLinks = [
-  { label: '快速下单', href: '/?quick=true' },
-  { label: '我的评价', href: '#reviews' },
-  { label: '我的收藏', href: '#favorites' },
-  { label: '地址管理', href: '#address' },
-]
 </script>
 
 <template>
@@ -1385,16 +1452,18 @@ const shortcutLinks = [
         <h1>您好，{{ state.user?.username ?? '尊敬的用户' }}</h1>
         <p>欢迎回到您的采购工作台，以下是今日为您精选的动态与提醒。</p>
       </div>
-      <div class="shortcuts">
-        <a v-for="link in shortcutLinks" :key="link.label" :href="link.href">{{ link.label }}</a>
-      </div>
     </header>
 
     <div v-if="loading" class="placeholder">正在加载数据…</div>
     <div v-else-if="error" class="placeholder is-error">{{ error }}</div>
     <template v-else>
       <div class="grid">
-        <section class="panel profile full-row table-panel" aria-labelledby="profile-title">
+        <section
+          v-if="showSection('overview')"
+          id="profile"
+          class="panel profile full-row table-panel"
+          aria-labelledby="profile-title"
+        >
           <div class="panel-title-row">
             <div class="panel-title" id="profile-title">账户信息</div>
             <button type="button" class="panel-action-button" @click="openProfileDialog">
@@ -1464,6 +1533,7 @@ const shortcutLinks = [
         </section>
 
         <section
+          v-if="showSection('address')"
           id="address"
           class="panel address-management full-row table-panel"
           aria-labelledby="address-title"
@@ -1478,7 +1548,7 @@ const shortcutLinks = [
           <p v-else-if="addressError && !hasAddresses" class="placeholder is-error">
             {{ addressError }}
           </p>
-          <div v-else-if="hasAddresses" class="table-container scrollable-table">
+          <div v-else-if="hasAddresses" class="table-container">
             <table class="dashboard-table address-table">
               <thead>
                 <tr>
@@ -1490,7 +1560,7 @@ const shortcutLinks = [
                 </tr>
               </thead>
               <tbody>
-                <tr v-for="item in addresses" :key="item.id">
+                <tr v-for="item in paginatedAddresses" :key="item.id">
                   <td>{{ item.recipientName }}</td>
                   <td>{{ item.recipientPhone }}</td>
                   <td class="address-cell">{{ item.shippingAddress }}</td>
@@ -1526,9 +1596,28 @@ const shortcutLinks = [
           <p v-else class="empty">您还没有保存收货地址，请添加一个常用地址。</p>
           <p v-if="addressMessage" class="panel-success">{{ addressMessage }}</p>
           <p v-if="addressActionError" class="panel-error">{{ addressActionError }}</p>
+          <div v-if="hasAddresses" class="pagination">
+            <button type="button" class="ghost-button" :disabled="addressPage === 0" @click="prevPage('address')">
+              上一页
+            </button>
+            <span>第 {{ addressPage + 1 }} / {{ addressTotalPages }} 页</span>
+            <button
+              type="button"
+              class="ghost-button"
+              :disabled="addressPage + 1 >= addressTotalPages"
+              @click="nextPage('address')"
+            >
+              下一页
+            </button>
+          </div>
         </section>
 
-        <section class="panel cart full-row table-panel" aria-labelledby="cart-title">
+        <section
+          v-if="showSection('cart')"
+          id="cart"
+          class="panel cart full-row table-panel"
+          aria-labelledby="cart-title"
+        >
       <div class="panel-title-row">
         <div class="panel-title" id="cart-title">我的购物车</div>
         <div class="panel-actions">
@@ -1561,8 +1650,8 @@ const shortcutLinks = [
       </div>
           <p v-if="cartLoading" class="empty">购物车加载中…</p>
           <p v-else-if="cartError" class="empty is-error">{{ cartError }}</p>
-        <div v-else-if="hasCartItems" class="table-container scrollable-table">
-          <table class="dashboard-table cart-table">
+          <div v-else-if="hasCartItems" class="table-container">
+            <table class="dashboard-table cart-table">
             <thead>
               <tr>
                 <th v-if="cartSelectionEnabled" scope="col" class="col-select">选择</th>
@@ -1574,7 +1663,7 @@ const shortcutLinks = [
                 </tr>
               </thead>
               <tbody>
-                <tr v-for="item in cartItems" :key="item.id">
+                <tr v-for="item in paginatedCartItems" :key="item.id">
                   <td v-if="cartSelectionEnabled" class="col-select">
                     <label class="checkbox-circle">
                       <input
@@ -1636,9 +1725,24 @@ const shortcutLinks = [
           <p v-else class="empty">购物车空空如也，快去产品中心挑选吧。</p>
           <p v-if="cartCheckoutMessage" class="panel-success">{{ cartCheckoutMessage }}</p>
           <p v-if="cartCheckoutError" class="panel-error">{{ cartCheckoutError }}</p>
+          <div v-if="hasCartItems" class="pagination">
+            <button type="button" class="ghost-button" :disabled="cartPage === 0" @click="prevPage('cart')">
+              上一页
+            </button>
+            <span>第 {{ cartPage + 1 }} / {{ cartTotalPages }} 页</span>
+            <button
+              type="button"
+              class="ghost-button"
+              :disabled="cartPage + 1 >= cartTotalPages"
+              @click="nextPage('cart')"
+            >
+              下一页
+            </button>
+          </div>
         </section>
 
         <section
+          v-if="showSection('favorites')"
           id="favorites"
           class="panel favorites full-row table-panel"
           aria-labelledby="favorites-title"
@@ -1653,7 +1757,7 @@ const shortcutLinks = [
           </div>
           <p v-if="favoritesLoading" class="empty">收藏加载中…</p>
           <p v-else-if="favoritesError" class="empty is-error">{{ favoritesError }}</p>
-          <div v-else-if="hasFavorites" class="table-container scrollable-table">
+          <div v-else-if="hasFavorites" class="table-container">
             <table class="dashboard-table favorites-table">
               <thead>
                 <tr>
@@ -1664,7 +1768,7 @@ const shortcutLinks = [
                 </tr>
               </thead>
               <tbody>
-                <tr v-for="item in favorites" :key="item.id">
+                <tr v-for="item in paginatedFavorites" :key="item.id">
                   <td class="col-product">
                     <div class="favorite-product">
                       <div class="image">
@@ -1720,11 +1824,30 @@ const shortcutLinks = [
           <p v-else class="empty">暂无收藏，快去产品中心收藏喜欢的商品吧。</p>
           <p v-if="favoriteActionMessage" class="panel-success">{{ favoriteActionMessage }}</p>
           <p v-if="favoriteActionError" class="panel-error">{{ favoriteActionError }}</p>
+          <div v-if="hasFavorites" class="pagination">
+            <button type="button" class="ghost-button" :disabled="favoritesPage === 0" @click="prevPage('favorites')">
+              上一页
+            </button>
+            <span>第 {{ favoritesPage + 1 }} / {{ favoritesTotalPages }} 页</span>
+            <button
+              type="button"
+              class="ghost-button"
+              :disabled="favoritesPage + 1 >= favoritesTotalPages"
+              @click="nextPage('favorites')"
+            >
+              下一页
+            </button>
+          </div>
         </section>
 
-        <section class="panel orders full-row table-panel" aria-labelledby="orders-title">
+        <section
+          v-if="showSection('orders')"
+          id="orders"
+          class="panel orders full-row table-panel"
+          aria-labelledby="orders-title"
+        >
           <div class="panel-title" id="orders-title">我的订单</div>
-          <div v-if="hasOrders" class="table-container scrollable-table">
+          <div v-if="hasOrders" class="table-container">
             <table class="dashboard-table orders-table">
               <thead>
                 <tr>
@@ -1737,7 +1860,7 @@ const shortcutLinks = [
                 </tr>
               </thead>
               <tbody>
-                <tr v-for="order in orders" :key="order.id">
+                <tr v-for="order in paginatedOrders" :key="order.id">
                   <td class="col-order-no">
                     <span class="order-no">{{ order.orderNo }}</span>
                     <span
@@ -1798,9 +1921,24 @@ const shortcutLinks = [
           <p v-else class="empty">暂无订单记录，前往首页挑选心仪商品吧。</p>
           <p v-if="orderActionMessage" class="panel-success">{{ orderActionMessage }}</p>
           <p v-if="orderActionError" class="panel-error">{{ orderActionError }}</p>
+          <div v-if="hasOrders" class="pagination">
+            <button type="button" class="ghost-button" :disabled="ordersPage === 0" @click="prevPage('orders')">
+              上一页
+            </button>
+            <span>第 {{ ordersPage + 1 }} / {{ ordersTotalPages }} 页</span>
+            <button
+              type="button"
+              class="ghost-button"
+              :disabled="ordersPage + 1 >= ordersTotalPages"
+              @click="nextPage('orders')"
+            >
+              下一页
+            </button>
+          </div>
         </section>
 
         <section
+          v-if="showSection('reviews')"
           id="reviews"
           class="panel reviews full-row table-panel"
           aria-labelledby="reviews-title"
@@ -1811,7 +1949,7 @@ const shortcutLinks = [
           <div v-if="reviewsLoading" class="placeholder">正在加载评价…</div>
           <div v-else-if="reviewsError" class="placeholder is-error">{{ reviewsError }}</div>
           <template v-else>
-            <div v-if="hasReviews" class="table-container scrollable-table">
+            <div v-if="hasReviews" class="table-container">
               <table class="dashboard-table review-table">
                 <thead>
                   <tr>
@@ -1823,7 +1961,7 @@ const shortcutLinks = [
                   </tr>
                 </thead>
                 <tbody>
-                  <tr v-for="review in myReviews" :key="review.id">
+                  <tr v-for="review in paginatedReviews" :key="review.id">
                     <td class="col-product">
                       <strong>{{ review.productName }}</strong>
                       <p class="muted">订单ID：{{ review.orderId }}</p>
@@ -1858,65 +1996,25 @@ const shortcutLinks = [
           </template>
           <p v-if="reviewListMessage" class="panel-success">{{ reviewListMessage }}</p>
           <p v-if="reviewListError" class="panel-error">{{ reviewListError }}</p>
+          <div v-if="hasReviews" class="pagination">
+            <button type="button" class="ghost-button" :disabled="reviewsPage === 0" @click="prevPage('reviews')">
+              上一页
+            </button>
+            <span>第 {{ reviewsPage + 1 }} / {{ reviewsTotalPages }} 页</span>
+            <button
+              type="button"
+              class="ghost-button"
+              :disabled="reviewsPage + 1 >= reviewsTotalPages"
+              @click="nextPage('reviews')"
+            >
+              下一页
+            </button>
+          </div>
         </section>
 
-        <section class="panel recommendations full-row table-panel" aria-labelledby="recommend-title">
-          <div class="panel-title" id="recommend-title">为您推荐</div>
-          <div v-if="hasRecommendations" class="table-container">
-            <table class="dashboard-table recommend-table">
-              <thead>
-                <tr>
-                  <th scope="col">商品信息</th>
-                  <th scope="col" class="col-price">价格</th>
-                  <th scope="col" class="col-actions">操作</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr v-for="item in homeContent?.recommendations ?? []" :key="item.id">
-                  <td>
-                    <div class="product-info">
-                      <strong>{{ item.name }}</strong>
-                      <p>{{ item.description ?? '优质蚕丝，严选供应链品质保障。' }}</p>
-                    </div>
-                  </td>
-                  <td class="col-price">{{ formatCurrency(item.price) }}</td>
-                  <td class="actions-cell">
-                    <router-link class="link-button" :to="`/product/${item.id}`">查看详情</router-link>
-                  </td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-          <p v-else class="empty">暂无推荐商品，稍后再来看看吧。</p>
-        </section>
-
-        <section class="panel announcements full-row table-panel" aria-labelledby="announcement-title">
-          <div class="panel-title" id="announcement-title">公告与资讯</div>
-          <div v-if="hasAnnouncements" class="table-container">
-            <table class="dashboard-table announcement-table">
-              <thead>
-                <tr>
-                  <th scope="col">公告内容</th>
-                  <th scope="col" class="col-time">发布时间</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr v-for="item in announcements" :key="item.id">
-                  <td>
-                    <div class="announcement-info">
-                      <strong>{{ item.title }}</strong>
-                      <p>{{ item.content }}</p>
-                    </div>
-                  </td>
-                  <td class="col-time">{{ formatDateTime(item.publishedAt) }}</td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-          <p v-else class="empty">暂无公告，敬请期待更多平台动态。</p>
-    </section>
-  </div>
-</template>
+      </div>
+    </template>
+  </section>
 
 <div v-if="showCartCheckoutModal" class="modal-backdrop" @click.self="closeCartCheckoutModal">
   <section class="modal" role="dialog" aria-modal="true" aria-labelledby="cart-checkout-title">
@@ -2388,7 +2486,6 @@ const shortcutLinks = [
         </form>
       </section>
     </div>
-  </section>
 </template>
 
 <style scoped>
@@ -2948,50 +3045,6 @@ const shortcutLinks = [
   cursor: not-allowed;
 }
 
-.recommend-table .product-info {
-  display: grid;
-  gap: 0.35rem;
-}
-
-.recommend-table .product-info strong {
-  font-weight: 700;
-  color: rgba(17, 24, 39, 0.85);
-}
-
-.recommend-table .product-info p {
-  color: rgba(17, 24, 39, 0.6);
-  font-size: 0.9rem;
-  line-height: 1.55;
-}
-
-.recommend-table .col-price {
-  font-weight: 600;
-  color: #16a34a;
-  white-space: nowrap;
-  text-align: right;
-}
-
-.announcement-table .announcement-info {
-  display: grid;
-  gap: 0.35rem;
-}
-
-.announcement-table .announcement-info strong {
-  font-weight: 700;
-  color: rgba(17, 24, 39, 0.78);
-}
-
-.announcement-table .announcement-info p {
-  color: rgba(17, 24, 39, 0.6);
-  line-height: 1.5;
-}
-
-.announcement-table .col-time {
-  white-space: nowrap;
-  color: rgba(17, 24, 39, 0.55);
-  text-align: right;
-}
-
 .status-pill {
   display: inline-flex;
   align-items: center;
@@ -3168,6 +3221,15 @@ const shortcutLinks = [
   margin-top: 0.75rem;
   color: #b91c1c;
   font-weight: 600;
+}
+
+.pagination {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  justify-content: flex-end;
+  margin-top: 0.85rem;
+  flex-wrap: wrap;
 }
 
 .order-meta {
