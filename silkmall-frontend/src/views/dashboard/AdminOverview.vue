@@ -31,6 +31,7 @@ const profileLoading = ref(false)
 const profileSaving = ref(false)
 const profileError = ref<string | null>(null)
 const profileMessage = ref<string | null>(null)
+const profileDialogOpen = ref(false)
 
 const pageLoading = ref(true)
 const pageError = ref<string | null>(null)
@@ -143,6 +144,7 @@ async function saveAdminProfile() {
     profileError.value = err instanceof Error ? err.message : '更新管理员信息失败'
   } finally {
     profileSaving.value = false
+    profileDialogOpen.value = false
   }
 }
 
@@ -233,11 +235,8 @@ function formatCurrency(amount?: number | string | null) {
             <p class="panel-subtitle">查看并维护您的账号资料，确保联系方式最新。</p>
           </div>
           <div class="profile-actions">
-            <button type="button" class="secondary" :disabled="profileLoading" @click="resetAdminProfile">
-              重置
-            </button>
-            <button type="button" class="primary" :disabled="profileSaving || profileLoading" @click="saveAdminProfile">
-              {{ profileSaving ? '保存中…' : '保存信息' }}
+            <button type="button" class="primary" :disabled="profileLoading" @click="profileDialogOpen = true">
+              修改信息
             </button>
           </div>
         </header>
@@ -245,37 +244,83 @@ function formatCurrency(amount?: number | string | null) {
         <p v-if="profileLoading" class="feedback">基础信息加载中…</p>
         <p v-else-if="profileError" class="feedback feedback--error">{{ profileError }}</p>
         <template v-else>
+          <div class="profile-grid read-only">
+            <div>
+              <span class="field-label">账号名称</span>
+              <strong class="field-value">{{ profile.username || '—' }}</strong>
+            </div>
+            <div>
+              <span class="field-label">邮箱</span>
+              <strong class="field-value">{{ profile.email || '—' }}</strong>
+            </div>
+            <div>
+              <span class="field-label">联系电话</span>
+              <strong class="field-value">{{ profile.phone || '—' }}</strong>
+            </div>
+            <div>
+              <span class="field-label">联系地址</span>
+              <strong class="field-value">{{ profile.address || '—' }}</strong>
+            </div>
+            <div>
+              <span class="field-label">所属部门</span>
+              <strong class="field-value">{{ profile.department || '—' }}</strong>
+            </div>
+            <div>
+              <span class="field-label">职位</span>
+              <strong class="field-value">{{ profile.position || '—' }}</strong>
+            </div>
+          </div>
           <transition name="fade">
             <p v-if="profileMessage" class="feedback feedback--success">{{ profileMessage }}</p>
           </transition>
-          <div class="profile-grid">
-            <label>
-              <span>账号名称</span>
-              <input v-model="profile.username" type="text" placeholder="请输入账号名称" />
-            </label>
-            <label>
-              <span>邮箱</span>
-              <input v-model="profile.email" type="email" placeholder="请输入邮箱" />
-            </label>
-            <label>
-              <span>联系电话</span>
-              <input v-model="profile.phone" type="tel" placeholder="请输入联系电话" />
-            </label>
-            <label>
-              <span>联系地址</span>
-              <input v-model="profile.address" type="text" placeholder="请输入联系地址" />
-            </label>
-            <label>
-              <span>所属部门</span>
-              <input v-model="profile.department" type="text" placeholder="请输入所属部门" />
-            </label>
-            <label>
-              <span>职位</span>
-              <input v-model="profile.position" type="text" placeholder="请输入职位" />
-            </label>
-          </div>
         </template>
       </section>
+
+      <div v-if="profileDialogOpen" class="modal-backdrop" @click.self="profileDialogOpen = false">
+        <section class="modal" role="dialog" aria-modal="true" aria-labelledby="admin-profile-dialog-title">
+          <header class="modal-header">
+            <h3 id="admin-profile-dialog-title">编辑管理员信息</h3>
+            <button type="button" class="icon-button" @click="profileDialogOpen = false" aria-label="关闭">×</button>
+          </header>
+          <div class="modal-body">
+            <p v-if="profileError" class="feedback feedback--error">{{ profileError }}</p>
+            <div class="profile-grid">
+              <label>
+                <span>账号名称</span>
+                <input v-model="profile.username" type="text" placeholder="请输入账号名称" />
+              </label>
+              <label>
+                <span>邮箱</span>
+                <input v-model="profile.email" type="email" placeholder="请输入邮箱" />
+              </label>
+              <label>
+                <span>联系电话</span>
+                <input v-model="profile.phone" type="tel" placeholder="请输入联系电话" />
+              </label>
+              <label>
+                <span>联系地址</span>
+                <input v-model="profile.address" type="text" placeholder="请输入联系地址" />
+              </label>
+              <label>
+                <span>所属部门</span>
+                <input v-model="profile.department" type="text" placeholder="请输入所属部门" />
+              </label>
+              <label>
+                <span>职位</span>
+                <input v-model="profile.position" type="text" placeholder="请输入职位" />
+              </label>
+            </div>
+          </div>
+          <footer class="modal-footer">
+            <button type="button" class="secondary" :disabled="profileLoading" @click="resetAdminProfile">
+              重置
+            </button>
+            <button type="button" class="primary" :disabled="profileSaving || profileLoading" @click="saveAdminProfile">
+              {{ profileSaving ? '保存中…' : '保存修改' }}
+            </button>
+          </footer>
+        </section>
+      </div>
     </template>
   </section>
 </template>
@@ -473,6 +518,22 @@ function formatCurrency(amount?: number | string | null) {
   border: 1px solid rgba(0, 0, 0, 0.12);
 }
 
+.profile-grid.read-only {
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+
+.field-label {
+  display: block;
+  color: rgba(30, 41, 59, 0.6);
+  font-size: 0.95rem;
+}
+
+.field-value {
+  display: block;
+  margin-top: 0.25rem;
+  color: rgba(30, 41, 59, 0.95);
+}
+
 .feedback {
   padding: 0.85rem 1rem;
   border-radius: 0.85rem;
@@ -519,6 +580,51 @@ function formatCurrency(amount?: number | string | null) {
   color: rgba(30, 41, 59, 0.75);
   font-weight: 600;
   cursor: pointer;
+}
+
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.25);
+  display: grid;
+  place-items: center;
+  z-index: 1000;
+}
+
+.modal {
+  background: #fff;
+  border-radius: 16px;
+  width: min(720px, 96vw);
+  max-height: 90vh;
+  overflow: hidden;
+  box-shadow: 0 20px 60px rgba(15, 23, 42, 0.2);
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+}
+
+.modal-header,
+.modal-footer {
+  padding: 1rem 1.25rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.modal-body {
+  padding: 1rem 1.25rem;
+  overflow-y: auto;
+  display: grid;
+  gap: 1rem;
+}
+
+.icon-button {
+  background: none;
+  border: none;
+  font-size: 1.5rem;
+  line-height: 1;
+  cursor: pointer;
+  color: rgba(30, 41, 59, 0.75);
 }
 
 @media (max-width: 720px) {
