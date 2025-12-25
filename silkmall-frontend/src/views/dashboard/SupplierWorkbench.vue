@@ -1032,7 +1032,7 @@ async function removeCategory(option: CategoryOption) {
     <div v-if="loading" class="placeholder">正在加载工作台数据…</div>
     <div v-else-if="error" class="placeholder is-error">{{ error }}</div>
     <template v-else>
-      <section class="panel profile" aria-labelledby="supplier-info">
+      <section id="supplier-info" class="panel profile" aria-labelledby="supplier-info">
         <div class="panel-title-row">
           <div class="panel-title" id="supplier-info">基础信息</div>
           <button type="button" class="panel-action-button" @click="openProfileDialog">编辑基础信息</button>
@@ -1067,7 +1067,7 @@ async function removeCategory(option: CategoryOption) {
         </div>
       </section>
 
-      <section class="panel products" aria-labelledby="product-list">
+      <section id="product-list" class="panel products" aria-labelledby="product-list">
         <div class="panel-title-row">
           <div class="panel-title" id="product-list">商品概览</div>
           <button type="button" class="primary" @click="openProductForm()">新增商品</button>
@@ -1151,7 +1151,7 @@ async function removeCategory(option: CategoryOption) {
         </div>
       </section>
 
-      <section class="panel sold-orders" aria-labelledby="sold-orders">
+      <section id="sold-orders" class="panel sold-orders" aria-labelledby="sold-orders">
         <div class="panel-title-row">
           <div class="panel-title" id="sold-orders">已销售商品</div>
         </div>
@@ -1223,7 +1223,7 @@ async function removeCategory(option: CategoryOption) {
         <p v-else class="empty">暂时没有已销售的订单。</p>
       </section>
 
-      <section class="panel returns" aria-labelledby="return-management">
+      <section id="return-management" class="panel returns" aria-labelledby="return-management">
         <div class="panel-title-row">
           <div class="panel-title" id="return-management">退货管理</div>
         </div>
@@ -1318,7 +1318,7 @@ async function removeCategory(option: CategoryOption) {
         <p v-else class="empty">暂无退货申请。</p>
       </section>
 
-      <section class="panel promotions" aria-labelledby="promotion-list">
+      <section id="promotion-list" class="panel promotions" aria-labelledby="promotion-list">
         <div class="panel-title" id="promotion-list">平台促销建议</div>
         <ul class="promotion-list">
           <li v-for="promo in homeContent?.promotions ?? []" :key="promo.productId">

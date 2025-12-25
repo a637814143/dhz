@@ -1394,7 +1394,7 @@ const shortcutLinks = [
     <div v-else-if="error" class="placeholder is-error">{{ error }}</div>
     <template v-else>
       <div class="grid">
-        <section class="panel profile full-row table-panel" aria-labelledby="profile-title">
+        <section id="profile" class="panel profile full-row table-panel" aria-labelledby="profile-title">
           <div class="panel-title-row">
             <div class="panel-title" id="profile-title">账户信息</div>
             <button type="button" class="panel-action-button" @click="openProfileDialog">
@@ -1528,7 +1528,7 @@ const shortcutLinks = [
           <p v-if="addressActionError" class="panel-error">{{ addressActionError }}</p>
         </section>
 
-        <section class="panel cart full-row table-panel" aria-labelledby="cart-title">
+        <section id="cart" class="panel cart full-row table-panel" aria-labelledby="cart-title">
       <div class="panel-title-row">
         <div class="panel-title" id="cart-title">我的购物车</div>
         <div class="panel-actions">
@@ -1722,7 +1722,7 @@ const shortcutLinks = [
           <p v-if="favoriteActionError" class="panel-error">{{ favoriteActionError }}</p>
         </section>
 
-        <section class="panel orders full-row table-panel" aria-labelledby="orders-title">
+        <section id="orders" class="panel orders full-row table-panel" aria-labelledby="orders-title">
           <div class="panel-title" id="orders-title">我的订单</div>
           <div v-if="hasOrders" class="table-container scrollable-table">
             <table class="dashboard-table orders-table">
