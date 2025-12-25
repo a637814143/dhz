@@ -72,6 +72,38 @@ public class ConsumerFavoriteController extends BaseController {
         }
     }
 
+    @GetMapping("/status/{productId}")
+    @PreAuthorize("hasRole('CONSUMER')")
+    public ResponseEntity<?> status(@PathVariable Long productId,
+                                    @AuthenticationPrincipal CustomUserDetails currentUser) {
+        if (currentUser == null) {
+            return badRequest("请先登录消费者账号");
+        }
+        if (productId == null) {
+            return badRequest("请选择要查询的商品");
+        }
+        boolean exists = favoriteService.isFavorited(currentUser.getId(), productId);
+        return success(exists);
+    }
+
+    @DeleteMapping("/product/{productId}")
+    @PreAuthorize("hasRole('CONSUMER')")
+    public ResponseEntity<?> removeByProduct(@PathVariable Long productId,
+                                             @AuthenticationPrincipal CustomUserDetails currentUser) {
+        if (currentUser == null) {
+            return badRequest("请先登录消费者账号");
+        }
+        if (productId == null) {
+            return badRequest("请选择要删除的商品");
+        }
+        try {
+            favoriteService.removeByProduct(currentUser.getId(), productId);
+            return success();
+        } catch (RuntimeException ex) {
+            return badRequest(ex.getMessage());
+        }
+    }
+
     private ConsumerFavoriteDTO toDto(ConsumerFavorite favorite) {
         ConsumerFavoriteDTO dto = new ConsumerFavoriteDTO();
         dto.setId(favorite.getId());

@@ -10,4 +10,8 @@ public interface ConsumerFavoriteService extends BaseService<ConsumerFavorite, L
     ConsumerFavorite addFavorite(Long consumerId, Long productId);
 
     void removeFavorite(Long consumerId, Long favoriteId);
+
+    boolean isFavorited(Long consumerId, Long productId);
+
+    void removeByProduct(Long consumerId, Long productId);
 }
