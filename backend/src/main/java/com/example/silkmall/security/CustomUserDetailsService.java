@@ -12,6 +12,7 @@ import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.security.core.userdetails.UsernameNotFoundException;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
 import java.util.Collections;
@@ -22,16 +23,19 @@ public class CustomUserDetailsService implements UserDetailsService {
     private final NewConsumerServiceImpl consumerService;
     private final NewSupplierServiceImpl supplierService;
     private final NewAdminServiceImpl adminService;
+    private final PasswordEncoder passwordEncoder;
 
     @Autowired
     public CustomUserDetailsService(
             @Lazy NewConsumerServiceImpl consumerService,
             @Lazy NewSupplierServiceImpl supplierService,
-            @Lazy NewAdminServiceImpl adminService
+            @Lazy NewAdminServiceImpl adminService,
+            PasswordEncoder passwordEncoder
     ) {
         this.consumerService = consumerService;
         this.supplierService = supplierService;
         this.adminService = adminService;
+        this.passwordEncoder = passwordEncoder;
     }
     
     @Override
@@ -41,6 +45,7 @@ public class CustomUserDetailsService implements UserDetailsService {
                 .orElse(null);
         
         if (consumer != null) {
+            ensurePasswordEncoded(consumer);
             return new CustomUserDetails(
                     consumer.getId(),
                     consumer.getUsername(),
@@ -58,6 +63,7 @@ public class CustomUserDetailsService implements UserDetailsService {
                 .orElse(null);
         
         if (supplier != null) {
+            ensurePasswordEncoded(supplier);
             return new CustomUserDetails(
                     supplier.getId(),
                     supplier.getUsername(),
@@ -75,6 +81,7 @@ public class CustomUserDetailsService implements UserDetailsService {
                 .orElse(null);
         
         if (admin != null) {
+            ensurePasswordEncoded(admin);
             return new CustomUserDetails(
                     admin.getId(),
                     admin.getUsername(),
@@ -95,6 +102,7 @@ public class CustomUserDetailsService implements UserDetailsService {
         // 依次检查不同类型的用户
         if (consumerService.findById(userId).isPresent()) {
             Consumer consumer = consumerService.findById(userId).get();
+            ensurePasswordEncoded(consumer);
             return new CustomUserDetails(
                     consumer.getId(),
                     consumer.getUsername(),
@@ -107,6 +115,7 @@ public class CustomUserDetailsService implements UserDetailsService {
             );
         } else if (supplierService.findById(userId).isPresent()) {
             Supplier supplier = supplierService.findById(userId).get();
+            ensurePasswordEncoded(supplier);
             return new CustomUserDetails(
                     supplier.getId(),
                     supplier.getUsername(),
@@ -119,6 +128,7 @@ public class CustomUserDetailsService implements UserDetailsService {
             );
         } else if (adminService.findById(userId).isPresent()) {
             Admin admin = adminService.findById(userId).get();
+            ensurePasswordEncoded(admin);
             return new CustomUserDetails(
                     admin.getId(),
                     admin.getUsername(),
@@ -131,5 +141,26 @@ public class CustomUserDetailsService implements UserDetailsService {
             );
         }
         throw new UsernameNotFoundException("用户不存在: " + userId);
+    }
+
+    /**
+     * Automatically encode legacy plaintext passwords to avoid login failures.
+     */
+    private void ensurePasswordEncoded(com.example.silkmall.entity.User user) {
+        String existing = user.getPassword();
+        if (existing == null || existing.isBlank()) {
+            return;
+        }
+        if (!PasswordHashValidator.isBcryptHash(existing)) {
+            user.setPassword(passwordEncoder.encode(existing));
+            // leverage corresponding service to persist the encoded password
+            if (user instanceof Consumer consumer) {
+                consumerService.update(consumer);
+            } else if (user instanceof Supplier supplier) {
+                supplierService.update(supplier);
+            } else if (user instanceof Admin admin) {
+                adminService.update(admin);
+            }
+        }
     }
 }
