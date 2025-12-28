@@ -82,6 +82,7 @@ public class CustomUserDetailsService implements UserDetailsService {
         
         if (admin != null) {
             ensurePasswordEncoded(admin);
+            ensureAdminDefaults(admin);
             return new CustomUserDetails(
                     admin.getId(),
                     admin.getUsername(),
@@ -129,6 +130,7 @@ public class CustomUserDetailsService implements UserDetailsService {
         } else if (adminService.findById(userId).isPresent()) {
             Admin admin = adminService.findById(userId).get();
             ensurePasswordEncoded(admin);
+            ensureAdminDefaults(admin);
             return new CustomUserDetails(
                     admin.getId(),
                     admin.getUsername(),
@@ -171,6 +173,28 @@ public class CustomUserDetailsService implements UserDetailsService {
         } else if (user instanceof Supplier supplier) {
             supplierService.update(supplier);
         } else if (user instanceof Admin admin) {
+            adminService.update(admin);
+        }
+    }
+
+    /**
+     * Guardrail for legacy admin accounts missing role/permissions/enabled flags.
+     */
+    private void ensureAdminDefaults(Admin admin) {
+        boolean dirty = false;
+        if (admin.getRole() == null || admin.getRole().isBlank()) {
+            admin.setRole("ADMIN");
+            dirty = true;
+        }
+        if (admin.getPermissions() == null || admin.getPermissions().isBlank()) {
+            admin.setPermissions("ALL");
+            dirty = true;
+        }
+        if (!admin.isEnabled()) {
+            admin.setEnabled(true);
+            dirty = true;
+        }
+        if (dirty) {
             adminService.update(admin);
         }
     }
