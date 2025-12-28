@@ -40,7 +40,44 @@ public class CustomUserDetailsService implements UserDetailsService {
     
     @Override
     public UserDetails loadUserByUsername(String username) throws UsernameNotFoundException {
-        // 首先尝试查找消费者
+        // 优先查找管理员，避免同名消费者/供应商抢先匹配导致管理员无法登录
+        Admin admin = adminService.findByUsername(username)
+                .orElse(null);
+
+        if (admin != null) {
+            ensurePasswordEncoded(admin);
+            ensureAdminDefaults(admin);
+            return new CustomUserDetails(
+                    admin.getId(),
+                    admin.getUsername(),
+                    admin.getPassword(),
+                    admin.getEmail(),
+                    admin.getPhone(),
+                    "admin",
+                    admin.isEnabled(),
+                    Collections.singletonList(new SimpleGrantedAuthority("ROLE_" + admin.getRole().toUpperCase()))
+            );
+        }
+
+        // 然后尝试查找供应商
+        Supplier supplier = supplierService.findByUsername(username)
+                .orElse(null);
+
+        if (supplier != null) {
+            ensurePasswordEncoded(supplier);
+            return new CustomUserDetails(
+                    supplier.getId(),
+                    supplier.getUsername(),
+                    supplier.getPassword(),
+                    supplier.getEmail(),
+                    supplier.getPhone(),
+                    "supplier",
+                    supplier.isEnabled(),
+                    Collections.singletonList(new SimpleGrantedAuthority("ROLE_" + supplier.getRole().toUpperCase()))
+            );
+        }
+
+        // 最后尝试查找消费者
         Consumer consumer = consumerService.findByUsername(username)
                 .orElse(null);
         
@@ -58,29 +95,14 @@ public class CustomUserDetailsService implements UserDetailsService {
             );
         }
         
-        // 然后尝试查找供应商
-        Supplier supplier = supplierService.findByUsername(username)
-                .orElse(null);
-        
-        if (supplier != null) {
-            ensurePasswordEncoded(supplier);
-            return new CustomUserDetails(
-                    supplier.getId(),
-                    supplier.getUsername(),
-                    supplier.getPassword(),
-                    supplier.getEmail(),
-                    supplier.getPhone(),
-                    "supplier",
-                    supplier.isEnabled(),
-                    Collections.singletonList(new SimpleGrantedAuthority("ROLE_" + supplier.getRole().toUpperCase()))
-            );
-        }
-        
-        // 最后尝试查找管理员
-        Admin admin = adminService.findByUsername(username)
-                .orElse(null);
-        
-        if (admin != null) {
+        throw new UsernameNotFoundException("用户不存在: " + username);
+    }
+    
+    // 添加loadUserById方法以支持JwtAuthenticationFilter
+    public CustomUserDetails loadUserById(Long userId) {
+        // 依次检查不同类型的用户（管理员优先以避免同名冲突）
+        if (adminService.findById(userId).isPresent()) {
+            Admin admin = adminService.findById(userId).get();
             ensurePasswordEncoded(admin);
             ensureAdminDefaults(admin);
             return new CustomUserDetails(
@@ -92,27 +114,6 @@ public class CustomUserDetailsService implements UserDetailsService {
                     "admin",
                     admin.isEnabled(),
                     Collections.singletonList(new SimpleGrantedAuthority("ROLE_" + admin.getRole().toUpperCase()))
-            );
-        }
-        
-        throw new UsernameNotFoundException("用户不存在: " + username);
-    }
-    
-    // 添加loadUserById方法以支持JwtAuthenticationFilter
-    public CustomUserDetails loadUserById(Long userId) {
-        // 依次检查不同类型的用户
-        if (consumerService.findById(userId).isPresent()) {
-            Consumer consumer = consumerService.findById(userId).get();
-            ensurePasswordEncoded(consumer);
-            return new CustomUserDetails(
-                    consumer.getId(),
-                    consumer.getUsername(),
-                    consumer.getPassword(),
-                    consumer.getEmail(),
-                    consumer.getPhone(),
-                    "consumer",
-                    consumer.isEnabled(),
-                    Collections.singletonList(new SimpleGrantedAuthority("ROLE_" + consumer.getRole().toUpperCase()))
             );
         } else if (supplierService.findById(userId).isPresent()) {
             Supplier supplier = supplierService.findById(userId).get();
@@ -127,19 +128,18 @@ public class CustomUserDetailsService implements UserDetailsService {
                     supplier.isEnabled(),
                     Collections.singletonList(new SimpleGrantedAuthority("ROLE_" + supplier.getRole().toUpperCase()))
             );
-        } else if (adminService.findById(userId).isPresent()) {
-            Admin admin = adminService.findById(userId).get();
-            ensurePasswordEncoded(admin);
-            ensureAdminDefaults(admin);
+        } else if (consumerService.findById(userId).isPresent()) {
+            Consumer consumer = consumerService.findById(userId).get();
+            ensurePasswordEncoded(consumer);
             return new CustomUserDetails(
-                    admin.getId(),
-                    admin.getUsername(),
-                    admin.getPassword(),
-                    admin.getEmail(),
-                    admin.getPhone(),
-                    "admin",
-                    admin.isEnabled(),
-                    Collections.singletonList(new SimpleGrantedAuthority("ROLE_" + admin.getRole().toUpperCase()))
+                    consumer.getId(),
+                    consumer.getUsername(),
+                    consumer.getPassword(),
+                    consumer.getEmail(),
+                    consumer.getPhone(),
+                    "consumer",
+                    consumer.isEnabled(),
+                    Collections.singletonList(new SimpleGrantedAuthority("ROLE_" + consumer.getRole().toUpperCase()))
             );
         }
         throw new UsernameNotFoundException("用户不存在: " + userId);
