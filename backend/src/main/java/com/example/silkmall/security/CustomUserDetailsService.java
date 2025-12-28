@@ -151,16 +151,27 @@ public class CustomUserDetailsService implements UserDetailsService {
         if (existing == null || existing.isBlank()) {
             return;
         }
-        if (!PasswordHashValidator.isBcryptHash(existing)) {
-            user.setPassword(passwordEncoder.encode(existing));
-            // leverage corresponding service to persist the encoded password
-            if (user instanceof Consumer consumer) {
-                consumerService.update(consumer);
-            } else if (user instanceof Supplier supplier) {
-                supplierService.update(supplier);
-            } else if (user instanceof Admin admin) {
-                adminService.update(admin);
-            }
+        String normalized = existing;
+        // Handle legacy hashes saved with "{bcrypt}" prefix which BCryptPasswordEncoder cannot match
+        if (normalized.startsWith("{bcrypt}")) {
+            normalized = normalized.substring("{bcrypt}".length());
+            user.setPassword(normalized);
+            persistUser(user);
+            return;
+        }
+        if (!PasswordHashValidator.isBcryptHash(normalized)) {
+            user.setPassword(passwordEncoder.encode(normalized));
+            persistUser(user);
+        }
+    }
+
+    private void persistUser(com.example.silkmall.entity.User user) {
+        if (user instanceof Consumer consumer) {
+            consumerService.update(consumer);
+        } else if (user instanceof Supplier supplier) {
+            supplierService.update(supplier);
+        } else if (user instanceof Admin admin) {
+            adminService.update(admin);
         }
     }
 }
