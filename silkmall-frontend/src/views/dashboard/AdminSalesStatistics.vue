@@ -7,8 +7,8 @@ const weeklySales = ref<WeeklySalesReport | null>(null)
 const weeklyLoading = ref(false)
 const weeklyError = ref<string | null>(null)
 const weeksToFetch = 25
-const page = ref(0)
-const PAGE_SIZE = 5
+const selectedDate = ref('')
+const activeWeekIndex = ref<number | null>(null)
 
 function formatCurrency(amount?: number | string | null) {
   const numeric = typeof amount === 'string' ? Number(amount) : amount
@@ -53,7 +53,8 @@ async function loadWeeklySales() {
       params: { weeks: weeksToFetch },
     })
     weeklySales.value = data ?? null
-    page.value = 0
+    const hasWeeks = Array.isArray(data?.weeks) && data.weeks.length > 0
+    activeWeekIndex.value = hasWeeks ? 0 : null
   } catch (err) {
     weeklySales.value = null
     weeklyError.value = err instanceof Error ? err.message : '加载周度销售数据失败'
@@ -72,33 +73,72 @@ const sortedWeeks = computed(() => {
 })
 
 const totalWeeks = computed(() => sortedWeeks.value.length)
-const totalPages = computed(() => (totalWeeks.value > 0 ? Math.ceil(totalWeeks.value / PAGE_SIZE) : 0))
-
-const pageIndicator = computed(() => {
-  if (!totalPages.value) return '0/0'
-  return `${page.value + 1}/${totalPages.value}`
-})
 
 const paginatedWeeks = computed(() => {
-  if (!sortedWeeks.value.length) return []
-  const start = page.value * PAGE_SIZE
-  return sortedWeeks.value.slice(start, start + PAGE_SIZE)
+  const index = activeWeekIndex.value
+  if (index === null || index < 0 || index >= sortedWeeks.value.length) {
+    return []
+  }
+  return [sortedWeeks.value[index]]
 })
 
-function clampPage(value: number) {
-  return Math.min(Math.max(value, 0), Math.max(totalPages.value - 1, 0))
+function clampIndex(value: number) {
+  return Math.min(Math.max(value, 0), Math.max(totalWeeks.value - 1, 0))
 }
 
-function goPreviousPage() {
-  page.value = clampPage(page.value - 1)
+function findWeekIndexByDate(date: Date) {
+  const target = date.getTime()
+  return sortedWeeks.value.findIndex((week) => {
+    const start = new Date(week.weekStart).getTime()
+    const end = new Date(week.weekEnd).getTime()
+    if (Number.isNaN(start) || Number.isNaN(end)) return false
+    return target >= start && target <= end
+  })
 }
 
-function goNextPage() {
-  page.value = clampPage(page.value + 1)
+function goPreviousWeek() {
+  if (activeWeekIndex.value === null) return
+  activeWeekIndex.value = clampIndex(activeWeekIndex.value - 1)
+}
+
+function goNextWeek() {
+  if (activeWeekIndex.value === null) return
+  activeWeekIndex.value = clampIndex(activeWeekIndex.value + 1)
+}
+
+const searchFeedback = ref<string | null>(null)
+
+function jumpToSelectedDate() {
+  const raw = selectedDate.value
+  if (!raw) {
+    searchFeedback.value = '请选择日期'
+    return
+  }
+  const target = new Date(raw)
+  if (Number.isNaN(target.getTime())) {
+    searchFeedback.value = '请选择有效日期'
+    return
+  }
+  const weekIndex = findWeekIndexByDate(target)
+  if (weekIndex >= 0) {
+    activeWeekIndex.value = weekIndex
+    searchFeedback.value = null
+  } else {
+    activeWeekIndex.value = null
+    searchFeedback.value = '所选日期暂无销售数据'
+  }
 }
 
 watch(sortedWeeks, () => {
-  page.value = clampPage(page.value)
+  if (!sortedWeeks.value.length) {
+    activeWeekIndex.value = null
+    return
+  }
+  if (activeWeekIndex.value === null || activeWeekIndex.value >= sortedWeeks.value.length) {
+    activeWeekIndex.value = 0
+  } else {
+    activeWeekIndex.value = clampIndex(activeWeekIndex.value)
+  }
 })
 
 onMounted(() => {
@@ -122,17 +162,41 @@ onMounted(() => {
           <p class="panel-subtitle">查看每周订单与商品表现，同名商品会按供应商分开统计。</p>
         </div>
         <nav class="week-pagination" aria-label="周度翻页">
-          <button type="button" class="pager-button" :disabled="page === 0 || weeklyLoading" @click="goPreviousPage">
-            上一页
-          </button>
-          <span class="pagination-status">第 {{ pageIndicator }} 页（共 {{ totalWeeks }} 周）</span>
           <button
             type="button"
             class="pager-button"
-            :disabled="page + 1 >= totalPages || weeklyLoading"
-            @click="goNextPage"
+            :disabled="activeWeekIndex === null || activeWeekIndex === 0 || weeklyLoading"
+            @click="goPreviousWeek"
           >
-            下一页
+            上一周
+          </button>
+          <div class="date-picker">
+            <label class="visually-hidden" for="week-date-input">选择日期查看对应周</label>
+            <input
+              id="week-date-input"
+              v-model="selectedDate"
+              type="date"
+              :disabled="weeklyLoading || !sortedWeeks.length"
+            />
+            <button
+              type="button"
+              class="pager-button"
+              :disabled="weeklyLoading || !sortedWeeks.length"
+              @click="jumpToSelectedDate"
+            >
+              搜索
+            </button>
+            <p v-if="searchFeedback" class="date-feedback">{{ searchFeedback }}</p>
+          </div>
+          <button
+            type="button"
+            class="pager-button"
+            :disabled="
+              activeWeekIndex === null || activeWeekIndex + 1 >= sortedWeeks.length || weeklyLoading
+            "
+            @click="goNextWeek"
+          >
+            下一周
           </button>
         </nav>
       </header>
@@ -217,13 +281,6 @@ onMounted(() => {
             </div>
           </div>
         </article>
-        <nav v-if="totalPages > 1" class="pagination">
-          <button type="button" class="pager-button" :disabled="page === 0" @click="goPreviousPage">上一页</button>
-          <span class="pagination-status">第 {{ pageIndicator }} 页（共 {{ totalPages }} 页）</span>
-          <button type="button" class="pager-button" :disabled="page + 1 >= totalPages" @click="goNextPage">
-            下一页
-          </button>
-        </nav>
       </div>
     </section>
   </section>
@@ -320,6 +377,46 @@ onMounted(() => {
 .pagination-status {
   color: rgba(71, 85, 105, 0.75);
   font-weight: 600;
+}
+
+.date-picker {
+  display: grid;
+  gap: 6px;
+  justify-items: center;
+  align-items: center;
+}
+
+.date-picker input[type='date'] {
+  padding: 8px 12px;
+  border-radius: 10px;
+  border: 1px solid #d0d7e2;
+  background: #ffffff;
+  color: #1f2937;
+  font-weight: 600;
+}
+
+.date-picker input[type='date']:disabled {
+  background: #f1f5f9;
+  color: #94a3b8;
+}
+
+.date-feedback {
+  margin: 0;
+  font-size: 12px;
+  color: #c2410c;
+  text-align: center;
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
 }
 
 .pager-button {
