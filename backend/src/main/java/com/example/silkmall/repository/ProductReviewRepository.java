@@ -4,7 +4,6 @@ import com.example.silkmall.entity.ProductReview;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 
-import java.util.Collection;
 import java.util.List;
 
 @Repository
@@ -14,6 +13,4 @@ public interface ProductReviewRepository extends JpaRepository<ProductReview, Lo
     List<ProductReview> findByOrderId(Long orderId);
     boolean existsByOrderItemIdAndConsumer_Id(Long orderItemId, Long consumerId);
     List<ProductReview> findByConsumer_IdOrderByCreatedAtDesc(Long consumerId);
-    void deleteByOrderItemIdIn(Collection<Long> orderItemIds);
-    void deleteByProduct_Id(Long productId);
 }
