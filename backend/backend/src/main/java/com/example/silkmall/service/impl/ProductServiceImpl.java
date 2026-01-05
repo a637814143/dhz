@@ -204,7 +204,8 @@ public class ProductServiceImpl extends BaseServiceImpl<Product, Long> implement
     @Override
     @Transactional
     public void deleteById(Long id) {
-        if (returnRequestRepository.existsByProductId(id)) {
+        if (returnRequestRepository.existsByProductId(id)
+                || returnRequestRepository.existsByOrderItemProductId(id)) {
             throw new RuntimeException("该商品存在售后申请，无法删除");
         }
         if (orderItemRepository.existsByProductId(id)) {
