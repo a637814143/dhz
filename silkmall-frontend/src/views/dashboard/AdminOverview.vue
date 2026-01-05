@@ -17,6 +17,17 @@ const walletDisplay = computed(() =>
   typeof walletBalance.value === 'number' ? formatCurrency(walletBalance.value) : '—'
 )
 
+function parseBalance(input: unknown) {
+  if (typeof input === 'number') {
+    return input
+  }
+  if (typeof input === 'string') {
+    const parsed = Number(input)
+    return Number.isFinite(parsed) ? parsed : null
+  }
+  return null
+}
+
 const profile = reactive<AdminProfile>({
   id: 0,
   username: '',
@@ -56,8 +67,8 @@ async function loadWallet() {
   walletLoading.value = true
   walletError.value = null
   try {
-    const { data } = await api.get<{ balance: number }>('/wallet')
-    walletBalance.value = typeof data?.balance === 'number' ? data.balance : null
+    const { data } = await api.get<{ balance: number | string }>('/wallet')
+    walletBalance.value = parseBalance(data?.balance)
   } catch (err) {
     walletBalance.value = null
     walletError.value = err instanceof Error ? err.message : '加载钱包信息失败'
@@ -76,9 +87,8 @@ async function redeemWallet() {
   }
   redeeming.value = true
   try {
-    const { data } = await api.post<{ balance: number }>('/wallet/redeem', { code })
-    const balance = typeof data?.balance === 'number' ? data.balance : null
-    walletBalance.value = balance
+    const { data } = await api.post<{ balance: number | string }>('/wallet/redeem', { code })
+    walletBalance.value = parseBalance(data?.balance)
     redeemMessage.value = '兑换成功，余额已更新'
     redeemCodeInput.value = ''
     walletError.value = null
