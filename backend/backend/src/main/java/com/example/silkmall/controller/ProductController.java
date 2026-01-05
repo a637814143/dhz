@@ -79,8 +79,12 @@ public class ProductController extends BaseController {
         if (!canManageProduct(currentUser, existing.get())) {
             return redirectForUser(currentUser);
         }
-        productService.deleteById(id);
-        return success();
+        try {
+            productService.deleteById(id);
+            return success();
+        } catch (RuntimeException ex) {
+            return badRequest(ex.getMessage());
+        }
     }
     
     @GetMapping
