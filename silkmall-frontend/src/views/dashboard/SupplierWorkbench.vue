@@ -1099,6 +1099,9 @@ async function removeCategory(option: CategoryOption) {
       >
         <div class="panel-title-row">
           <div class="panel-title" id="supplier-info">基础信息</div>
+          <button type="button" class="panel-action-button" @click="openProfileDialog">
+            编辑基础信息
+          </button>
         </div>
         <ul>
           <li><span>企业名称</span><strong>{{ profile?.companyName ?? '—' }}</strong></li>
