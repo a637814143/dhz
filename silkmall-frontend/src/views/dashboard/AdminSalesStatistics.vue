@@ -9,6 +9,7 @@ const weeklyError = ref<string | null>(null)
 const weeksToFetch = 25
 const page = ref(0)
 const PAGE_SIZE = 5
+const selectedDate = ref('')
 
 function formatCurrency(amount?: number | string | null) {
   const numeric = typeof amount === 'string' ? Number(amount) : amount
@@ -89,6 +90,16 @@ function clampPage(value: number) {
   return Math.min(Math.max(value, 0), Math.max(totalPages.value - 1, 0))
 }
 
+function findWeekIndexByDate(date: Date) {
+  const target = date.getTime()
+  return sortedWeeks.value.findIndex((week) => {
+    const start = new Date(week.weekStart).getTime()
+    const end = new Date(week.weekEnd).getTime()
+    if (Number.isNaN(start) || Number.isNaN(end)) return false
+    return target >= start && target <= end
+  })
+}
+
 function goPreviousPage() {
   page.value = clampPage(page.value - 1)
 }
@@ -96,6 +107,26 @@ function goPreviousPage() {
 function goNextPage() {
   page.value = clampPage(page.value + 1)
 }
+
+function jumpToSelectedDate() {
+  const raw = selectedDate.value
+  if (!raw) return
+  const target = new Date(raw)
+  if (Number.isNaN(target.getTime())) return
+  const weekIndex = findWeekIndexByDate(target)
+  if (weekIndex >= 0) {
+    page.value = clampPage(Math.floor(weekIndex / PAGE_SIZE))
+  }
+}
+
+const dateSelectionFeedback = computed(() => {
+  if (!selectedDate.value) return ''
+  const target = new Date(selectedDate.value)
+  if (Number.isNaN(target.getTime())) return '请选择有效日期'
+  const weekIndex = findWeekIndexByDate(target)
+  if (weekIndex === -1) return '所选日期暂无销售数据'
+  return ''
+})
 
 watch(sortedWeeks, () => {
   page.value = clampPage(page.value)
@@ -125,6 +156,17 @@ onMounted(() => {
           <button type="button" class="pager-button" :disabled="page === 0 || weeklyLoading" @click="goPreviousPage">
             上一页
           </button>
+          <div class="date-picker">
+            <label class="visually-hidden" for="week-date-input">选择日期查看对应周</label>
+            <input
+              id="week-date-input"
+              v-model="selectedDate"
+              type="date"
+              :disabled="weeklyLoading || !sortedWeeks.length"
+              @change="jumpToSelectedDate"
+            />
+            <p v-if="dateSelectionFeedback" class="date-feedback">{{ dateSelectionFeedback }}</p>
+          </div>
           <span class="pagination-status">第 {{ pageIndicator }} 页（共 {{ totalWeeks }} 周）</span>
           <button
             type="button"
@@ -320,6 +362,44 @@ onMounted(() => {
 .pagination-status {
   color: rgba(71, 85, 105, 0.75);
   font-weight: 600;
+}
+
+.date-picker {
+  display: grid;
+  gap: 4px;
+  justify-items: center;
+}
+
+.date-picker input[type='date'] {
+  padding: 8px 12px;
+  border-radius: 10px;
+  border: 1px solid #d0d7e2;
+  background: #ffffff;
+  color: #1f2937;
+  font-weight: 600;
+}
+
+.date-picker input[type='date']:disabled {
+  background: #f1f5f9;
+  color: #94a3b8;
+}
+
+.date-feedback {
+  margin: 0;
+  font-size: 12px;
+  color: #c2410c;
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
 }
 
 .pager-button {
