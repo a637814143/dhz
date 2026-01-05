@@ -118,7 +118,7 @@ public class NewAdminServiceImpl implements AdminService {
         }
 
         // 确保密码不会被明文保存
-        if (admin.getPassword() != null && !admin.getPassword().startsWith("{bcrypt}")) {
+        if (admin.getPassword() != null && !com.example.silkmall.security.PasswordHashValidator.isBcryptHash(admin.getPassword())) {
             admin.setPassword(passwordEncoder.encode(admin.getPassword()));
         }
         return newAdminRepository.save(admin);

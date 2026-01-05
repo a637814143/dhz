@@ -86,7 +86,7 @@ public class NewConsumerServiceImpl implements ConsumerService {
     @Override
     public Consumer update(Consumer consumer) {
         // 确保密码不会被明文保存
-        if (consumer.getPassword() != null && !consumer.getPassword().startsWith("{bcrypt}")) {
+        if (consumer.getPassword() != null && !com.example.silkmall.security.PasswordHashValidator.isBcryptHash(consumer.getPassword())) {
             consumer.setPassword(passwordEncoder.encode(consumer.getPassword()));
         }
         return newConsumerRepository.save(consumer);

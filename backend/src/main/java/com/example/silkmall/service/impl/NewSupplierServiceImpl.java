@@ -119,7 +119,7 @@ public class NewSupplierServiceImpl implements SupplierService {
     @Override
     public Supplier update(Supplier supplier) {
         // 确保密码不会被明文保存
-        if (supplier.getPassword() != null && !supplier.getPassword().startsWith("{bcrypt}")) {
+        if (supplier.getPassword() != null && !com.example.silkmall.security.PasswordHashValidator.isBcryptHash(supplier.getPassword())) {
             supplier.setPassword(passwordEncoder.encode(supplier.getPassword()));
         }
         return newSupplierRepository.save(supplier);

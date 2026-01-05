@@ -61,7 +61,7 @@ public abstract class UserServiceImpl<T extends User> implements UserService<T> 
     @Override
     public T update(T user) {
         // 确保密码不会被明文保存
-        if (user.getPassword() != null && !user.getPassword().startsWith("{bcrypt}")) {
+        if (user.getPassword() != null && !com.example.silkmall.security.PasswordHashValidator.isBcryptHash(user.getPassword())) {
             user.setPassword(passwordEncoder.encode(user.getPassword()));
         }
         return jpaRepository.save(user);
