@@ -467,21 +467,15 @@ public class OrderServiceImpl extends BaseServiceImpl<Order, Long> implements Or
         boolean hasHeldFunds = holdingAmount.compareTo(BigDecimal.ZERO) > 0
                 && adminBalance.compareTo(holdingAmount) >= 0;
 
-        BigDecimal updatedAdminBalance;
-        if (hasHeldFunds) {
-            if (payoutPool.compareTo(BigDecimal.ZERO) > 0 && adminBalance.compareTo(payoutPool) < 0) {
-                throw new RuntimeException("管理员钱包余额不足，无法批准付款");
-            }
-            BigDecimal baseBalance = adminBalance.subtract(holdingAmount);
-            if (baseBalance.compareTo(BigDecimal.ZERO) < 0) {
-                baseBalance = BigDecimal.ZERO;
-            }
-            updatedAdminBalance = baseBalance.add(commission);
-        } else {
-            // 如果付款时未将货款托管到管理员钱包，则在结算时仅发放提成
-            updatedAdminBalance = adminBalance.add(commission);
+        if (hasHeldFunds && payoutPool.compareTo(BigDecimal.ZERO) > 0 && adminBalance.compareTo(payoutPool) < 0) {
+            throw new RuntimeException("管理员钱包余额不足，无法批准付款");
         }
 
+        BigDecimal baseBalance = hasHeldFunds ? adminBalance.subtract(holdingAmount) : adminBalance;
+        if (baseBalance.compareTo(BigDecimal.ZERO) < 0) {
+            baseBalance = BigDecimal.ZERO;
+        }
+        BigDecimal updatedAdminBalance = baseBalance.add(commission);
         admin.setWalletBalance(updatedAdminBalance);
         adminRepository.save(admin);
 
