@@ -53,8 +53,12 @@ public class WalletService {
         if (code == null || code.isBlank()) {
             throw new RuntimeException("兑换码不能为空");
         }
-        String hash = DigestUtils.md5DigestAsHex(code.trim().getBytes(StandardCharsets.UTF_8));
-        if (!redeemableHashes.remove(hash)) {
+        String trimmedCode = code.trim();
+        String hash = DigestUtils.md5DigestAsHex(trimmedCode.getBytes(StandardCharsets.UTF_8));
+        String upperHash = DigestUtils.md5DigestAsHex(trimmedCode.toUpperCase(Locale.ROOT).getBytes(StandardCharsets.UTF_8));
+
+        boolean removed = redeemableHashes.remove(hash) || redeemableHashes.remove(upperHash);
+        if (!removed) {
             throw new RuntimeException("兑换码无效或已被使用");
         }
 
