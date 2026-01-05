@@ -202,6 +202,7 @@ public class OrderServiceImpl extends BaseServiceImpl<Order, Long> implements Or
 
         // 恢复库存
         restoreStock(order);
+        decrementProductSales(order);
 
         order.setStatus(CANCELLED);
         order.setPayoutStatus(null);
@@ -232,6 +233,7 @@ public class OrderServiceImpl extends BaseServiceImpl<Order, Long> implements Or
         }
 
         restoreStock(order);
+        decrementProductSales(order);
 
         BigDecimal recoveredFromSuppliers = BigDecimal.ZERO;
         if (PAYOUT_APPROVED.equals(order.getPayoutStatus())) {
@@ -563,6 +565,8 @@ public class OrderServiceImpl extends BaseServiceImpl<Order, Long> implements Or
         admin.setWalletBalance(adminBalance.add(totalAmount));
         adminRepository.save(admin);
 
+        incrementProductSales(order);
+
         return orderRepository.save(order);
     }
 
@@ -710,6 +714,29 @@ public class OrderServiceImpl extends BaseServiceImpl<Order, Long> implements Or
         
         order.setTotalAmount(totalAmount);
         order.setTotalQuantity(totalQuantity);
+    }
+    
+    private void incrementProductSales(Order order) {
+        adjustProductSales(order, true);
+    }
+
+    private void decrementProductSales(Order order) {
+        adjustProductSales(order, false);
+    }
+
+    private void adjustProductSales(Order order, boolean increase) {
+        if (order == null || order.getOrderItems() == null) {
+            return;
+        }
+        for (OrderItem item : order.getOrderItems()) {
+            Product product = productRepository.findById(item.getProduct().getId())
+                    .orElseThrow(() -> new RuntimeException("产品不存在: " + item.getProduct().getId()));
+            int currentSales = product.getSales() == null ? 0 : product.getSales();
+            int quantity = item.getQuantity() == null ? 0 : item.getQuantity();
+            int updated = increase ? currentSales + quantity : Math.max(0, currentSales - quantity);
+            product.setSales(updated);
+            productRepository.save(product);
+        }
     }
     
     // 检查库存并扣减
