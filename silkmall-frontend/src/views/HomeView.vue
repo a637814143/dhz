@@ -6,7 +6,6 @@ import PurchaseDialog from '@/components/PurchaseDialog.vue'
 import api from '@/services/api'
 import { useAuthState } from '@/services/authState'
 import type {
-  Announcement,
   Banner,
   CategoryOption,
   HomepageContent,
@@ -87,7 +86,6 @@ const primaryBanner = computed<Banner | null>(() => homeContent.value?.banners?.
 const secondaryBanners = computed<Banner[]>(() => homeContent.value?.banners?.slice(1) ?? [])
 const promotionList = computed<Promotion[]>(() => homeContent.value?.promotions ?? [])
 const hotSales = computed<ProductSummary[]>(() => homeContent.value?.hotSales ?? [])
-const announcementHighlights = computed<Announcement[]>(() => homeContent.value?.announcements ?? [])
 const primaryBannerImage = computed(() => primaryBanner.value?.imageUrl ?? '/images/banners/default.png')
 
 function normaliseAmount(value: string) {
@@ -593,21 +591,6 @@ onBeforeUnmount(() => {
       </div>
     </section>
 
-    <section v-if="announcementHighlights.length" class="announcement-board" aria-label="平台公告">
-      <header>
-        <h2>公告与资讯</h2>
-        <p>关注平台运营动态、优惠政策与使用帮助。</p>
-      </header>
-      <ul>
-        <li v-for="item in announcementHighlights" :key="item.id">
-          <div>
-            <strong>{{ item.title }}</strong>
-            <p>{{ item.content }}</p>
-          </div>
-          <span class="category">{{ item.category }}</span>
-        </li>
-      </ul>
-    </section>
     <PurchaseDialog
       :open="!!purchaseTarget"
       :product="purchaseTarget"
@@ -847,53 +830,6 @@ onBeforeUnmount(() => {
   color: #4f46e5;
   font-weight: 600;
   text-decoration: none;
-}
-
-.announcement-board {
-  border-radius: 1.5rem;
-  padding: 1.75rem 2rem;
-  background: rgba(255, 255, 255, 0.95);
-  box-shadow: 0 20px 40px rgba(30, 41, 59, 0.08);
-  display: grid;
-  gap: 1.25rem;
-}
-
-.announcement-board header h2 {
-  font-size: 1.5rem;
-  font-weight: 700;
-}
-
-.announcement-board header p {
-  color: rgba(30, 41, 59, 0.6);
-}
-
-.announcement-board ul {
-  list-style: none;
-  padding: 0;
-  margin: 0;
-  display: grid;
-  gap: 1rem;
-}
-
-.announcement-board li {
-  display: flex;
-  justify-content: space-between;
-  gap: 1.2rem;
-  align-items: flex-start;
-}
-
-.announcement-board strong {
-  display: block;
-  margin-bottom: 0.3rem;
-}
-
-.announcement-board p {
-  color: rgba(30, 41, 59, 0.65);
-}
-
-.announcement-board .category {
-  font-weight: 600;
-  color: #f97316;
 }
 
 .overview-card .label {
