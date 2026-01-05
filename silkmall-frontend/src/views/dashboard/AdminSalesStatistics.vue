@@ -53,7 +53,8 @@ async function loadWeeklySales() {
       params: { weeks: weeksToFetch },
     })
     weeklySales.value = data ?? null
-    page.value = 0
+    const hasWeeks = Array.isArray(data?.weeks) && data.weeks.length > 0
+    activeWeekIndex.value = hasWeeks ? 0 : null
   } catch (err) {
     weeklySales.value = null
     weeklyError.value = err instanceof Error ? err.message : '加载周度销售数据失败'
