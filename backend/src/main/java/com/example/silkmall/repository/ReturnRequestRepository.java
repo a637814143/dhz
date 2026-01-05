@@ -14,4 +14,6 @@ public interface ReturnRequestRepository extends JpaRepository<ReturnRequest, Lo
     List<ReturnRequest> findByOrderId(Long orderId);
     List<ReturnRequest> findByProduct_Supplier_Id(Long supplierId);
     List<ReturnRequest> findByAfterReceiptTrueOrderByRequestedAtDesc();
+    void deleteByOrderItemIdIn(Collection<Long> orderItemIds);
+    void deleteByProduct_Id(Long productId);
 }
