@@ -6,6 +6,7 @@ import com.example.silkmall.entity.Product;
 import com.example.silkmall.entity.ProductSizeAllocation;
 import com.example.silkmall.repository.OrderItemRepository;
 import com.example.silkmall.repository.ProductRepository;
+import com.example.silkmall.repository.ProductReviewRepository;
 import com.example.silkmall.repository.ProductSizeAllocationRepository;
 import com.example.silkmall.repository.ReturnRequestRepository;
 import com.example.silkmall.service.ProductService;
@@ -30,17 +31,20 @@ public class ProductServiceImpl extends BaseServiceImpl<Product, Long> implement
     private final ProductSizeAllocationRepository productSizeAllocationRepository;
     private final ReturnRequestRepository returnRequestRepository;
     private final OrderItemRepository orderItemRepository;
+    private final ProductReviewRepository productReviewRepository;
 
     @Autowired
     public ProductServiceImpl(ProductRepository productRepository,
                               ProductSizeAllocationRepository productSizeAllocationRepository,
                               ReturnRequestRepository returnRequestRepository,
-                              OrderItemRepository orderItemRepository) {
+                              OrderItemRepository orderItemRepository,
+                              ProductReviewRepository productReviewRepository) {
         super(productRepository);
         this.productRepository = productRepository;
         this.productSizeAllocationRepository = productSizeAllocationRepository;
         this.returnRequestRepository = returnRequestRepository;
         this.orderItemRepository = orderItemRepository;
+        this.productReviewRepository = productReviewRepository;
     }
     
     @Override
@@ -154,9 +158,11 @@ public class ProductServiceImpl extends BaseServiceImpl<Product, Long> implement
                     .filter(Objects::nonNull)
                     .toList();
             if (!orderItemIds.isEmpty()) {
+                productReviewRepository.deleteByOrderItemIdIn(orderItemIds);
                 returnRequestRepository.deleteByOrderItemIdIn(orderItemIds);
             }
         }
+        productReviewRepository.deleteByProduct_Id(id);
         returnRequestRepository.deleteByProduct_Id(id);
 
         productRepository.delete(product);
