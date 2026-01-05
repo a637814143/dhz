@@ -2,7 +2,9 @@ package com.example.silkmall.service.impl;
 
 import com.example.silkmall.dto.ProductOverviewDTO;
 import com.example.silkmall.entity.Product;
+import com.example.silkmall.repository.OrderItemRepository;
 import com.example.silkmall.repository.ProductRepository;
+import com.example.silkmall.repository.ReturnRequestRepository;
 import com.example.silkmall.service.ProductService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
@@ -17,11 +19,17 @@ import java.util.Locale;
 @Service
 public class ProductServiceImpl extends BaseServiceImpl<Product, Long> implements ProductService {
     private final ProductRepository productRepository;
+    private final OrderItemRepository orderItemRepository;
+    private final ReturnRequestRepository returnRequestRepository;
 
     @Autowired
-    public ProductServiceImpl(ProductRepository productRepository) {
+    public ProductServiceImpl(ProductRepository productRepository,
+                              OrderItemRepository orderItemRepository,
+                              ReturnRequestRepository returnRequestRepository) {
         super(productRepository);
         this.productRepository = productRepository;
+        this.orderItemRepository = orderItemRepository;
+        this.returnRequestRepository = returnRequestRepository;
     }
     
     @Override
@@ -191,5 +199,18 @@ public class ProductServiceImpl extends BaseServiceImpl<Product, Long> implement
         overview.setTotalSalesVolume(totalSalesVolume != null ? totalSalesVolume : 0L);
 
         return overview;
+    }
+
+    @Override
+    @Transactional
+    public void deleteById(Long id) {
+        if (returnRequestRepository.existsByProductId(id)
+                || returnRequestRepository.existsByOrderItemProductId(id)) {
+            throw new RuntimeException("该商品存在售后申请，无法删除");
+        }
+        if (orderItemRepository.existsByProductId(id)) {
+            throw new RuntimeException("该商品存在订单记录，无法删除");
+        }
+        super.deleteById(id);
     }
 }
