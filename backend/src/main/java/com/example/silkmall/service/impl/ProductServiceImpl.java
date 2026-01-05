@@ -1,10 +1,13 @@
 package com.example.silkmall.service.impl;
 
 import com.example.silkmall.dto.ProductOverviewDTO;
+import com.example.silkmall.entity.OrderItem;
 import com.example.silkmall.entity.Product;
 import com.example.silkmall.entity.ProductSizeAllocation;
+import com.example.silkmall.repository.OrderItemRepository;
 import com.example.silkmall.repository.ProductRepository;
 import com.example.silkmall.repository.ProductSizeAllocationRepository;
+import com.example.silkmall.repository.ReturnRequestRepository;
 import com.example.silkmall.service.ProductService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
@@ -25,13 +28,19 @@ import java.util.stream.Collectors;
 public class ProductServiceImpl extends BaseServiceImpl<Product, Long> implements ProductService {
     private final ProductRepository productRepository;
     private final ProductSizeAllocationRepository productSizeAllocationRepository;
+    private final ReturnRequestRepository returnRequestRepository;
+    private final OrderItemRepository orderItemRepository;
 
     @Autowired
     public ProductServiceImpl(ProductRepository productRepository,
-                              ProductSizeAllocationRepository productSizeAllocationRepository) {
+                              ProductSizeAllocationRepository productSizeAllocationRepository,
+                              ReturnRequestRepository returnRequestRepository,
+                              OrderItemRepository orderItemRepository) {
         super(productRepository);
         this.productRepository = productRepository;
         this.productSizeAllocationRepository = productSizeAllocationRepository;
+        this.returnRequestRepository = returnRequestRepository;
+        this.orderItemRepository = orderItemRepository;
     }
     
     @Override
@@ -128,6 +137,29 @@ public class ProductServiceImpl extends BaseServiceImpl<Product, Long> implement
         }
 
         return productRepository.findAll(specification, pageable);
+    }
+
+    @Override
+    @Transactional
+    public void deleteById(Long id) {
+        Product product = productRepository.findById(id).orElse(null);
+        if (product == null) {
+            return;
+        }
+
+        List<OrderItem> orderItems = orderItemRepository.findByProductId(id);
+        if (!orderItems.isEmpty()) {
+            List<Long> orderItemIds = orderItems.stream()
+                    .map(OrderItem::getId)
+                    .filter(Objects::nonNull)
+                    .toList();
+            if (!orderItemIds.isEmpty()) {
+                returnRequestRepository.deleteByOrderItemIdIn(orderItemIds);
+            }
+        }
+        returnRequestRepository.deleteByProduct_Id(id);
+
+        productRepository.delete(product);
     }
 
     @Transactional
